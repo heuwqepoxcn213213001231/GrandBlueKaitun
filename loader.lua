@@ -75,6 +75,20 @@ local function parseRepo(s)
 	return owner, repo
 end
 
+local function branchRefPath(branch)
+	branch = trim(branch)
+	if branch == "" then
+		return "refs/heads/main"
+	end
+	if branch:match("^refs/") then
+		return branch
+	end
+	if branch:match("^[0-9a-fA-F]+$") and #branch >= 7 and #branch <= 40 then
+		return branch
+	end
+	return "refs/heads/" .. branch
+end
+
 local OWNER, REPO = DEFAULT_OWNER, DEFAULT_REPO
 if type(getgenv().GB_REPO) == "string" and trim(getgenv().GB_REPO) ~= "" then
 	OWNER, REPO = parseRepo(getgenv().GB_REPO)
@@ -88,11 +102,13 @@ if type(getgenv().GB_BRANCH) == "string" and trim(getgenv().GB_BRANCH) ~= "" the
 	BRANCH = trim(getgenv().GB_BRANCH)
 end
 
+local BRANCH_REF = branchRefPath(BRANCH)
+
 local LOCKED_PREFIX = string.format(
 	"https://raw.githubusercontent.com/%s/%s/%s/",
 	OWNER,
 	REPO,
-	BRANCH
+	BRANCH_REF
 )
 
 local BASE_URL = LOCKED_PREFIX
@@ -230,12 +246,13 @@ local function validRel(rel)
 	return ALLOWED[rel] == true
 end
 
-local function lockUrl(rel, ver)
+local function lockUrl(rel, ver, rootBase)
+	local root = rootBase or BASE_URL
 	if not validRel(rel) then
 		error("[Kaitun][Loader] blocked path " .. tostring(rel))
 	end
-	local url = BASE_URL .. rel
-	if url:sub(1, #BASE_URL) ~= BASE_URL then
+	local url = root .. rel
+	if url:sub(1, #root) ~= root then
 		error("[Kaitun][Loader] URL escaped lock")
 	end
 	if not url:match("^https://raw%.githubusercontent%.com/") then
@@ -270,13 +287,14 @@ local function fetchLocal(rel)
 end
 
 local MANIFEST_VER = "0"
+local CONTENT_BASE_URL = BASE_URL
 
-local function fetchRemote(rel)
+local function fetchRemote(rel, rootBase)
 	local ver = MANIFEST_VER
 	if rel == "VERSION" or ver == "0" then
 		ver = nil
 	end
-	local url = lockUrl(rel, ver)
+	local url = lockUrl(rel, ver, rootBase)
 	local ok, src = pcall(httpGetRetry, url, rel)
 	if ok then
 		if rel ~= "VERSION" then
@@ -295,11 +313,11 @@ local function fetchRemote(rel)
 	error(src)
 end
 
-local function fetch(rel)
+local function fetch(rel, rootBase)
 	if MODE == "LOCAL" then
 		return fetchLocal(rel)
 	end
-	return fetchRemote(rel)
+	return fetchRemote(rel, rootBase)
 end
 
 print("[Kaitun][Loader] Source " .. MODE)
@@ -336,6 +354,13 @@ end
 if BUILD_AT == "" then
 	BUILD_AT = "unknown"
 end
+
+if MODE == "REMOTE" and BUILD_COMMIT:match("^[0-9a-fA-F]+$") and #BUILD_COMMIT >= 7 and #BUILD_COMMIT <= 40 then
+	CONTENT_BASE_URL = string.format("https://raw.githubusercontent.com/%s/%s/%s/", OWNER, REPO, BUILD_COMMIT)
+	print("[Kaitun][Loader] Pin " .. BUILD_COMMIT)
+else
+	CONTENT_BASE_URL = BASE_URL
+end
 getgenv().GB_VERSION = MANIFEST_VER
 getgenv().GB_COMMIT = BUILD_COMMIT
 getgenv().GB_BUILD_AT = BUILD_AT
@@ -364,7 +389,7 @@ local BUNDLE_REL = trim(manifest.bundle or "")
 if MODE == "REMOTE" and BUNDLE_REL ~= "" and getgenv().GB_USE_BUNDLE ~= false then
 	ALLOWED[BUNDLE_REL] = true
 	print("[Kaitun][Loader] Bundle " .. BUNDLE_REL)
-	local bundleSrc = fetch(BUNDLE_REL)
+	local bundleSrc = fetch(BUNDLE_REL, CONTENT_BASE_URL)
 	local fn, err = loadstring(bundleSrc, BUNDLE_REL)
 	if not fn then
 		error("[Kaitun][Loader] bundle compile " .. tostring(err))
@@ -375,6 +400,7 @@ if MODE == "REMOTE" and BUNDLE_REL ~= "" and getgenv().GB_USE_BUNDLE ~= false th
 	end
 	getgenv()._GBKaitunLoader = {
 		BASE_URL = BASE_URL,
+		CONTENT_BASE_URL = CONTENT_BASE_URL,
 		VERSION = MANIFEST_VER,
 		COMMIT = BUILD_COMMIT,
 		BUILD_AT = BUILD_AT,
@@ -418,7 +444,7 @@ local function LoadModule(rel)
 	if not ALLOWED[rel] then
 		error("[Kaitun][Loader] path not in manifest: " .. rel)
 	end
-	local src = fetch(rel)
+	local src = fetch(rel, CONTENT_BASE_URL)
 	local fn, err = loadstring(src, rel)
 	if not fn then
 		error("[Kaitun][Loader] compile " .. rel .. " " .. tostring(err))
@@ -437,6 +463,7 @@ getgenv()._GBKaitunLoader = {
 	LoadModule = LoadModule,
 	Require = Require,
 	BASE_URL = BASE_URL,
+	CONTENT_BASE_URL = CONTENT_BASE_URL,
 	VERSION = MANIFEST_VER,
 	COMMIT = BUILD_COMMIT,
 	BUILD_AT = BUILD_AT,
