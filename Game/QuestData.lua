@@ -227,6 +227,24 @@ return function(GB)
 		["Stolen Goods"] = { object = "StolenGoods", location = "Esopo Delivery" },
 	}
 
+	-- Verified semantic world object mapping used by resolver/planner.
+	M.OBJECT_TARGETS = {
+		["Marine Gate"] = {
+			Island = "Anchor Town",
+			Path = { "Islands", "Anchor Town", "Island", "Gate" },
+			Tags = { "Marine Metal Gate", "Gate" },
+			Prompts = { "Pushable Door" },
+		},
+	}
+
+	M.QUEST_REQUIREMENTS = {
+		["Gate of Authority"] = {
+			Strength = 100,
+			Status = "IMPLEMENTED_UNVERIFIED",
+			Reason = "Gate push interaction appears strength-gated; runtime validate while quest executes.",
+		},
+	}
+
 	function M.currentStage(q)
 		if type(q) ~= "table" or type(q.Stages) ~= "table" then
 			return nil, nil
@@ -323,6 +341,14 @@ return function(GB)
 
 	function M.deliverSpec(target)
 		return M.DELIVER[target]
+	end
+
+	function M.objectSpec(target)
+		return M.OBJECT_TARGETS[target]
+	end
+
+	function M.questRequirement(name)
+		return M.QUEST_REQUIREMENTS[name]
 	end
 
 	function M.islandOf(name)

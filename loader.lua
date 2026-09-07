@@ -12,10 +12,31 @@ if type(loadstring) ~= "function" then
 	error("[Kaitun][Loader] loadstring missing")
 end
 
-if type(getgenv()._GBKaitunUnload) == "function" then
-	pcall(getgenv()._GBKaitunUnload)
-	task.wait(0.12)
+local function stopPreviousInstance()
+	local prev = getgenv().GBKaitun
+	local stopped = false
+	if type(prev) == "table" then
+		print("[Kaitun][BOOT] stopping previous instance")
+		if type(prev.Stop) == "function" then
+			pcall(prev.Stop)
+			stopped = true
+		elseif type(prev.Destroy) == "function" then
+			pcall(prev.Destroy)
+			stopped = true
+		end
+	end
+	if not stopped and type(getgenv()._GBKaitunUnload) == "function" then
+		print("[Kaitun][BOOT] stopping previous instance")
+		pcall(getgenv()._GBKaitunUnload)
+		stopped = true
+	end
+	if stopped then
+		task.wait(0.12)
+		print("[Kaitun][BOOT] previous instance cleaned")
+	end
 end
+
+stopPreviousInstance()
 
 local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 getgenv()._GBKaitunGen = GEN
@@ -261,12 +282,9 @@ if MODE == "REMOTE" then
 	print("[Kaitun][Loader] Base " .. BASE_URL)
 end
 
-local versionText = "1.1.17"
-do
-	local ok, raw = pcall(fetch, "VERSION")
-	if ok then
-		versionText = trim(raw)
-	end
+local versionText = trim(fetch("VERSION"))
+if versionText == "" then
+	error("[Kaitun][Loader] VERSION empty")
 end
 MANIFEST_VER = versionText
 
@@ -275,10 +293,42 @@ if type(manifest.version) ~= "string" or type(manifest.files) ~= "table" or type
 	error("[Kaitun][Loader] manifest missing version/files/order")
 end
 if trim(manifest.version) ~= versionText then
-	print("[Kaitun][Loader] VERSION " .. versionText .. " vs manifest " .. tostring(manifest.version))
+	error("[Kaitun][Loader] VERSION mismatch " .. versionText .. " vs manifest " .. tostring(manifest.version))
 end
 MANIFEST_VER = trim(manifest.version)
 print("[Kaitun][Loader] Manifest " .. MANIFEST_VER)
+local buildMeta = type(manifest.build) == "table" and manifest.build or {}
+local BUILD_COMMIT = trim(buildMeta.commit or manifest.commit or "")
+local BUILD_AT = trim(buildMeta.built_at or buildMeta.builtAt or manifest.built_at or "")
+
+local function resolveBranchCommit()
+	if MODE ~= "REMOTE" then
+		return nil
+	end
+	local api = string.format("https://api.github.com/repos/%s/%s/commits/%s", OWNER, REPO, BRANCH)
+	local ok, body = pcall(httpGetRetry, api, "branch commit")
+	if not ok or type(body) ~= "string" then
+		return nil
+	end
+	local ok2, t = pcall(jsonDecode, body)
+	if not ok2 or type(t) ~= "table" or type(t.sha) ~= "string" then
+		return nil
+	end
+	return string.sub(t.sha, 1, 7)
+end
+
+if BUILD_COMMIT == "" then
+	BUILD_COMMIT = "unknown"
+end
+if BUILD_COMMIT == "unknown" then
+	local c = resolveBranchCommit()
+	if c and c ~= "" then
+		BUILD_COMMIT = c
+	end
+end
+if BUILD_AT == "" then
+	BUILD_AT = "unknown"
+end
 
 for rel, mapped in pairs(manifest.files) do
 	if type(rel) ~= "string" or type(mapped) ~= "string" or rel ~= mapped then
@@ -336,6 +386,8 @@ getgenv()._GBKaitunLoader = {
 	Require = Require,
 	BASE_URL = BASE_URL,
 	VERSION = MANIFEST_VER,
+	COMMIT = BUILD_COMMIT,
+	BUILD_AT = BUILD_AT,
 	SOURCE_MODE = MODE,
 	OWNER = OWNER,
 	REPO = REPO,

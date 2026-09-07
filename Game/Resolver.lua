@@ -738,6 +738,76 @@ return function(GB)
 		return nil
 	end
 
+	local function followPath(path)
+		if type(path) ~= "table" then
+			return nil
+		end
+		local cur = workspace
+		for _, step in ipairs(path) do
+			if not (cur and type(step) == "string") then
+				return nil
+			end
+			cur = cur:FindFirstChild(step)
+		end
+		return cur
+	end
+
+	local function hasAnyTag(inst, tags)
+		if not (inst and type(tags) == "table") then
+			return false
+		end
+		for _, tag in ipairs(tags) do
+			local ok, hit = pcall(function()
+				return inst:HasTag(tag)
+			end)
+			if ok and hit then
+				return true
+			end
+		end
+		return false
+	end
+
+	function M.resolveObject(name, opts)
+		opts = opts or {}
+		local spec = GB.QuestData and GB.QuestData.objectSpec and GB.QuestData.objectSpec(name) or nil
+		if not spec then
+			return M.resolve(name, {
+				kind = "any",
+				ExpectedRole = "any",
+				Island = opts.Island,
+				deep = opts.deep,
+			})
+		end
+		local hit = followPath(spec.Path)
+		if hit then
+			local root = climbRoot(hit) or hit
+			if (not spec.Island) or islandOf(root) == spec.Island then
+				return M.pack(root, name)
+			end
+		end
+		if type(spec.Tags) == "table" then
+			for _, tag in ipairs(spec.Tags) do
+				local tagged = firstWorldTagged(tag)
+				if tagged then
+					local root = climbRoot(tagged) or tagged
+					if (not spec.Island) or islandOf(root) == spec.Island then
+						return M.pack(root, name)
+					end
+				end
+			end
+		end
+		local pack = M.resolve(name, {
+			kind = "any",
+			ExpectedRole = "any",
+			Island = spec.Island or opts.Island,
+			deep = opts.deep,
+		})
+		if pack and hasAnyTag(pack.Instance, spec.Tags) then
+			return pack
+		end
+		return pack
+	end
+
 	function M.byName(name, kind)
 		local pack = M.resolve(name, { kind = kind or "any", ExpectedRole = kind })
 		return pack and pack.Instance

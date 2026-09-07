@@ -91,6 +91,10 @@ return function(GB)
 			GB.Log.warn("ERROR", "remote missing StatPoints")
 			return false
 		end
+		if not r:IsA("RemoteEvent") then
+			GB.Log.warn("ERROR", "StatPoints type " .. tostring(r.ClassName))
+			return false, "type"
+		end
 		n = math.max(1, math.floor(tonumber(n) or 1))
 		if not GB.Retry.rateOk("re:StatPoints", 0.2) then
 			return false, "rate"
@@ -103,6 +107,18 @@ return function(GB)
 			return false, err
 		end
 		return true
+	end
+
+	function M.describeStatInvest()
+		local r = ev("StatPoints")
+		local p = "ReplicatedStorage.Events.StatPoints"
+		return {
+			Path = p,
+			Type = r and r.ClassName or "missing",
+			Method = "FireServer",
+			Args = { "Invest", "<StatName>", "<Amount:number>" },
+			Callsite = "MenuHandler.Activated",
+		}
 	end
 
 	function M.statReplicate()
@@ -267,6 +283,10 @@ return function(GB)
 	function M.getStats()
 		local r = ev("GetStats")
 		if not r then
+			return nil, nil
+		end
+		if not r:IsA("RemoteFunction") then
+			GB.Log.warn("ERROR", "GetStats type " .. tostring(r.ClassName))
 			return nil, nil
 		end
 		if not GB.Retry.rateOk("rf:GetStats", 0.45) then

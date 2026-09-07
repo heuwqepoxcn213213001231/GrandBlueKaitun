@@ -33,20 +33,86 @@ return function(GB)
 		end
 	end
 
-	local function appendJsonl(path, line)
+	local LOG_RING_MAX = 180
+	local LOG_ROTATE_LINES = 260
+	local logRing = {}
+	local rotatePath = nil
+	local rotateIndex = 1
+	local rotateLines = 0
+
+	local function capNumberMap(map, maxN)
+		local n = 0
+		local dropKey
+		local dropAt
+		for k, v in pairs(map) do
+			n = n + 1
+			local at = tonumber(v) or 0
+			if not dropAt or at < dropAt then
+				dropAt = at
+				dropKey = k
+			end
+		end
+		if n > maxN and dropKey then
+			map[dropKey] = nil
+		end
+	end
+
+	local function ringPush(line)
+		logRing[#logRing + 1] = line
+		if #logRing > LOG_RING_MAX then
+			table.remove(logRing, 1)
+		end
+	end
+
+	local function runtimeDir()
+		local sid = GB.Persist.data and GB.Persist.data.session or "session"
+		ensureFolder("GBKaitun")
+		ensureFolder("GBKaitun/runtime")
+		ensureFolder("GBKaitun/runtime/" .. tostring(sid))
+		return "GBKaitun/runtime/" .. tostring(sid)
+	end
+
+	local function writeLatest()
 		if not canWrite() then
 			return
 		end
-		-- Never readfile+rewrite. Growing latest.jsonl freezes the client after a long run.
-		if typeof(appendfile) == "function" and typeof(isfile) == "function" and isfile(path) then
-			pcall(appendfile, path, line .. "\n")
-			return
+		local body = table.concat(logRing, "\n")
+		if body ~= "" then
+			body = body .. "\n"
 		end
-		pcall(writefile, path, line .. "\n")
+		pcall(writefile, "GBKaitun/runtime/latest.jsonl", body)
 	end
 
-	local lastDumpAt = 0
+	local function appendRotate(line)
+		if not canWrite() or typeof(appendfile) ~= "function" or typeof(isfile) ~= "function" then
+			return
+		end
+		if rotatePath == nil or rotateLines >= LOG_ROTATE_LINES then
+			rotatePath = string.format("%s/runtime_%03d.jsonl", runtimeDir(), rotateIndex)
+			rotateIndex = rotateIndex + 1
+			rotateLines = 0
+		end
+		if isfile(rotatePath) then
+			pcall(appendfile, rotatePath, line .. "\n")
+		else
+			pcall(writefile, rotatePath, line .. "\n")
+		end
+		rotateLines = rotateLines + 1
+	end
+
+	local function appendJsonl(line)
+		if not canWrite() then
+			return
+		end
+		ringPush(line)
+		appendRotate(line)
+		writeLatest()
+	end
+
 	local lastDump = nil
+	local lastDumpAt = 0
+	local lastDumpFp = nil
+	local dumpByFingerprint = {}
 
 	local function invSummary()
 		local rows = {}
@@ -60,18 +126,38 @@ return function(GB)
 	end
 
 	function GB.DumpRuntimeIssue()
-		if os.clock() - lastDumpAt < 25 and lastDump then
-			return lastDump
-		end
-		lastDumpAt = os.clock()
 		local snap = GB.State.get()
 		local cur = GB.PlayerData.current()
 		local qs = cur and GB.Quest.questState(cur)
 		local tr = cur and GB.Quest.trackOf(cur)
 		local plan = GB.Planner and GB.Planner.last
 		local obj = qs and qs.Objective
+		local blockers = GB.Quest and GB.Quest.CurrentBlockers and GB.Quest.CurrentBlockers() or nil
+		local statState = GB.Stats and GB.Stats.ReadStatState and GB.Stats.ReadStatState() or nil
+		local statStatus, statReason = "UNRESOLVED", nil
+		if GB.Stats and GB.Stats.status then
+			statStatus, statReason = GB.Stats.status()
+		end
+		local fp = string.format(
+			"%s|%s|%s|%s",
+			tostring(cur),
+			tostring(qs and qs.StageIndex or "-"),
+			tostring(obj and obj.Type or "-"),
+			tostring(tr and tr.LastError or "-")
+		)
+		local now = os.clock()
+		local seenAt = dumpByFingerprint[fp] or 0
+		if lastDump and ((lastDumpFp == fp and now - lastDumpAt < 10) or (seenAt > 0 and now - seenAt < 45)) then
+			return lastDump
+		end
+		lastDumpAt = now
+		lastDumpFp = fp
+		dumpByFingerprint[fp] = now
+		capNumberMap(dumpByFingerprint, 120)
 		local dump = {
-			Version = tostring(getgenv().GB_VERSION or "1.1.17"),
+			Version = tostring(getgenv().GB_VERSION or (getgenv()._GBKaitunLoader and getgenv()._GBKaitunLoader.VERSION) or "unknown"),
+			Commit = tostring(getgenv()._GBKaitunLoader and getgenv()._GBKaitunLoader.COMMIT or "unknown"),
+			BuiltAt = tostring(getgenv()._GBKaitunLoader and getgenv()._GBKaitunLoader.BUILD_AT or "unknown"),
 			TutorialDump = GB.DumpTutorialState and GB.DumpTutorialState() or nil,
 			PlaceId = game.PlaceId,
 			Level = snap.Level,
@@ -97,6 +183,21 @@ return function(GB)
 			LastError = tr and tr.LastError,
 			Strategy = GB.Recovery and GB.Recovery.currentStrategy and GB.Recovery.currentStrategy(),
 			ResolverCandidates = GB.Resolver.lastCandidates,
+			Blockers = blockers,
+			StatSystem = {
+				Status = statStatus,
+				Reason = statReason,
+			},
+			Stats = statState and {
+				Unused = statState.Unused,
+				Strength = statState.Strength,
+				Health = statState.Health,
+				Willpower = statState.Willpower,
+				Agility = statState.Agility,
+				Precision = statState.Precision,
+				Energy = statState.Energy,
+				Source = statState.Source,
+			} or nil,
 			Inventory = invSummary(),
 			Equip = snap.Weapon,
 			EquipmentState = snap.EquipmentState,
@@ -113,7 +214,7 @@ return function(GB)
 		if canWrite() then
 			ensureFolder("GBKaitun")
 			ensureFolder("GBKaitun/runtime")
-			appendJsonl("GBKaitun/runtime/latest.jsonl", line)
+			appendJsonl(line)
 		end
 		return dump
 	end
@@ -137,7 +238,11 @@ return function(GB)
 		return dump
 	end
 
-	function GB.unload()
+	local function stopAll(label)
+		if GB._stopped then
+			return true
+		end
+		GB._stopped = true
 		getgenv()._GBKaitunGen = (GB.gen or 0) + 1
 		if GB.Scheduler then
 			GB.Scheduler.stop()
@@ -154,7 +259,23 @@ return function(GB)
 		if GB.Persist then
 			GB.Persist.save()
 		end
+		if GB.Log and GB.Log.log then
+			GB.Log.log("BOOT", tostring(label or "stopped"))
+		end
 		print("[Kaitun][BOOT] unloaded")
+		return true
+	end
+
+	function GB.Stop()
+		return stopAll("stopped")
+	end
+
+	function GB.Destroy()
+		return stopAll("destroyed")
+	end
+
+	function GB.unload()
+		return stopAll("unloaded")
 	end
 
 	getgenv()._GBKaitunUnload = GB.unload
@@ -202,19 +323,27 @@ return function(GB)
 
 	getgenv().GBKaitun = GB
 	getgenv().GBConfig = GB.Config
-	getgenv().GB_VERSION = getgenv().GB_VERSION or (getgenv()._GBKaitunLoader and getgenv()._GBKaitunLoader.VERSION)
+	getgenv().GB_VERSION = (getgenv()._GBKaitunLoader and getgenv()._GBKaitunLoader.VERSION) or getgenv().GB_VERSION
 
 	local s = GB.State.refresh()
+	local loaderMeta = getgenv()._GBKaitunLoader or {}
+	local ver = tostring(loaderMeta.VERSION or getgenv().GB_VERSION or "unknown")
+	local commit = tostring(loaderMeta.COMMIT or "unknown")
+	local builtAt = tostring(loaderMeta.BUILD_AT or "unknown")
+	getgenv().GB_VERSION = ver
+	getgenv().GB_COMMIT = commit
 	GB.Log.log(
 		"BOOT",
 		string.format(
-			"VERSION %s lv%s island=%s gold=%s",
-			tostring(getgenv().GB_VERSION),
+			"v%s commit=%s built=%s lv%s island=%s gold=%s",
+			ver,
+			commit,
+			builtAt,
 			tostring(s.Level),
 			tostring(s.CurrentIsland),
 			tostring(s.Gold)
 		)
 	)
-	print("[Kaitun][BOOT] VERSION " .. tostring(getgenv().GB_VERSION))
+	print("[Kaitun][BOOT] starting version " .. ver .. " commit=" .. commit)
 	return GB
 end

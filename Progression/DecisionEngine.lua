@@ -6,6 +6,7 @@ return function(GB)
 		goal = nil,
 		task = nil,
 	}
+	local logDoing
 
 	local function setTask(name)
 		if GB.State.track.TaskName ~= name then
@@ -73,6 +74,77 @@ return function(GB)
 		return best and best.name
 	end
 
+	local function activeQuestNames()
+		local names = GB.PlayerData.activeNames and GB.PlayerData.activeNames() or {}
+		local cur = GB.PlayerData.current and GB.PlayerData.current() or nil
+		if type(cur) == "string" and cur ~= "" and not table.find(names, cur) then
+			names[#names + 1] = cur
+		end
+		return names
+	end
+
+	local function questStatus(name)
+		if GB.Quest and GB.Quest.questStatus then
+			return GB.Quest.questStatus(name)
+		end
+		return "UNRESOLVED", "missing-status"
+	end
+
+	local function blockerList()
+		return GB.Quest and GB.Quest.CurrentBlockers and GB.Quest.CurrentBlockers() or {}
+	end
+
+	local function logBlockedQuest(name, why)
+		local key = tostring(name) .. "|" .. tostring(why)
+		if M._blockedKey == key and os.clock() - (M._blockedAt or 0) < 8 then
+			return
+		end
+		M._blockedKey = key
+		M._blockedAt = os.clock()
+		GB.Log.warn("QUEST", "defer " .. tostring(name) .. " " .. tostring(why))
+	end
+
+	local function pickReadyActive(skipName)
+		local chosen
+		for _, name in ipairs(activeQuestNames()) do
+			if name ~= skipName and not GB.Config.SkipQuests[name] then
+				local status, why = questStatus(name)
+				if status == "BLOCKED_REQUIREMENT" or status == "DEFERRED" then
+					logBlockedQuest(name, why)
+				elseif status == "READY" or status == "IN_PROGRESS" then
+					chosen = name
+					break
+				end
+			end
+		end
+		return chosen
+	end
+
+	local function runFarmGoal(snap, why)
+		local rep = bestRepeat(snap.CurrentIsland, snap.Level or 0)
+		if not rep then
+			return false
+		end
+		local blockers = blockerList()
+		local note = tostring(why or "story_blocked")
+		for _, b in ipairs(blockers) do
+			if b.Type == "STAT_REQUIREMENT" and b.Stat == "Strength" then
+				note = string.format("FarmUntilStrength(%d/%d)", tonumber(b.Current) or 0, tonumber(b.Required) or 0)
+				break
+			end
+		end
+		if M._farmNote ~= (rep .. "|" .. note) then
+			M._farmNote = rep .. "|" .. note
+			GB.Log.log("PLANNER", "farm goal " .. note)
+			GB.Log.log("PLANNER", "next=" .. tostring(rep))
+		end
+		M.goal = { Type = "FARM", Quest = rep, Note = note, At = os.clock() }
+		setTask("farm:" .. rep)
+		logDoing("farm", rep)
+		GB.Quest.doLive(rep)
+		return true
+	end
+
 	function M.optionalOk()
 		if GB.Config.StoryFirst == false then
 			return true
@@ -103,7 +175,7 @@ return function(GB)
 		GB.Backpack.tick()
 	end
 
-	local function logDoing(doing, target)
+	function logDoing(doing, target)
 		local key = tostring(doing) .. "|" .. tostring(target or "-")
 		if M._doingKey == key then
 			return
@@ -171,10 +243,6 @@ return function(GB)
 			return
 		end
 
-		if GB.Stats and GB.Stats.tick then
-			GB.Stats.tick()
-		end
-
 		local gate = GB.Tutorial and GB.Tutorial.GetCurrentGate and GB.Tutorial.GetCurrentGate()
 		local continueOverlay = gate and gate.Type == (GB.Tutorial.GateTypes and GB.Tutorial.GateTypes.ContinueOverlay)
 
@@ -239,33 +307,25 @@ return function(GB)
 		if GB.Config.AutoRewards then
 			GB.Rewards.tick()
 		end
-		-- Quest path returns before the idle ticks. Spend points / keep gear mid-story.
-		if GB.Stats and GB.Stats.tick then
-			GB.Stats.tick()
-		end
+		-- Quest path returns before the idle ticks. Keep gear mid-story.
 		if GB.Equipment and GB.Equipment.tick then
 			GB.Equipment.tick()
 		end
 
-		local function otherOrFarm(skipName)
-			local names = GB.PlayerData.activeNames and GB.PlayerData.activeNames() or {}
-			for _, name in ipairs(names) do
-				if name ~= skipName and not GB.Config.SkipQuests[name] then
-					local d2 = GB.Quest.deferred and select(1, GB.Quest.deferred(name))
-					if not d2 then
-						setTask("quest:" .. name)
-						logQuestDoing(name)
-						GB.Quest.doLive(name)
-						afterQuest(name)
-						return true
-					end
+		local function otherOrFarm(skipName, reason)
+			local nextQuest = pickReadyActive(skipName)
+			if nextQuest then
+				if M._planQuest ~= nextQuest then
+					M._planQuest = nextQuest
+					GB.Log.log("PLANNER", "choose " .. tostring(nextQuest))
 				end
+				setTask("quest:" .. nextQuest)
+				logQuestDoing(nextQuest)
+				GB.Quest.doLive(nextQuest)
+				afterQuest(nextQuest)
+				return true
 			end
-			local rep = bestRepeat(snap.CurrentIsland, snap.Level or 0)
-			if rep then
-				setTask("farm:" .. rep)
-				logDoing("farm", rep)
-				GB.Quest.doLive(rep)
+			if runFarmGoal(snap, reason or "no_ready_active") then
 				return true
 			end
 			return false
@@ -275,16 +335,10 @@ return function(GB)
 		if GB.Config.AutoTutorial or GB.Config.AutoQuest then
 			local cur = GB.PlayerData.current()
 			if cur and not GB.Config.SkipQuests[cur] then
-				local def, why = false, nil
-				if GB.Quest.deferred then
-					def, why = GB.Quest.deferred(cur)
-				end
-				if def then
-					if M._deferKey ~= cur then
-						M._deferKey = cur
-						GB.Log.warn("QUEST", "defer " .. tostring(cur) .. " " .. tostring(why))
-					end
-					if otherOrFarm(cur) then
+				local status, why = questStatus(cur)
+				if status == "BLOCKED_REQUIREMENT" or status == "DEFERRED" then
+					logBlockedQuest(cur, why)
+					if otherOrFarm(cur, why) then
 						return
 					end
 					setTask("defer:" .. cur)
@@ -296,19 +350,32 @@ return function(GB)
 				local gated = obj and obj.Type == "Required" and obj.TargetName == "Level"
 				local need = gated and (obj.Amount or GB.QuestData.needLevel(cur)) or 0
 				if gated and (snap.Level or 0) < need then
-					setTask("wait_level:" .. cur)
-					local island = snap.CurrentIsland
-					local rep = bestRepeat(island, snap.Level or 0)
-					if rep then
-						setTask("farm:" .. rep)
-						GB.Quest.doLive(rep)
+					if runFarmGoal(snap, "FarmUntilLevel(" .. tostring(need) .. ")") then
+						return
 					end
+					setTask("wait_level:" .. cur)
+					logDoing("wait_level", cur)
 					return
 				end
 				setTask("quest:" .. cur)
 				logQuestDoing(cur)
 				GB.Quest.doLive(cur)
 				afterQuest(cur)
+				return
+			end
+			local readyActive = pickReadyActive(nil)
+			if readyActive then
+				if M._planQuest ~= readyActive then
+					M._planQuest = readyActive
+					GB.Log.log("PLANNER", "choose " .. tostring(readyActive))
+				end
+				setTask("quest:" .. readyActive)
+				logQuestDoing(readyActive)
+				GB.Quest.doLive(readyActive)
+				afterQuest(readyActive)
+				return
+			end
+			if #blockerList() > 0 and otherOrFarm(nil, "all_story_blocked") then
 				return
 			end
 		end
@@ -323,17 +390,34 @@ return function(GB)
 		end
 
 		GB.Equipment.tick()
-		GB.Stats.tick()
 		GB.Skills.tick()
 		GB.Travel.tick()
 		GB.Boat.tick()
 
 		local liveName = GB.PlayerData.current()
 		if liveName and not GB.Config.SkipQuests[liveName] then
-			setTask("quest:" .. liveName)
-			logQuestDoing(liveName)
-			GB.Quest.doLive(liveName)
-			afterQuest(liveName)
+			local status, why = questStatus(liveName)
+			if status == "BLOCKED_REQUIREMENT" or status == "DEFERRED" then
+				logBlockedQuest(liveName, why)
+			else
+				setTask("quest:" .. liveName)
+				logQuestDoing(liveName)
+				GB.Quest.doLive(liveName)
+				afterQuest(liveName)
+				return
+			end
+		end
+
+		local readyFallback = pickReadyActive(liveName)
+		if readyFallback then
+			GB.Log.log("PLANNER", "choose " .. tostring(readyFallback))
+			setTask("quest:" .. readyFallback)
+			logQuestDoing(readyFallback)
+			GB.Quest.doLive(readyFallback)
+			afterQuest(readyFallback)
+			return
+		end
+		if #blockerList() > 0 and runFarmGoal(snap, "active_blocked") then
 			return
 		end
 
@@ -351,11 +435,7 @@ return function(GB)
 		local story = nextStory(island, lv)
 		if story then
 			if lv < GB.QuestData.needLevel(story) then
-				local rep = bestRepeat(island, lv)
-				if rep then
-					setTask("farm:" .. rep)
-					logDoing("farm", rep)
-					GB.Quest.doLive(rep)
+				if runFarmGoal(snap, "FarmUntilLevel(" .. tostring(GB.QuestData.needLevel(story)) .. ")") then
 					return
 				end
 				setTask("wait_level:" .. story)
@@ -371,9 +451,7 @@ return function(GB)
 
 		local rep = bestRepeat(island, lv)
 		if rep then
-			setTask("repeat:" .. rep)
-			logDoing("repeat", rep)
-			GB.Quest.doLive(rep)
+			runFarmGoal(snap, "story_idle")
 			return
 		end
 

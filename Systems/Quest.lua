@@ -8,7 +8,23 @@ return function(GB)
 		track = {},
 		unknown = {},
 		lastSig = {},
+		diagByFingerprint = {},
+		detailByFingerprint = {},
 	}
+
+	M.STATUS = {
+		READY = "READY",
+		IN_PROGRESS = "IN_PROGRESS",
+		BLOCKED_REQUIREMENT = "BLOCKED_REQUIREMENT",
+		DEFERRED = "DEFERRED",
+		COMPLETE = "COMPLETE",
+		UNRESOLVED = "UNRESOLVED",
+	}
+
+	local DETAIL_DUMP_GAP = 45
+	local DIAG_DUMP_GAP = 45
+	local TRACK_LIMIT = 96
+	local FAIL_FINGERPRINT_GAP = 1.2
 
 	local DECLINE = {
 		Decline = true,
@@ -224,6 +240,28 @@ return function(GB)
 		return ui and ui:IsA("LayerCollector") and ui.Enabled == true
 	end
 
+	local function rememberUnknown(key, line)
+		if M.unknown[key] then
+			return
+		end
+		M.unknown[key] = { at = os.clock() }
+		local count = 0
+		local dropKey
+		local dropAt
+		for k, v in pairs(M.unknown) do
+			count = count + 1
+			local at = type(v) == "table" and (v.at or 0) or 0
+			if not dropAt or at < dropAt then
+				dropAt = at
+				dropKey = k
+			end
+		end
+		if count > TRACK_LIMIT and dropKey then
+			M.unknown[dropKey] = nil
+		end
+		GB.Log.err("QUEST", line)
+	end
+
 	-- ForceOpenLogbook sequence + OpenLogbookHelp:FireServer
 	local function openLogbook()
 		if not layerOn("Menu") then
@@ -271,8 +309,67 @@ return function(GB)
 		return true
 	end
 
-	-- Pushable Door: Strength>=100 opens (Open credit). Else stand in 150 until it opens.
+	local function gateRequirement()
+		local req = GB.QuestData and GB.QuestData.questRequirement and GB.QuestData.questRequirement("Gate of Authority")
+		local need = tonumber(req and req.Strength) or 100
+		return need, req
+	end
+
+	local function readStrength()
+		if GB.Stats and GB.Stats.ReadStatState then
+			local st = GB.Stats.ReadStatState()
+			return tonumber(st and st.Strength) or 0
+		end
+		local snap = GB.State.get()
+		return tonumber((snap and snap.Stats and snap.Stats.Strength) or 0)
+	end
+
+	local function resolveMarineGate()
+		local pack = GB.Resolver.resolveObject and GB.Resolver.resolveObject("Marine Gate", {
+			Island = "Anchor Town",
+			deep = true,
+		})
+		if pack and pack.Instance then
+			local pr = GB.Resolver.prompt(pack.Instance, "Pushable Door") or GB.Resolver.prompt(pack.Instance)
+			return pack.Instance, pr
+		end
+		local islands = workspace:FindFirstChild("Islands")
+		local anchorTown = islands and islands:FindFirstChild("Anchor Town")
+		local island = anchorTown and anchorTown:FindFirstChild("Island")
+		local gate = island and island:FindFirstChild("Gate")
+		if gate then
+			local pr = GB.Resolver.prompt(gate, "Pushable Door") or GB.Resolver.prompt(gate)
+			return gate, pr
+		end
+		return nil, nil
+	end
+
+	local function gateBlocker()
+		local need = gateRequirement()
+		local str = readStrength()
+		if str < need then
+			return true, string.format("Strength %d/%d", str, need), {
+				Goal = "Gate of Authority",
+				Type = "STAT_REQUIREMENT",
+				Stat = "Strength",
+				Required = need,
+				Current = str,
+				Status = M.STATUS.BLOCKED_REQUIREMENT,
+			}
+		end
+		return false, nil, nil
+	end
+
+	-- Gate objective can be credit-on-open while nearby. Interact if possible, otherwise hold near the gate.
 	local function waitAtMarineGate(questName, inst)
+		local blocked, _, blocker = gateBlocker()
+		if blocked then
+			GB.Log.warn(
+				"QUEST",
+				string.format("Gate of Authority BLOCKED Strength=%d/%d", blocker.Current, blocker.Required)
+			)
+			return false, "blocked"
+		end
 		local qs = M.questState(questName)
 		local before = M.signature(qs)
 		local anchor = inst:FindFirstChild("Anchor")
@@ -285,42 +382,103 @@ return function(GB)
 		else
 			GB.World.ToInteractable(inst, 6)
 		end
-		local str = 0
-		pcall(function()
-			str = tonumber((GB.State.get().Stats or {}).Strength) or 0
-		end)
-		GB.Log.log("QUEST", string.format("at Marine Gate Str=%d need 100 to push-open", str))
-		if GB.World.interact then
+		local pr = GB.Resolver.prompt(inst, "Pushable Door") or GB.Resolver.prompt(inst)
+		if pr then
+			GB.World.firePrompt(pr, pr.HoldDuration or 0, inst)
+		elseif GB.World.interact then
 			GB.World.interact(inst, 6)
 		end
-		if GB.Recovery and GB.Recovery.markSuccess then
-			GB.Recovery.markSuccess()
-		end
-		if M.waitProgress(questName, before, str >= 100 and 8 or 3.5) then
+		if M.waitProgress(questName, before, 7.5) then
+			M._gateWaitUntil = nil
 			M.noteOk(questName)
 			return true
 		end
-		return true
+		M._gateWaitUntil = os.clock() + 18
+		if not M._gateSealAt or os.clock() - M._gateSealAt > 8 then
+			M._gateSealAt = os.clock()
+			GB.Log.log("QUEST", "Gate still sealed, defer and run other goals")
+		end
+		return false
 	end
 
 	function M.deferred(name)
 		if name == "Gate of Authority" then
-			local str = 0
-			pcall(function()
-				str = tonumber((GB.State.get().Stats or {}).Strength) or 0
-			end)
-			if str < 100 then
-				return true, "need Strength 100 to push-open"
+			local blocked, why = gateBlocker()
+			if blocked then
+				return true, why
+			end
+			if (M._gateWaitUntil or 0) > os.clock() then
+				return true, "gate sealed waiting window"
 			end
 		end
 		return false
+	end
+
+	function M.CurrentBlockers()
+		local out = {}
+		local names = GB.PlayerData.activeNames and GB.PlayerData.activeNames() or {}
+		local cur = GB.PlayerData.current and GB.PlayerData.current() or nil
+		if type(cur) == "string" and cur ~= "" and not table.find(names, cur) then
+			names[#names + 1] = cur
+		end
+		for _, name in ipairs(names) do
+			if name == "Gate of Authority" then
+				local blocked, _, blocker = gateBlocker()
+				if blocked and blocker then
+					out[#out + 1] = blocker
+				end
+			end
+		end
+		return out
+	end
+
+	function M.questStatus(name)
+		local qs = M.questState(name)
+		if not qs then
+			return M.STATUS.UNRESOLVED, "missing"
+		end
+		if qs.IsComplete then
+			return M.STATUS.COMPLETE, nil
+		end
+		local blocked, why = M.deferred(name)
+		if blocked then
+			if why == "gate sealed waiting window" then
+				return M.STATUS.DEFERRED, why
+			end
+			return M.STATUS.BLOCKED_REQUIREMENT, why
+		end
+		if qs.IsAccepted then
+			return M.STATUS.IN_PROGRESS, nil
+		end
+		return M.STATUS.READY, nil
 	end
 
 	function M.condProgress(cond)
 		return GB.QuestData.conditionCurrent(cond), GB.QuestData.conditionAmount(cond)
 	end
 
+	local function collectGuiText(root, out, budget)
+		if not (root and out and budget and budget > 0) then
+			return budget or 0
+		end
+		for _, c in ipairs(root:GetChildren()) do
+			if budget <= 0 then
+				break
+			end
+			if (c:IsA("TextLabel") or c:IsA("TextButton") or c:IsA("TextBox")) and type(c.Text) == "string" and c.Text ~= "" then
+				out[#out + 1] = c.Text
+				budget = budget - 1
+			end
+			budget = collectGuiText(c, out, budget)
+		end
+		return budget
+	end
+
 	local function inferObjective(name)
+		local now = os.clock()
+		if M._inferName == name and M._inferObj and now - (M._inferAt or 0) < 1.1 then
+			return M._inferObj
+		end
 		local pg = GB.lp and GB.lp.PlayerGui
 		if not pg then
 			return nil
@@ -330,37 +488,63 @@ return function(GB)
 			return nil
 		end
 		local blob = {}
-		for _, d in ipairs(gui:GetDescendants()) do
-			if (d:IsA("TextLabel") or d:IsA("TextButton")) and type(d.Text) == "string" and d.Text ~= "" then
-				blob[#blob + 1] = d.Text
-			end
-		end
+		local details = gui:FindFirstChild("QuestDetails")
+		local list = gui:FindFirstChild("Quest")
+		local sf = list and list:FindFirstChild("ScrollingFrame")
+		local budget = 90
+		budget = collectGuiText(details, blob, budget)
+		budget = collectGuiText(sf, blob, budget)
+		budget = collectGuiText(gui:FindFirstChild("Frame"), blob, budget)
 		local text = table.concat(blob, "\n")
 		if name == "Basics" then
 			if string.find(text, "skill scroll", 1, true) or string.find(text, "Equip Skill", 1, true) or string.find(text, "Equip your new skill", 1, true) or string.find(text, "Equip the skill", 1, true) then
-				return { Type = "EquipSkill", TargetName = "Strong Punch", Current = 0, Amount = 1, Complete = false, Raw = { Type = "EquipSkill", Target = { Name = "Strong Punch", Amount = 0, RequiredAmount = 1 } } }
+				M._inferName = name
+				M._inferAt = now
+				M._inferObj = { Type = "EquipSkill", TargetName = "Strong Punch", Current = 0, Amount = 1, Complete = false, Raw = { Type = "EquipSkill", Target = { Name = "Strong Punch", Amount = 0, RequiredAmount = 1 } } }
+				return M._inferObj
 			end
 			if string.find(text, "Use Skill", 1, true) or string.find(text, "Cast the skill", 1, true) or string.find(text, "Use your Strong Punch", 1, true) then
-				return { Type = "Cast", TargetName = "Strong Punch", Current = 0, Amount = 1, Complete = false, Raw = { Type = "Cast", Target = { Name = "Strong Punch", Amount = 0, RequiredAmount = 1 } } }
+				M._inferName = name
+				M._inferAt = now
+				M._inferObj = { Type = "Cast", TargetName = "Strong Punch", Current = 0, Amount = 1, Complete = false, Raw = { Type = "Cast", Target = { Name = "Strong Punch", Amount = 0, RequiredAmount = 1 } } }
+				return M._inferObj
 			end
 			if string.find(text, "Invest", 1, true) and string.find(text, "stat", 1, true) then
-				return { Type = "Required", TargetName = "TotalStatPoints", Current = 0, Amount = 1, Complete = false, Raw = { Type = "Required", Target = { Name = "TotalStatPoints", Amount = 0, RequiredAmount = 1 } } }
+				M._inferName = name
+				M._inferAt = now
+				M._inferObj = { Type = "Required", TargetName = "TotalStatPoints", Current = 0, Amount = 1, Complete = false, Raw = { Type = "Required", Target = { Name = "TotalStatPoints", Amount = 0, RequiredAmount = 1 } } }
+				return M._inferObj
 			end
 			if string.find(text, "logbook", 1, true) or string.find(text, "Logbook", 1, true) then
-				return { Type = "Open", TargetName = "Logbook", Current = 0, Amount = 1, Complete = false, Raw = { Type = "Open", Target = { Name = "Logbook", Amount = 0, RequiredAmount = 1 } } }
+				M._inferName = name
+				M._inferAt = now
+				M._inferObj = { Type = "Open", TargetName = "Logbook", Current = 0, Amount = 1, Complete = false, Raw = { Type = "Open", Target = { Name = "Logbook", Amount = 0, RequiredAmount = 1 } } }
+				return M._inferObj
 			end
 		end
 		if name == "Introduction" then
 			if string.find(text, "Press Q", 1, true) then
-				return { Type = "Dash", TargetName = "", Current = 0, Amount = 2, Complete = false, Raw = { Type = "Dash", Target = { Name = "", Amount = 0, RequiredAmount = 2 } } }
+				M._inferName = name
+				M._inferAt = now
+				M._inferObj = { Type = "Dash", TargetName = "", Current = 0, Amount = 2, Complete = false, Raw = { Type = "Dash", Target = { Name = "", Amount = 0, RequiredAmount = 2 } } }
+				return M._inferObj
 			end
 			if string.find(text, "Hold F", 1, true) then
-				return { Type = "Block", TargetName = "", Current = 0, Amount = 1, Complete = false, Raw = { Type = "Block", Target = { Name = "", Amount = 0, RequiredAmount = 1 } } }
+				M._inferName = name
+				M._inferAt = now
+				M._inferObj = { Type = "Block", TargetName = "", Current = 0, Amount = 1, Complete = false, Raw = { Type = "Block", Target = { Name = "", Amount = 0, RequiredAmount = 1 } } }
+				return M._inferObj
 			end
 			if string.find(text, "dummy", 1, true) or string.find(text, "Dummy", 1, true) then
-				return { Type = "Hit", TargetName = "Training Dummy", Current = 0, Amount = 4, Complete = false, Raw = { Type = "Hit", Target = { Name = "Training Dummy", Amount = 0, RequiredAmount = 4 } } }
+				M._inferName = name
+				M._inferAt = now
+				M._inferObj = { Type = "Hit", TargetName = "Training Dummy", Current = 0, Amount = 4, Complete = false, Raw = { Type = "Hit", Target = { Name = "Training Dummy", Amount = 0, RequiredAmount = 4 } } }
+				return M._inferObj
 			end
 		end
+		M._inferName = name
+		M._inferAt = now
+		M._inferObj = nil
 		return nil
 	end
 
@@ -451,12 +635,44 @@ return function(GB)
 		return string.format("%s|%s|%s|%s/%s", qs.Name, tostring(qs.StageIndex), tostring(o.Type), tostring(o.Current), tostring(o.Amount))
 	end
 
+	local function capMap(map, maxN)
+		local n = 0
+		local dropKey
+		local dropAt
+		for k, v in pairs(map) do
+			n = n + 1
+			local at = 0
+			if type(v) == "table" then
+				at = tonumber(v.LastAt or v.LastDump or v.LastFingerprintAt or v.at) or 0
+			else
+				at = tonumber(v) or 0
+			end
+			if not dropAt or at < dropAt then
+				dropAt = at
+				dropKey = k
+			end
+		end
+		if n > maxN and dropKey ~= nil then
+			map[dropKey] = nil
+		end
+	end
+
 	function M.trackOf(name)
 		local t = M.track[name]
 		if not t then
-			t = { AttemptCount = 0, LastError = nil, NextRetryAt = 0, LastDump = 0 }
+			t = {
+				AttemptCount = 0,
+				LastError = nil,
+				NextRetryAt = 0,
+				LastDump = 0,
+				LastFingerprint = nil,
+				LastFingerprintAt = 0,
+				LastAt = os.clock(),
+			}
 			M.track[name] = t
+			capMap(M.track, TRACK_LIMIT)
 		end
+		t.LastAt = os.clock()
 		return t
 	end
 
@@ -470,27 +686,45 @@ return function(GB)
 		if now < t.NextRetryAt then
 			return t
 		end
+		local qs = M.questState(name)
+		local stage = qs and qs.StageIndex or "-"
+		local action = qs and qs.Objective and qs.Objective.Type or "-"
+		local fp = string.format("%s|%s|%s|%s", tostring(name), tostring(stage), tostring(action), tostring(err))
+		if t.LastFingerprint == fp and now - (t.LastFingerprintAt or 0) < FAIL_FINGERPRINT_GAP then
+			return t
+		end
+		t.LastFingerprint = fp
+		t.LastFingerprintAt = now
 		t.AttemptCount = t.AttemptCount + 1
 		t.LastError = err
 		t.NextRetryAt = now + 1.5
 		GB.Log.warn("QUEST", string.format("%s fail #%d %s", name, t.AttemptCount, tostring(err)))
 		if t.AttemptCount == 3 then
 			GB.Cache.invalidate()
-			local qs = M.questState(name)
-			local target = qs.Objective and qs.Objective.TargetName or qs.NPC
-			if target then
-				GB.Resolver.dumpNearby(target, { Island = qs.Island, DisplayName = target })
-				t.LastDump = now
-			end
-			if qs.Island and GB.World.pullStream then
-				GB.World.pullStream(qs.Island)
+			local target = qs and qs.Objective and qs.Objective.TargetName or (qs and qs.NPC)
+			local lastDetail = M.detailByFingerprint[fp] or 0
+			if now - lastDetail >= DETAIL_DUMP_GAP then
+				M.detailByFingerprint[fp] = now
+				capMap(M.detailByFingerprint, 192)
+				if target then
+					GB.Resolver.dumpNearby(target, { Island = qs and qs.Island, DisplayName = target })
+					t.LastDump = now
+				end
+				if qs and qs.Island and GB.World.pullStream then
+					GB.World.pullStream(qs.Island)
+				end
 			end
 		end
 		if t.AttemptCount >= 5 then
-			GB.Log.err("QUEST", "STUCK " .. name .. " " .. tostring(err))
-			GB.Recovery.run("quest:" .. name)
-			if GB.DumpRuntimeIssue then
-				GB.DumpRuntimeIssue()
+			local lastDiag = M.diagByFingerprint[fp] or 0
+			if now - lastDiag >= DIAG_DUMP_GAP then
+				M.diagByFingerprint[fp] = now
+				capMap(M.diagByFingerprint, 192)
+				GB.Log.err("QUEST", "STUCK " .. name .. " " .. tostring(err))
+				GB.Recovery.run("quest:" .. name)
+				if GB.DumpRuntimeIssue then
+					GB.DumpRuntimeIssue()
+				end
 			end
 			t.AttemptCount = 0
 			t.NextRetryAt = now + 4
@@ -499,6 +733,9 @@ return function(GB)
 	end
 
 	function M.noteOk(name)
+		if name == "Gate of Authority" then
+			M._gateBlockedKey = nil
+		end
 		M.clearTrack(name)
 		GB.Recovery.markSuccess()
 	end
@@ -660,10 +897,7 @@ return function(GB)
 			return false
 		end
 		if not HANDLED[typ] then
-			if not M.unknown[questName .. typ] then
-				M.unknown[questName .. typ] = true
-				GB.Log.err("QUEST", "UNKNOWN_OBJECTIVE " .. tostring(typ) .. " " .. tostring(target))
-			end
+			rememberUnknown(questName .. typ, "UNKNOWN_OBJECTIVE " .. tostring(typ) .. " " .. tostring(target))
 			return false
 		end
 
@@ -1083,10 +1317,7 @@ return function(GB)
 			return goTagged(GB.QuestData.markerOf(typ, target) or target, 10)
 		end
 		if typ == "Defend" then
-			if not M.unknown[questName .. "Defend"] then
-				M.unknown[questName .. "Defend"] = true
-				GB.Log.err("QUEST", "UNKNOWN_OBJECTIVE Defend " .. tostring(target) .. " — skip")
-			end
+			rememberUnknown(questName .. "Defend", "UNKNOWN_OBJECTIVE Defend " .. tostring(target) .. " — skip")
 			return false
 		end
 		if typ == "Visit" and target == "Closet" then
@@ -1102,20 +1333,43 @@ return function(GB)
 			return openLogbook()
 		end
 		if typ == "Open" or typ == "Interact" or typ == "Investigate" or typ == "Wake" or typ == "Check On" or typ == "Free" then
+			if target == "Marine Gate" or questName == "Gate of Authority" then
+				local blocked, _, blocker = gateBlocker()
+				if blocked and blocker then
+					local key = tostring(blocker.Current) .. "/" .. tostring(blocker.Required)
+					if M._gateBlockedKey ~= key then
+						M._gateBlockedKey = key
+						GB.Log.warn(
+							"QUEST",
+							string.format("Gate of Authority BLOCKED Strength=%d/%d", blocker.Current, blocker.Required)
+						)
+						GB.Log.warn("QUEST", "deferring blocked quest")
+					end
+					return false
+				end
+				local gate = resolveMarineGate()
+				if not gate then
+					M.noteFail(questName, "gate unresolved")
+					return false
+				end
+				return waitAtMarineGate(questName, gate)
+			end
 			local spec = GB.QuestSpecs and GB.QuestSpecs.lookup(questName, nil, typ, target)
 			local tag = (spec and (spec.marker or spec.source)) or GB.QuestData.markerOf(typ, target) or target
-			if target == "Marine Gate" or tag == "Marine Gate" or questName == "Gate of Authority" then
-				tag = "Marine Metal Gate"
+			local objPack = GB.Resolver.resolveObject and GB.Resolver.resolveObject(tag, { deep = true }) or nil
+			local obj = objPack and objPack.Instance
+			if not obj and target and target ~= tag then
+				objPack = GB.Resolver.resolveObject and GB.Resolver.resolveObject(target, { deep = true }) or nil
+				obj = objPack and objPack.Instance
 			end
-			local obj = (GB.Resolver.taggedAny and GB.Resolver.taggedAny(tag))
-				or GB.Resolver.byName(tag)
-				or GB.Resolver.byName(target)
+			if not obj then
+				obj = (GB.Resolver.taggedAny and GB.Resolver.taggedAny(tag))
+					or GB.Resolver.byName(tag)
+					or GB.Resolver.byName(target)
+			end
 			if not obj then
 				M.noteFail(questName, "resolve miss " .. tostring(target))
 				return false
-			end
-			if target == "Marine Gate" or questName == "Gate of Authority" then
-				return waitAtMarineGate(questName, obj)
 			end
 			if GB.World.interact then
 				GB.World.interact(obj, 8)
@@ -1228,6 +1482,16 @@ return function(GB)
 		if os.clock() < t.NextRetryAt and t.LastError then
 			return false
 		end
+		local blocked, why = M.deferred(name)
+		if blocked then
+			if M._deferQuest ~= name or os.clock() - (M._deferAt or 0) > 8 then
+				M._deferQuest = name
+				M._deferAt = os.clock()
+				GB.Log.warn("QUEST", "defer " .. tostring(name) .. " " .. tostring(why))
+			end
+			t.NextRetryAt = os.clock() + 2.5
+			return false
+		end
 
 		if not qs.IsAccepted then
 			if qs.IsComplete then
@@ -1277,10 +1541,10 @@ return function(GB)
 			end
 			local typ = qs.Objective.Type
 			if typ and not HANDLED[typ] then
-				if not M.unknown[name .. tostring(typ)] then
-					M.unknown[name .. tostring(typ)] = true
-					GB.Log.err("QUEST", "UNKNOWN_OBJECTIVE " .. tostring(typ) .. " " .. tostring(qs.Objective.TargetName))
-				end
+				rememberUnknown(
+					name .. tostring(typ),
+					"UNKNOWN_OBJECTIVE " .. tostring(typ) .. " " .. tostring(qs.Objective.TargetName)
+				)
 				t.NextRetryAt = os.clock() + 6
 				return false
 			end

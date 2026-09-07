@@ -11,13 +11,19 @@ return function(GB)
 		_done = {},
 		_at = 0,
 		_tracker = nil,
+		_trackerAt = 0,
+		_trackerCache = nil,
 		_current = nil,
 		_hooked = false,
 		_unusedPts = nil,
 		_liveStats = nil,
+		_statsSource = nil,
+		_statsAt = 0,
 	}
 
 	local LIVE_TTL = 0.85
+	local TRACKER_TTL = 0.45
+	local STAT_NAMES = { "Health", "Strength", "Agility", "Precision", "Energy", "Willpower", "Level" }
 
 	local STAGE_HINT = {
 		["Equip your new skill"] = "Basics",
@@ -132,56 +138,102 @@ return function(GB)
 	end
 
 	local function readTracker()
+		local now = os.clock()
+		if M._trackerCache and now - (M._trackerAt or 0) < TRACKER_TTL then
+			return M._trackerCache
+		end
 		local lp = GB.lp
 		local pg = lp and lp.PlayerGui
 		if not pg then
+			M._trackerCache = nil
+			M._trackerAt = now
 			return nil
 		end
 		local gui = pg:FindFirstChild("Quests")
 		if not gui then
+			M._trackerCache = nil
+			M._trackerAt = now
 			return nil
 		end
 		local det = gui:FindFirstChild("QuestDetails")
 		if det then
 			local attr = det:GetAttribute("QuestName")
 			if type(attr) == "string" and attr ~= "" then
+				M._trackerCache = attr
+				M._trackerAt = now
 				return attr
 			end
 			local qn = det:FindFirstChild("QuestName")
 			local t = qn and GB.State and GB.State.guiText(qn)
 			local hinted = hintQuest(t)
 			if hinted then
+				M._trackerCache = hinted
+				M._trackerAt = now
 				return hinted
 			end
 		end
 		local qf = gui:FindFirstChild("Quest")
 		local sf = qf and qf:FindFirstChild("ScrollingFrame")
 		if not sf then
+			M._trackerCache = nil
+			M._trackerAt = now
 			return nil
 		end
-		for _, d in ipairs(sf:GetDescendants()) do
-			local attr = d:GetAttribute("QuestName") or d:GetAttribute("QuestId")
-			if type(attr) == "string" and attr ~= "" and hintQuest(attr) then
-				return hintQuest(attr) or attr
+		local function scanNode(root, depth, budget)
+			if not (root and budget > 0 and depth >= 0) then
+				return nil, budget
 			end
-			if d:IsA("TextLabel") or d:IsA("TextButton") then
-				local hinted = hintQuest(d.Text)
-				if hinted then
-					return hinted
+			for _, d in ipairs(root:GetChildren()) do
+				if budget <= 0 then
+					break
 				end
-			end
-		end
-		local overlay = pg:FindFirstChild("ScreenShadow") or pg:FindFirstChild("Tutorial")
-		if overlay then
-			for _, d in ipairs(overlay:GetDescendants()) do
+				local attr = d:GetAttribute("QuestName") or d:GetAttribute("QuestId")
+				if type(attr) == "string" and attr ~= "" and hintQuest(attr) then
+					return hintQuest(attr) or attr, budget
+				end
 				if d:IsA("TextLabel") or d:IsA("TextButton") then
 					local hinted = hintQuest(d.Text)
 					if hinted then
+						return hinted, budget
+					end
+				end
+				if depth > 0 then
+					local hit
+					hit, budget = scanNode(d, depth - 1, budget - 1)
+					if hit then
+						return hit, budget
+					end
+				end
+			end
+			return nil, budget
+		end
+		local hit = select(1, scanNode(sf, 3, 70))
+		if hit then
+			M._trackerCache = hit
+			M._trackerAt = now
+			return hit
+		end
+		local overlay = pg:FindFirstChild("ScreenShadow") or pg:FindFirstChild("Tutorial")
+		if overlay then
+			local ov = select(1, scanNode(overlay, 2, 40))
+			if ov then
+				M._trackerCache = ov
+				M._trackerAt = now
+				return ov
+			end
+			for _, d in ipairs(overlay:GetChildren()) do
+				if d:IsA("TextLabel") or d:IsA("TextButton") then
+					local hinted = hintQuest(d.Text)
+					if hinted then
+						M._trackerCache = hinted
+						M._trackerAt = now
 						return hinted
 					end
 				end
 			end
 		end
+		M._trackerCache = nil
+		M._trackerAt = now
 		return nil
 	end
 
@@ -302,6 +354,11 @@ return function(GB)
 		end
 		local function bump(why)
 			M._at = 0
+			M._trackerAt = 0
+			M._trackerCache = nil
+			if GB.State and GB.State.track then
+				GB.State.track.StateChange = os.clock()
+			end
 			if why then
 				GB.Log.log("STATE", tostring(why))
 			end
@@ -363,9 +420,16 @@ return function(GB)
 			GB.conns[#GB.conns + 1] = st.OnClientEvent:Connect(function(stats, pts)
 				if type(stats) == "table" then
 					M._liveStats = stats
+					M._statsSource = "StatPointsEvent"
+					M._statsAt = os.clock()
 				end
 				if type(pts) == "number" then
 					M._unusedPts = pts
+					M._statsSource = M._statsSource or "StatPointsEvent"
+					M._statsAt = os.clock()
+				end
+				if GB.State and GB.State.track then
+					GB.State.track.StateChange = os.clock()
 				end
 			end)
 		end
@@ -492,13 +556,32 @@ return function(GB)
 
 	function M.pullStats()
 		local a, b = GB.Remotes.getStats()
+		local stats
+		local pts
 		if type(a) == "table" then
-			M._liveStats = a
+			stats = a
+		elseif type(b) == "table" then
+			stats = b
+		end
+		if type(a) == "number" then
+			pts = a
 		end
 		if type(b) == "number" then
-			M._unusedPts = b
-		elseif type(a) == "number" then
-			M._unusedPts = a
+			pts = b
+		end
+		if type(stats) == "table" then
+			local packed = {}
+			for _, name in ipairs(STAT_NAMES) do
+				packed[name] = tonumber(stats[name]) or 0
+			end
+			M._liveStats = packed
+			M._statsSource = "GetStats"
+			M._statsAt = os.clock()
+		end
+		if type(pts) == "number" then
+			M._unusedPts = pts
+			M._statsSource = M._statsSource or "GetStats"
+			M._statsAt = os.clock()
 		end
 		return a, b
 	end
@@ -508,6 +591,10 @@ return function(GB)
 			M.pullStats()
 		end
 		return tonumber(M._unusedPts)
+	end
+
+	function M.latestStats()
+		return M._liveStats, tonumber(M._unusedPts), M._statsSource, M._statsAt
 	end
 
 	function M.refreshStats()

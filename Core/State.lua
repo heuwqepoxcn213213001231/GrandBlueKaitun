@@ -9,6 +9,10 @@ return function(GB)
 			Level = 0,
 			EXP = 0,
 			Gold = 0,
+			StatPoints = 0,
+			Strength = 0,
+			Health = 0,
+			CurrentQuest = nil,
 			QuestProgress = "",
 			Kill = 0,
 			SuccessfulAction = 0,
@@ -726,11 +730,22 @@ return function(GB)
 		s.Exp = d.EXP or d.Exp or 0
 		s.Gold = d.Gold or 0
 		s.CelestialCoins = d["Celestial Coins"] or d.CelestialCoins or 0
-		s.StatPoints = d.StatPoints or d["Stat Points"] or d.UnusedStatPoints or 0
+		local liveStats, livePts, liveSrc
+		if GB.PlayerData and GB.PlayerData.latestStats then
+			liveStats, livePts, liveSrc = GB.PlayerData.latestStats()
+		end
+		s.StatSource = liveSrc or "PlayerDataCache"
+		s.StatPoints = tonumber(livePts)
+			or tonumber(d.StatPoints)
+			or tonumber(d["Stat Points"])
+			or tonumber(d.UnusedStatPoints)
+			or 0
 		s.SkillPoints = d.SkillPoints or d["Skill Points"] or 0
 		s.Stats = {}
 		for _, n in ipairs(STATS) do
-			s.Stats[n] = d.Stats and d.Stats[n] or 0
+			s.Stats[n] = tonumber(liveStats and liveStats[n])
+				or tonumber(d.Stats and d.Stats[n])
+				or 0
 		end
 		s.Skills = d.Skills or {}
 		s.Inventory = d.Inventory or {}
@@ -804,8 +819,9 @@ return function(GB)
 				if radar then
 					local st = radar:FindFirstChild("StatpointText", true)
 					local n = guiNum(st)
-					if n and n > 0 then
+					if n and n >= 0 and ((tonumber(s.StatPoints) or -1) < 1) then
 						s.StatPoints = n
+						s.StatSource = tostring(s.StatSource or "Unknown") .. "|GUIFallback"
 					end
 				end
 			end
@@ -813,7 +829,7 @@ return function(GB)
 			if prog then
 				local lv = prog:FindFirstChild("Level", true)
 				local n = guiNum(lv)
-				if n and n > 0 then
+				if n and n > 0 and (tonumber(s.Level) or 0) <= 0 then
 					s.Level = n
 				end
 			end
@@ -822,12 +838,31 @@ return function(GB)
 		if s.Position then
 			M.track.LastPosition = s.Position
 		end
-		if s.Level ~= M.track.Level or s.Exp ~= M.track.EXP or s.Gold ~= M.track.Gold then
+		local stageIndex = nil
+		if s.CurrentQuest and GB.PlayerData and GB.PlayerData.live and GB.QuestData and GB.QuestData.currentStage then
+			local liveQuest = GB.PlayerData.live(s.CurrentQuest)
+			stageIndex = liveQuest and select(1, GB.QuestData.currentStage(liveQuest)) or nil
+		end
+		local qsig = tostring(s.CurrentQuest or "-") .. "|" .. tostring(stageIndex or "-")
+		if s.Level ~= M.track.Level
+			or s.Exp ~= M.track.EXP
+			or s.Gold ~= M.track.Gold
+			or tonumber(s.StatPoints) ~= tonumber(M.track.StatPoints)
+			or tonumber(s.Stats.Strength) ~= tonumber(M.track.Strength)
+			or tonumber(s.Stats.Health) ~= tonumber(M.track.Health)
+			or s.CurrentQuest ~= M.track.CurrentQuest
+			or qsig ~= tostring(M.track.QuestProgress or "")
+		then
 			M.track.StateChange = os.clock()
 		end
 		M.track.Level = s.Level
 		M.track.EXP = s.Exp
 		M.track.Gold = s.Gold
+		M.track.StatPoints = tonumber(s.StatPoints) or 0
+		M.track.Strength = tonumber(s.Stats.Strength) or 0
+		M.track.Health = tonumber(s.Stats.Health) or 0
+		M.track.CurrentQuest = s.CurrentQuest
+		M.track.QuestProgress = qsig
 		M.snap = s
 		return s
 	end
