@@ -1,6 +1,6 @@
 {
   "name": "GrandBlueKaitun",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "entry": "kaitun.lua",
   "files": {
     "kaitun.lua": "kaitun.lua",

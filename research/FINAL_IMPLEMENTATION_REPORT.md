@@ -1,6 +1,6 @@
 # FINAL Implementation Report — Grand Blue Kaitun
 
-**Version:** `1.0.4`  
+**Version:** `1.0.5`  
 **Place:** `118635363908336` (Studio connected).  
 **Entry:** `NiaUISilent/Hub/Grand Blue/kaitun.lua`  
 **Ngôn ngữ log:** `[Kaitun][CAT]`.  

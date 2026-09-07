@@ -1,5 +1,57 @@
 # Runtime Fixes
 
+## 1.0.5 — Combat Heartbeat lag + Introduction Dash stuck
+
+### Issue
+
+Live Introduction **Dash (0/2)** — "Press Q to perform a dash". Combat felt stuttery. Logs:
+
+```
+[Kaitun][ERROR] resolve miss Training Dummy
+[Kaitun][QUEST] Kill not credited Training Dummy
+[Kaitun][RECOVERY] level=1 stuck quest:Introduction
+```
+
+Game console: `-- Putting highlight on: ... Pet HitHighlight` dozens/sec. Memory ~2.7GB.
+
+### Root Cause (Studio place `118635363908336`)
+
+1. **Swing every Heartbeat.** `startLock` called `AttackModule.Swing` + `standPose` (CFrame + `groundAt` raycast) every frame. Gap was 0.28s and ignored `CanSwing`. Basic `swingStateDuration` = `0.35 * 1.05`. Extra Swing calls spawn `HighlightHitEffect` (`HitHighlight`) on dummy/pets → server + client hitch.
+2. **Dash handler attacked Dummy.** `Quest.handleCondition` `Dash`/`Block` ran `Combat.attack("Training Dummy")`. Live objective was Dash, not Hit. Kill-credit check then spammed `Kill not credited`.
+3. **Dummy name miss.** World models are `Workspace.Entities.Training Dummy1`–`8`, CollectionService tag **`TrainingDummy`**, no Humanoid. Quest name `"Training Dummy"` never matches. `Resolver.enemy` logged miss, then Combat scanned Entities (and `byName` logged again). `StreamingEnabled`: Dummy1 at ~(268, 22, -101) vs `PersistentAnchor.Center` ~(-184, -0.5, 39) — ~470 studs, same class as Graves miss.
+4. **Logger.** Distinct `[ERROR] resolve miss` + `[QUEST] Kill not credited` keys every tick.
+
+Dash client (verified): `Keybinds` default Q. `InputManager.Inputs.Dash.Client` binds `Enum.KeyCode.Q`. `Controls.Dash` → `Events.PressKey:Fire(Enum.KeyCode.Q)`. `PlayerInputHandler` PushInput. Do **not** invent `Events.Input` args. Block: `PressKey:Fire(Enum.KeyCode.F, Enum.KeyCode)` then `false` on release.
+
+### Fix
+
+- Swing only when `StateService.GetPermission(char, "CanSwing")` and `os.clock` gap ≥ 0.42. No `pcall` around Swing.
+- `standPose` / CFrame / raycast only if far or target moved. No CFrame write every Heartbeat when already beside.
+- Dummy: `Resolver.dummy()` — `GetTagged("TrainingDummy")`, cache until `Parent==nil`. Miss log once / 8s. After 3: hop `lastDummyPos` or island stream-pull, then `noteFail` → STUCK at 5. Not ERROR every 0.1s.
+- Dash: `Combat.stopLock` + `PressKey` Q. Wait `CanDodge`. Validate live `0/2 → 1/2 → 2/2`.
+- Block: `PressKey` F hold 0.7s. Do not attack Dummy on Dash/Block.
+- Hit Dummy later: credit via quest count only (not `Parent==nil`).
+- Logger: identical `[ERROR]` and `[QUEST] …not credited / resolve miss` gap 8s.
+
+### Files
+
+- `Systems/Combat.lua`, `Systems/Quest.lua`, `Game/Resolver.lua`, `Core/Logger.lua`
+- `VERSION` / `manifest.json` / `loader.lua` → **1.0.5**
+
+### Expected next log
+
+```
+[Kaitun][QUEST] Objective DASH
+[Kaitun][COMBAT] Dash Q
+[Kaitun][QUEST] Introduction 0/2 -> 1/2
+[Kaitun][COMBAT] Dash Q
+[Kaitun][QUEST] Introduction 1/2 -> 2/2
+```
+
+Then Block (`Hold F`). Resolve miss Training Dummy at most once / 8s, only if Dummy not streamed.
+
+---
+
 ## 1.0.4 — Dialogue ImageButton `:Activate()` crash (choice found, click dies)
 
 ### Issue

@@ -14,7 +14,16 @@ return function(GB)
 		local line = string.format("[Kaitun][%s] %s", cat, tostring(msg))
 		local key = cat .. "|" .. tostring(msg)
 		local now = os.clock()
-		if last[key] and now - last[key] < 2.5 then
+		local gap = 2.5
+		if cat == "ERROR" then
+			gap = 8
+		elseif cat == "QUEST" then
+			local m = tostring(msg)
+			if string.find(m, "not credited", 1, true) or string.find(m, "resolve miss", 1, true) then
+				gap = 8
+			end
+		end
+		if last[key] and now - last[key] < gap then
 			return
 		end
 		last[key] = now

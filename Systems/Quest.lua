@@ -534,15 +534,25 @@ return function(GB)
 		if typ == "Kill" or typ == "Defeat" or typ == "Hit" or typ == "Destroy" or typ == "Shoot" then
 			local before = M.questState(questName)
 			local ok = GB.Combat.attack(target or "Training Dummy", questName)
+			if not ok then
+				local pos = GB.Resolver.lastDummyPos and GB.Resolver.lastDummyPos()
+				local misses = GB.Resolver.dummyMissCount and GB.Resolver.dummyMissCount() or 0
+				if misses >= 3 then
+					if pos and GB.World.destOk(pos) then
+						GB.World.setPos(pos + Vector3.new(GB.Config.DummyBeside or 3.2, 0, 0))
+					elseif before.Island then
+						GB.World.pullStream(before.Island)
+					end
+				end
+				M.noteFail(questName, "resolve miss " .. tostring(target))
+				return false
+			end
 			task.wait(0.4)
 			local after = M.questState(questName)
 			if before.Objective and after.Objective then
-				if after.Objective.Current <= before.Objective.Current and after.StageIndex == before.StageIndex then
-					local mob = GB.Combat.lockMob
-					if not mob or not mob.Parent then
-						GB.Log.warn("QUEST", "Kill not credited " .. tostring(target))
-					end
-				else
+				if after.Objective.Current > before.Objective.Current or after.StageIndex ~= before.StageIndex then
+					M.noteOk(questName)
+				elseif after.IsComplete then
 					M.noteOk(questName)
 				end
 			end
@@ -655,9 +665,77 @@ return function(GB)
 			end
 			return false
 		end
-		if typ == "Dash" or typ == "Block" then
-			GB.Combat.attack("Training Dummy", questName)
-			return true
+		if typ == "Dash" then
+			GB.Combat.stopLock()
+			local qs = M.questState(questName)
+			local before = M.signature(qs)
+			local ok = GB.Combat.dash()
+			if ok then
+				local progressed = M.waitProgress(questName, before, 2.2)
+				if progressed then
+					local after = M.questState(questName)
+					local prev = qs.Objective
+					if prev then
+						local nextCur = prev.Amount
+						if after.StageIndex == qs.StageIndex and after.Objective and not after.IsComplete then
+							nextCur = after.Objective.Current
+						end
+						GB.Log.log(
+							"QUEST",
+							string.format(
+								"%s %s/%s -> %s/%s",
+								questName,
+								tostring(prev.Current),
+								tostring(prev.Amount),
+								tostring(nextCur),
+								tostring(prev.Amount)
+							)
+						)
+					end
+					M.noteOk(questName)
+					return true
+				end
+				M.noteFail(questName, "dash not credited")
+			else
+				M.noteFail(questName, "dash blocked")
+			end
+			return false
+		end
+		if typ == "Block" then
+			GB.Combat.stopLock()
+			local qs = M.questState(questName)
+			local before = M.signature(qs)
+			local ok = GB.Combat.block(0.7)
+			if ok then
+				local progressed = M.waitProgress(questName, before, 2.2)
+				if progressed then
+					local after = M.questState(questName)
+					local prev = qs.Objective
+					if prev then
+						local nextCur = prev.Amount
+						if after.StageIndex == qs.StageIndex and after.Objective and not after.IsComplete then
+							nextCur = after.Objective.Current
+						end
+						GB.Log.log(
+							"QUEST",
+							string.format(
+								"%s %s/%s -> %s/%s",
+								questName,
+								tostring(prev.Current),
+								tostring(prev.Amount),
+								tostring(nextCur),
+								tostring(prev.Amount)
+							)
+						)
+					end
+					M.noteOk(questName)
+					return true
+				end
+				M.noteFail(questName, "block not credited")
+			else
+				M.noteFail(questName, "block blocked")
+			end
+			return false
 		end
 		GB.Log.err("QUEST", "UNKNOWN_OBJECTIVE " .. tostring(typ) .. " " .. tostring(target))
 		return false
@@ -695,6 +773,9 @@ return function(GB)
 					"QUEST",
 					string.format("Objective %s %s", string.upper(tostring(qs.Objective.Type or "?")), tostring(qs.Objective.TargetName or ""))
 				)
+				if qs.Objective.Type == "Dash" or qs.Objective.Type == "Block" then
+					GB.Combat.stopLock()
+				end
 			end
 		end
 

@@ -7,9 +7,9 @@ Talk remote: `ClientQuest:FireServer("Talk", DisplayName)` + `DialogueBindable:F
 | Quest | Stage | Objective | Target | Handler | Resolver | Validation | Status |
 |---|---|---|---|---|---|---|---|
 | Introduction | 1 | Talk | Officer Graves | Talk | ResolveNPC DisplayName + alias Officer Graves [2] DialogueNPCs | live Talk Officer Graves count 1 | VERIFIED |
-| Introduction | 2 | Hit | Training Dummy | Kill | Entities Training Dummy* | live Hit Training Dummy count 4 | VERIFIED |
-| Introduction | 3 | Dash | Press Q to perform a dash. | Interact | Training Dummy / Combat | live Dash  count 2 | VERIFIED |
-| Introduction | 4 | Block | Hold F to perform a block. | Interact | Training Dummy / Combat | live Block  count 1 | VERIFIED |
+| Introduction | 2 | Hit | Training Dummy | Kill | Entities Training Dummy1–8 tag TrainingDummy | live Hit Training Dummy count 4 | VERIFIED |
+| Introduction | 3 | Dash | Press Q to perform a dash. | Combat.dash PressKey Q | — | live Dash count 2 | VERIFIED |
+| Introduction | 4 | Block | Hold F to perform a block. | Combat.block PressKey F | — | live Block count 1 | VERIFIED |
 | Introduction | 5 | Talk | Officer Graves | Talk | ResolveNPC DisplayName + alias Officer Graves [2] DialogueNPCs | live Talk Officer Graves count 1 | VERIFIED |
 | Basics | 1 | Talk | Officer Graves | Talk | ResolveNPC DisplayName + alias Officer Graves [2] DialogueNPCs | live Talk Officer Graves count 1 | VERIFIED |
 | Basics | 2 | EquipSkill | Strong Punch | Equip | ResolveShop/Item | live EquipSkill Strong Punch count 1 | VERIFIED |

@@ -1,5 +1,6 @@
 -- FindTarget / MoveToTarget / AttackTarget / ValidateKill / RecoverCombat.
--- AttackModule.Swing only. Dummy stand beside. destOk. Reacquire. Don't hang.
+-- AttackModule.Swing only, at CanSwing + swingStateDuration — not every Heartbeat.
+-- Dummy stand beside. destOk. Reacquire. Don't hang.
 
 return function(GB)
 	local RS = game:GetService("ReplicatedStorage")
@@ -8,25 +9,64 @@ return function(GB)
 		lockMob = nil,
 		lockConn = nil,
 		lastSwing = 0,
+		lastDash = 0,
+		lastBlock = 0,
+		lastStandAt = 0,
+		lastTargetPos = nil,
 		Attack = nil,
+		State = nil,
 	}
 
+	-- AttackStyleUtilities.defaults.swingStateDuration = 0.35; Basic * 1.05
+	local SWING_GAP = 0.42
+	local REPOS_DIST = 4.2
+	local TARGET_MOVED = 3.5
+
 	local function loadAttack()
-		if M.Attack then
-			return M.Attack
-		end
-		pcall(function()
+		if not M.Attack then
 			M.Attack = require(RS.Modules.AttackModule)
-		end)
+		end
 		return M.Attack
 	end
 
+	local function loadState()
+		if not M.State then
+			M.State = require(RS.Modules.StateService)
+		end
+		return M.State
+	end
+
+	local function pressKey()
+		local ev = RS:FindFirstChild("Events")
+		return ev and ev:FindFirstChild("PressKey")
+	end
+
 	local function isDummy(name)
+		if GB.Resolver.isDummyName then
+			return GB.Resolver.isDummyName(name)
+		end
 		return type(name) == "string" and string.find(name, "Dummy", 1, true) ~= nil
+	end
+
+	function M.canSwing(char)
+		char = char or GB.World.char()
+		if not char then
+			return false
+		end
+		return loadState().GetPermission(char, "CanSwing") == true
+	end
+
+	function M.canDodge(char)
+		char = char or GB.World.char()
+		if not char then
+			return false
+		end
+		return loadState().GetPermission(char, "CanDodge") == true
 	end
 
 	function M.stopLock()
 		M.lockMob = nil
+		M.lastTargetPos = nil
 		if M.lockConn then
 			M.lockConn:Disconnect()
 			M.lockConn = nil
@@ -44,26 +84,34 @@ return function(GB)
 			GB.Log.warn("COMBAT", "kill name unresolved")
 			return nil
 		end
-		local m = GB.Resolver.enemy(name)
-		if m then
-			return m
+		if isDummy(name) then
+			return GB.Resolver.dummy()
 		end
-		-- Training Dummy variants
-		if isDummy(name) or name == "Training Dummy" then
-			local ents = workspace:FindFirstChild("Entities")
-			if ents then
-				for _, c in ipairs(ents:GetChildren()) do
-					if string.find(c.Name, "Dummy", 1, true) then
-						local h = c:FindFirstChildOfClass("Humanoid")
-						if not h or h.Health > 0 then
-							return c
-						end
-					end
-				end
+		return GB.Resolver.enemy(name)
+	end
+
+	function M.needReposition(mob)
+		local root = GB.World.hrp()
+		local part = GB.Resolver.part(mob)
+		if not (root and part) then
+			return false
+		end
+		local dest
+		if isDummy(mob.Name) then
+			dest = part.Position + Vector3.new(GB.Config.DummyBeside or 3.2, 0, 0)
+		else
+			local look = part.CFrame.LookVector
+			local off = -Vector3.new(look.X, 0, look.Z)
+			if off.Magnitude < 0.2 then
+				off = Vector3.new(0, 0, GB.Config.CombatRange or 5.5)
+			else
+				off = off.Unit * (GB.Config.CombatRange or 5.5)
 			end
-			return GB.Resolver.byName("Training Dummy1") or GB.Resolver.byName("Training Dummy")
+			dest = part.Position + off
 		end
-		return nil
+		local far = (root.Position - dest).Magnitude > REPOS_DIST
+		local moved = M.lastTargetPos and (M.lastTargetPos - part.Position).Magnitude or 99
+		return far or moved > TARGET_MOVED
 	end
 
 	function M.standPose(mob)
@@ -75,7 +123,6 @@ return function(GB)
 		local name = mob.Name
 		local offset
 		if isDummy(name) then
-			-- stand beside, not under
 			offset = Vector3.new(GB.Config.DummyBeside or 3.2, 0, 0)
 		else
 			local look = part.CFrame.LookVector
@@ -94,10 +141,10 @@ return function(GB)
 		if g then
 			dest = g
 		end
+		M.lastTargetPos = part.Position
+		M.lastStandAt = os.clock()
 		if (root.Position - dest).Magnitude > 2.2 then
 			root.CFrame = CFrame.new(dest, Vector3.new(part.Position.X, dest.Y, part.Position.Z))
-		else
-			root.CFrame = CFrame.new(root.Position, Vector3.new(part.Position.X, root.Position.Y, part.Position.Z))
 		end
 		return true
 	end
@@ -107,13 +154,16 @@ return function(GB)
 		if not c then
 			return
 		end
-		if os.clock() - M.lastSwing < 0.28 then
+		if os.clock() - M.lastSwing < SWING_GAP then
+			return
+		end
+		if not M.canSwing(c) then
 			return
 		end
 		M.lastSwing = os.clock()
 		local atk = loadAttack()
 		if atk and atk.Swing then
-			pcall(atk.Swing, c)
+			atk.Swing(c)
 		end
 	end
 
@@ -130,6 +180,9 @@ return function(GB)
 			local mob2 = M.lockMob
 			if not (mob2 and mob2.Parent) then
 				M.stopLock()
+				if GB.Resolver.invalidateDummy then
+					GB.Resolver.invalidateDummy()
+				end
 				GB.Cache.invalidate()
 				return
 			end
@@ -138,7 +191,9 @@ return function(GB)
 				M.stopLock()
 				return
 			end
-			M.standPose(mob2)
+			if M.needReposition(mob2) then
+				M.standPose(mob2)
+			end
 			M.swing()
 		end)
 	end
@@ -146,13 +201,70 @@ return function(GB)
 	function M.attack(name, questName)
 		local mob = M.findTarget(name, questName)
 		if not mob then
-			GB.Log.warn("COMBAT", "no target " .. tostring(name))
 			return false
 		end
 		if not GB.World.moveTo(mob, 12) then
 			return false
 		end
 		M.startLock(mob)
+		return true
+	end
+
+	function M.waitPermission(kind, timeout)
+		timeout = timeout or 1.6
+		local t0 = os.clock()
+		while os.clock() - t0 < timeout do
+			local c = GB.World.char()
+			if c then
+				if kind == "dodge" and M.canDodge(c) then
+					return true
+				end
+				if kind == "swing" and M.canSwing(c) then
+					return true
+				end
+			end
+			task.wait(0.08)
+		end
+		return false
+	end
+
+	-- Controls.Dash → Events.PressKey:Fire(Enum.KeyCode.Q). Same bind as UI "Press Q".
+	function M.dash()
+		M.stopLock()
+		if os.clock() - M.lastDash < 0.55 then
+			return false
+		end
+		if not M.waitPermission("dodge", 1.6) then
+			GB.Log.warn("COMBAT", "dash blocked CanDodge")
+			return false
+		end
+		local ev = pressKey()
+		if not ev then
+			GB.Log.warn("COMBAT", "PressKey missing")
+			return false
+		end
+		M.lastDash = os.clock()
+		ev:Fire(Enum.KeyCode.Q)
+		GB.Log.log("COMBAT", "Dash Q")
+		return true
+	end
+
+	-- Controls.Block → PressKey F begin, then F end (hold).
+	function M.block(hold)
+		M.stopLock()
+		if os.clock() - M.lastBlock < 0.7 then
+			return false
+		end
+		local ev = pressKey()
+		if not ev then
+			GB.Log.warn("COMBAT", "PressKey missing")
+			return false
+		end
+		M.lastBlock = os.clock()
+		ev:Fire(Enum.KeyCode.F, Enum.KeyCode)
+		task.wait(hold or 0.7)
+		ev:Fire(Enum.KeyCode.F, Enum.KeyCode, false)
+		GB.Log.log("COMBAT", "Block F")
 		return true
 	end
 
@@ -185,6 +297,9 @@ return function(GB)
 	function M.tick()
 		if M.lockMob and not M.lockMob.Parent then
 			M.stopLock()
+			if GB.Resolver.invalidateDummy then
+				GB.Resolver.invalidateDummy()
+			end
 		end
 	end
 

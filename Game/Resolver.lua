@@ -21,9 +21,47 @@ return function(GB)
 		["Hypnotist"] = { '"Hypnotist" Mango', "Mango" },
 		["Mango"] = { '"Hypnotist" Mango', "Hypnotist" },
 		['"Hypnotist" Mango'] = { "Hypnotist", "Mango" },
+		-- Studio: Workspace.Entities.Training Dummy1..8, CollectionService tag TrainingDummy
+		["Training Dummy"] = {
+			"TrainingDummy",
+			"Training Dummy1",
+			"Training Dummy2",
+			"Training Dummy3",
+			"Training Dummy4",
+			"Training Dummy5",
+			"Training Dummy6",
+			"Training Dummy7",
+			"Training Dummy8",
+		},
+		["TrainingDummy"] = { "Training Dummy", "Training Dummy1" },
 	}
 
 	local missLog = {}
+	local dummyCache = nil
+	local dummyPos = nil
+	local dummyMiss = 0
+
+	function M.isDummyName(name)
+		if type(name) ~= "string" or name == "" then
+			return false
+		end
+		if name == "Training Dummy" or name == "TrainingDummy" then
+			return true
+		end
+		return string.find(name, "Dummy", 1, true) ~= nil
+	end
+
+	function M.invalidateDummy()
+		dummyCache = nil
+	end
+
+	function M.lastDummyPos()
+		return dummyPos
+	end
+
+	function M.dummyMissCount()
+		return dummyMiss
+	end
 
 	local function aliases()
 		if GB.QuestData and GB.QuestData.NPC_ALIAS then
@@ -203,6 +241,50 @@ return function(GB)
 			return M.positionOf(root) ~= nil or partOf(root) ~= nil or isDialogue(root)
 		end
 		return false
+	end
+
+	function M.dummy()
+		if dummyCache and dummyCache.Parent then
+			return dummyCache
+		end
+		dummyCache = nil
+
+		local tagged = CS:GetTagged("TrainingDummy")
+		if type(tagged) == "table" then
+			for _, t in ipairs(tagged) do
+				if usable(t, "enemy") then
+					dummyCache = climbRoot(t) or t
+					dummyPos = M.positionOf(dummyCache)
+					dummyMiss = 0
+					GB.Cache.set("res:enemy:Training Dummy", dummyCache)
+					GB.Log.log("RESOLVE", "Training Dummy -> " .. dummyCache:GetFullName())
+					return dummyCache
+				end
+			end
+		end
+
+		local ents = workspace:FindFirstChild("Entities")
+		if ents then
+			for _, c in ipairs(ents:GetChildren()) do
+				if string.find(c.Name, "Dummy", 1, true) and usable(c, "enemy") then
+					dummyCache = c
+					dummyPos = M.positionOf(c)
+					dummyMiss = 0
+					GB.Cache.set("res:enemy:Training Dummy", dummyCache)
+					GB.Log.log("RESOLVE", "Training Dummy -> " .. c:GetFullName())
+					return c
+				end
+			end
+		end
+
+		dummyMiss = dummyMiss + 1
+		local now = os.clock()
+		local mk = "miss:Training Dummy"
+		if not missLog[mk] or now - missLog[mk] > 8 then
+			missLog[mk] = now
+			GB.Log.warn("ERROR", "resolve miss Training Dummy")
+		end
+		return nil
 	end
 
 	local function islandOf(inst)
@@ -441,6 +523,11 @@ return function(GB)
 		if type(request) ~= "string" or request == "" or request == "\\" then
 			return nil
 		end
+		local kind0 = opts.ExpectedRole or opts.kind or "npc"
+		if (kind0 == "enemy" or kind0 == "any") and M.isDummyName(request) then
+			local d = M.dummy()
+			return d and M.pack(d, request)
+		end
 		local names = M.namesFor(request, opts)
 		local kind = opts.ExpectedRole or opts.kind or "npc"
 		local cacheKey = "res:" .. kind .. ":" .. table.concat(names, "|")
@@ -550,6 +637,9 @@ return function(GB)
 	function M.enemy(name)
 		if name == "\\" or name == "" then
 			return nil
+		end
+		if M.isDummyName(name) then
+			return M.dummy()
 		end
 		local pack = M.resolve(name, { kind = "enemy", ExpectedRole = "enemy" })
 		return pack and pack.Instance
