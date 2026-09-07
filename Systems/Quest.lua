@@ -1344,7 +1344,7 @@ return function(GB)
 		local t0 = os.clock()
 		while os.clock() - t0 < timeout do
 			task.wait(0.2)
-			if GB.PlayerData.finished(name, true) then
+			if (not isRepeatable(name)) and GB.PlayerData.finished(name, true) then
 				return true, "done"
 			end
 			local qs = M.questState(name)
@@ -1361,7 +1361,7 @@ return function(GB)
 		local t0 = os.clock()
 		local lastClick = 0
 		while os.clock() - t0 < timeout do
-			if GB.PlayerData.finished(name, true) then
+			if (not isRepeatable(name)) and GB.PlayerData.finished(name, true) then
 				return true, "done"
 			end
 			local qs = M.questState(name)

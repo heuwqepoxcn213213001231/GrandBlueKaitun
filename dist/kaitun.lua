@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
 -- Version: 1.1.24
--- Commit: 0f75d57
--- BuiltAt: 2026-09-08T04:38:08+07:00
+-- Commit: c98ed6a
+-- BuiltAt: 2026-09-08T04:41:03+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -36,8 +36,8 @@ return function(meta)
 	stopPreviousInstance()
 
 	local BUILD_VERSION = "1.1.24"
-	local BUILD_COMMIT = "0f75d57"
-	local BUILD_AT = "2026-09-08T04:38:08+07:00"
+	local BUILD_COMMIT = "c98ed6a"
+	local BUILD_AT = "2026-09-08T04:41:03+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -3059,6 +3059,21 @@ return function(GB)
 			M.refreshLive()
 		end
 		return name and M._done[name] == true
+	end
+
+	-- Historical Completed Quests membership. Repeatables stay true after the first clear.
+	-- Current instance done: story uses finished(); repeatable uses "not currently live".
+	function M.cycleFinished(name, skipRefresh)
+		if not name then
+			return false
+		end
+		if not skipRefresh then
+			M.refreshLive()
+		end
+		if GB.QuestData and GB.QuestData.isRepeatable and GB.QuestData.isRepeatable(name) then
+			return M._live[name] == nil
+		end
+		return M._done[name] == true
 	end
 
 	function M.live(name)
@@ -8742,7 +8757,9 @@ return function(GB)
 		if GB.PlayerData.refreshLive then
 			GB.PlayerData.refreshLive(false, "acquire_probe")
 		end
-		if GB.PlayerData.finished(qname, true) then
+		if (GB.PlayerData.cycleFinished and GB.PlayerData.cycleFinished(qname, true))
+			or ((not GB.PlayerData.cycleFinished) and GB.PlayerData.finished(qname, true))
+		then
 			return needAmount(ctx, amount), true
 		end
 		local qs = GB.Quest.questState(qname)
@@ -9352,7 +9369,9 @@ return function(GB)
 				if GB.PlayerData.refreshLive then
 					GB.PlayerData.refreshLive(false, "chest_probe")
 				end
-				if GB.PlayerData.finished(questName, true) then
+				if (GB.PlayerData.cycleFinished and GB.PlayerData.cycleFinished(questName, true))
+					or ((not GB.PlayerData.cycleFinished) and GB.PlayerData.finished(questName, true))
+				then
 					return true
 				end
 				local qs = GB.Quest.questState(questName)
@@ -9844,7 +9863,8 @@ return function(GB)
 		if GB.PlayerData and GB.PlayerData.refreshLive then
 			GB.PlayerData.refreshLive(force, opts.source or "combat")
 		end
-		if GB.PlayerData and GB.PlayerData.finished and GB.PlayerData.finished(questName, true) then
+		local cycleDone = GB.PlayerData and (GB.PlayerData.cycleFinished or GB.PlayerData.finished)
+		if cycleDone and cycleDone(questName, true) then
 			pdone("Combat Heartbeat slow path", t0)
 			return true
 		end
@@ -10445,7 +10465,9 @@ return function(GB)
 		if not live then
 			return true
 		end
-		if GB.PlayerData.finished(questName, true) then
+		if GB.PlayerData.cycleFinished and GB.PlayerData.cycleFinished(questName, true) then
+			return true
+		elseif (not GB.PlayerData.cycleFinished) and GB.PlayerData.finished(questName, true) then
 			return true
 		end
 		local _, st = GB.QuestData.currentStage(live)
@@ -12461,7 +12483,7 @@ return function(GB)
 		local t0 = os.clock()
 		while os.clock() - t0 < timeout do
 			task.wait(0.2)
-			if GB.PlayerData.finished(name, true) then
+			if (not isRepeatable(name)) and GB.PlayerData.finished(name, true) then
 				return true, "done"
 			end
 			local qs = M.questState(name)
@@ -12478,7 +12500,7 @@ return function(GB)
 		local t0 = os.clock()
 		local lastClick = 0
 		while os.clock() - t0 < timeout do
-			if GB.PlayerData.finished(name, true) then
+			if (not isRepeatable(name)) and GB.PlayerData.finished(name, true) then
 				return true, "done"
 			end
 			local qs = M.questState(name)

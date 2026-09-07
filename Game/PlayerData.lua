@@ -564,6 +564,21 @@ return function(GB)
 		return name and M._done[name] == true
 	end
 
+	-- Historical Completed Quests membership. Repeatables stay true after the first clear.
+	-- Current instance done: story uses finished(); repeatable uses "not currently live".
+	function M.cycleFinished(name, skipRefresh)
+		if not name then
+			return false
+		end
+		if not skipRefresh then
+			M.refreshLive()
+		end
+		if GB.QuestData and GB.QuestData.isRepeatable and GB.QuestData.isRepeatable(name) then
+			return M._live[name] == nil
+		end
+		return M._done[name] == true
+	end
+
 	function M.live(name)
 		if not name then
 			return nil

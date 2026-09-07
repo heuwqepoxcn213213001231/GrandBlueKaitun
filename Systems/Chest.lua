@@ -54,7 +54,9 @@ return function(GB)
 				if GB.PlayerData.refreshLive then
 					GB.PlayerData.refreshLive(false, "chest_probe")
 				end
-				if GB.PlayerData.finished(questName, true) then
+				if (GB.PlayerData.cycleFinished and GB.PlayerData.cycleFinished(questName, true))
+					or ((not GB.PlayerData.cycleFinished) and GB.PlayerData.finished(questName, true))
+				then
 					return true
 				end
 				local qs = GB.Quest.questState(questName)

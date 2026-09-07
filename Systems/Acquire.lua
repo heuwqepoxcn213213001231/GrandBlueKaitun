@@ -299,7 +299,9 @@ return function(GB)
 		if GB.PlayerData.refreshLive then
 			GB.PlayerData.refreshLive(false, "acquire_probe")
 		end
-		if GB.PlayerData.finished(qname, true) then
+		if (GB.PlayerData.cycleFinished and GB.PlayerData.cycleFinished(qname, true))
+			or ((not GB.PlayerData.cycleFinished) and GB.PlayerData.finished(qname, true))
+		then
 			return needAmount(ctx, amount), true
 		end
 		local qs = GB.Quest.questState(qname)

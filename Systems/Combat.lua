@@ -362,7 +362,8 @@ return function(GB)
 		if GB.PlayerData and GB.PlayerData.refreshLive then
 			GB.PlayerData.refreshLive(force, opts.source or "combat")
 		end
-		if GB.PlayerData and GB.PlayerData.finished and GB.PlayerData.finished(questName, true) then
+		local cycleDone = GB.PlayerData and (GB.PlayerData.cycleFinished or GB.PlayerData.finished)
+		if cycleDone and cycleDone(questName, true) then
 			pdone("Combat Heartbeat slow path", t0)
 			return true
 		end
@@ -963,7 +964,9 @@ return function(GB)
 		if not live then
 			return true
 		end
-		if GB.PlayerData.finished(questName, true) then
+		if GB.PlayerData.cycleFinished and GB.PlayerData.cycleFinished(questName, true) then
+			return true
+		elseif (not GB.PlayerData.cycleFinished) and GB.PlayerData.finished(questName, true) then
 			return true
 		end
 		local _, st = GB.QuestData.currentStage(live)

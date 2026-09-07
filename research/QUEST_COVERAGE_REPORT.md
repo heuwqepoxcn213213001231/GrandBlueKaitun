@@ -9,6 +9,8 @@ Quests dumped: **151**
 
 Repeatable farm selection now uses explicit `QuestData.REPEAT_START` metadata and does **not** auto-fallback to direct combat for NPC-start quests.
 
+Historical `Completed Quests` membership is **not** treated as “already complete forever”. `QuestData.isRepeatable()` applies to every `REPEATS` entry (Granny's Nemesis, Officer Termination, Clown/Maple repeats, etc.). After one clear, the planner re-accepts via AcceptNPC and runs the live cycle again. Story quests still use `finished()` as terminal.
+
 | Repeatable | Automatic | Accept NPC | Turn-in NPC | Status | Notes |
 |---|---|---|---|---|---|
 | Bullies in Suits | false | Koro | Koro | STARTABLE | quest-mode only |
