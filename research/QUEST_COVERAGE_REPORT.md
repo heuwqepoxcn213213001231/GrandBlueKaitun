@@ -1,9 +1,27 @@
 # Quest Coverage Report
 
-**Version:** 1.1.6  
+**Version:** 1.1.24  
 **Source:** `research/quests.json` (151 QuestInfo modules) + planner Goal/AcquireMethod.
 
 Quests dumped: **151**
+
+## Repeatable Startability (1.1.24)
+
+Repeatable farm selection now uses explicit `QuestData.REPEAT_START` metadata and does **not** auto-fallback to direct combat for NPC-start quests.
+
+| Repeatable | Automatic | Accept NPC | Turn-in NPC | Status | Notes |
+|---|---|---|---|---|---|
+| Bullies in Suits | false | Koro | Koro | STARTABLE | quest-mode only |
+| Officer Termination | false | Maeve | Maeve | STARTABLE | quest-mode only |
+| Granny's Nemesis | false | Granny Todo | Granny Todo | STARTABLE | multi-condition stage 1 |
+| Tyrannical Captain | false | — | — | UNRESOLVED_START | not auto-direct; skipped until verified |
+| This Is Personal | false | Clowny D. Clown | Clowny D. Clown | STARTABLE | quest-mode only |
+| Cat Problem | false | Stephon | Stephon | STARTABLE | quest-mode only |
+| Billy's Business | false | Billy B. | Billy B. | STARTABLE | quest-mode only |
+| Nibblebottom's Revenge | false | Johnny Nibblebottom | Johnny Nibblebottom | STARTABLE | quest-mode only |
+| Choppy The Clown | false | Mayor Kiyoshi [2] | Mayor Kiyoshi [2] | STARTABLE | quest-mode only |
+| Clear the Road | false | Nell | Nell | STARTABLE | quest-mode only |
+| Peace of Mind | false | Gus | Gus | STARTABLE | quest-mode only |
 
 ### All stages
 

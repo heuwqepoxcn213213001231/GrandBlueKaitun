@@ -2,6 +2,22 @@
 
 Scope: static root-cause audit + instrumentation pass on current `main` source, with runtime counters wired for 15-30 minute validation sessions (`PerfDebug=true`).
 
+## 0) 1.1.24 Hotfix Scope (Granny's Nemesis + Resolver Freeze)
+
+- **Baseline runtime evidence:** during farm fallback (`farm_direct:Corrupt Guard`) resolver deep scan spikes at ~2050-2100ms and `DecisionEngine.decide` spikes ~2100-2400ms.
+- **Root cause A:** repeatable accept failed because dialogue classifier treated any sentence containing `"No"` as decline (`string.find` substring rule).
+- **Root cause B:** planner fallback jumped to direct combat before repeatable activation, producing expensive miss loops on unloaded targets.
+- **Root cause C:** normal `Resolver.resolve` miss path auto-entered `scanRoots()` and recursive `GetDescendants()` over large world roots.
+- **Root cause D:** negative-cache invalidation used global clear on any `Entities.ChildAdded/ChildRemoved`, so mob churn destroyed miss protection.
+- **Fix set:**
+  - Dialogue classification now uses normalized exact decline forms + metadata/glow-first scoring; no substring decline on `"No, ..."` sentences.
+  - Repeatable farm path now keeps `Mode="quest"` for all NPC/automatic startables and validates active state before objective combat.
+  - `Quest.doLive` now returns structured progress reasons (`attempted/progressed/reason`) and runs a resumable accept flow (`RESOLVE_ACCEPT_NPC` → `WAIT_ACTIVE_VALIDATION` → `ACTIVE`).
+  - Resolver normal path now uses semantic indexes (`EnemyIndex`, `NPCIndex`, `MarkerIndex`, `ObjectIndex`) and only deep-scans when explicitly requested (`opts.deep=true` or explicit diagnostic flag).
+  - Negative cache invalidation is now scoped by semantic names for the relevant resolver kind; normal enemy death/removal no longer clears unrelated misses.
+  - Combat kill objectives now pass a `CombatTargetPlan` (`Target`, `Marker`, `Island`, `Quest`), use marker travel for streaming, then retry `EnemyIndex` before declaring miss.
+- **Verification status:** IMPLEMENTED (static). Runtime re-validation still required in live game session.
+
 ## 1) Combat Heartbeat → Quest Polling Hitch
 
 - **Hotspot:** `Systems/Combat.lua` previously called `questCombatDone()` from `RunService.Heartbeat` and `huntUntilDead()` loops.

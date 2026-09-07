@@ -4,7 +4,10 @@ return function(GB)
 	local LEVEL = { DEBUG = 1, INFO = 2, WARN = 3, ERROR = 4 }
 	local last = {}
 	local order = {}
-	local MAX_KEYS = 720
+	local MAX_KEYS = 1000
+	local KEY_TTL = 75
+	local PRUNE_STEP = 24
+	local PRUNE_GAP = 0.2
 	local M = {}
 
 	local function dedupeKey(cat, msg)
@@ -20,13 +23,33 @@ return function(GB)
 		if last[key] == nil then
 			order[#order + 1] = key
 		end
-		last[key] = now
+		last[key] = { at = now }
 		if #order <= MAX_KEYS then
 			return
 		end
 		local drop = table.remove(order, 1)
 		if drop then
 			last[drop] = nil
+		end
+	end
+
+	local function pruneKeys(now)
+		if now - (M._lastPruneAt or 0) < PRUNE_GAP then
+			return
+		end
+		M._lastPruneAt = now
+		local n = math.min(PRUNE_STEP, #order)
+		for _ = 1, n do
+			local key = table.remove(order, 1)
+			if not key then
+				break
+			end
+			local row = last[key]
+			if row and now - (row.at or 0) <= KEY_TTL then
+				order[#order + 1] = key
+			else
+				last[key] = nil
+			end
 		end
 	end
 
@@ -39,6 +62,7 @@ return function(GB)
 		local line = string.format("[Kaitun][%s] %s", cat, tostring(msg))
 		local key = dedupeKey(cat, msg)
 		local now = os.clock()
+		pruneKeys(now)
 		local gap = 2.5
 		if cat == "ERROR" then
 			gap = 8
@@ -59,7 +83,8 @@ return function(GB)
 				gap = 8
 			end
 		end
-		if last[key] and now - last[key] < gap then
+		local row = last[key]
+		if row and now - (row.at or 0) < gap then
 			return
 		end
 		rememberKey(key, now)

@@ -12,6 +12,7 @@ return function(GB)
 		detailByFingerprint = {},
 		deferUntil = {},
 		deferReason = {},
+		acceptState = {},
 	}
 
 	M.STATUS = {
@@ -45,12 +46,31 @@ return function(GB)
 		end
 	end
 
-	local DECLINE = {
-		Decline = true,
-		["Good luck with"] = true,
-		Bye = true,
-		No = true,
-		Cancel = true,
+	local DECLINE_EXACT = {
+		["no"] = true,
+		["decline"] = true,
+		["cancel"] = true,
+		["bye"] = true,
+		["goodbye"] = true,
+		["never mind"] = true,
+		["not now"] = true,
+	}
+
+	local DECLINE_PHRASES = {
+		["good luck with that"] = true,
+	}
+
+	local COMMAND_HINT_KEYS = {
+		"Command",
+		"DialogueCommand",
+		"Action",
+		"Response",
+		"ResponseType",
+		"ChoiceType",
+		"NodeType",
+		"QuestName",
+		"QuestId",
+		"Quest",
 	}
 
 	local HANDLED = {
@@ -115,39 +135,122 @@ return function(GB)
 		return GB.State.guiText(inst)
 	end
 
-	local function isDecline(t)
+	local function normalizeChoiceText(t)
 		if type(t) ~= "string" then
-			return false
+			return "", ""
 		end
-		for bad in pairs(DECLINE) do
-			if string.find(t, bad, 1, true) then
-				return true
-			end
-		end
-		return false
+		local low = string.lower(t)
+		low = low:gsub("[%c\r\n\t]+", " ")
+		low = low:gsub("%s+", " ")
+		low = low:gsub("^%s+", "")
+		low = low:gsub("%s+$", "")
+		local compact = low:gsub("[%p]+", "")
+		compact = compact:gsub("%s+", " ")
+		compact = compact:gsub("^%s+", "")
+		compact = compact:gsub("%s+$", "")
+		return low, compact
 	end
 
 	local function isAcceptText(t)
 		if type(t) ~= "string" then
 			return false
 		end
-		if string.find(t, "Accept", 1, true) then
+		local low = string.lower(t)
+		if string.find(low, "accept", 1, true) then
 			return true
 		end
-		if string.find(t, "Thank", 1, true) then
+		if string.find(low, "thank", 1, true) then
 			return true
 		end
-		if string.find(t, "Yes", 1, true) then
+		if string.find(low, "yes", 1, true) then
 			return true
 		end
-		-- Officer Graves Dialogue.Definition FirstAgree — Introduction first node
-		if string.find(t, "I can help change that", 1, true) then
+		if string.find(low, "yeah", 1, true) then
 			return true
 		end
-		if string.find(t, "upgrade my flintlock", 1, true) then
+		if string.find(low, "i can help change that", 1, true) then
 			return true
 		end
-		if string.find(t, "I need you", 1, true) then
+		if string.find(low, "upgrade my flintlock", 1, true) then
+			return true
+		end
+		if string.find(low, "i need you", 1, true) then
+			return true
+		end
+		return false
+	end
+
+	local function collectCommandHints(frame, btn)
+		local hints = {}
+		local function push(v)
+			if type(v) ~= "string" then
+				return
+			end
+			local low, compact = normalizeChoiceText(v)
+			if low ~= "" then
+				hints[low] = true
+			end
+			if compact ~= "" then
+				hints[compact] = true
+			end
+		end
+		local function scanInst(inst)
+			if not inst then
+				return
+			end
+			for _, key in ipairs(COMMAND_HINT_KEYS) do
+				push(inst:GetAttribute(key))
+			end
+			local n = 0
+			for _, c in ipairs(inst:GetChildren()) do
+				if c:IsA("StringValue") then
+					local key = string.lower(c.Name or "")
+					if string.find(key, "command", 1, true)
+						or string.find(key, "action", 1, true)
+						or string.find(key, "choice", 1, true)
+						or string.find(key, "quest", 1, true)
+						or string.find(key, "node", 1, true)
+					then
+						push(c.Value)
+						n = n + 1
+						if n >= 8 then
+							break
+						end
+					end
+				end
+			end
+		end
+		scanInst(frame)
+		scanInst(btn)
+		return hints
+	end
+
+	local function hintsContain(hints, token)
+		if type(hints) ~= "table" or type(token) ~= "string" or token == "" then
+			return false
+		end
+		for hint in pairs(hints) do
+			if string.find(hint, token, 1, true) then
+				return true
+			end
+		end
+		return false
+	end
+
+	local function isVerifiedDecline(choice)
+		if not choice then
+			return false
+		end
+		if choice.glow or choice.commandAccept then
+			return false
+		end
+		if choice.commandDecline and not choice.questLinked then
+			return true
+		end
+		if DECLINE_EXACT[choice.textNorm] or DECLINE_EXACT[choice.textPlain] then
+			return true
+		end
+		if DECLINE_PHRASES[choice.textNorm] or DECLINE_PHRASES[choice.textPlain] then
 			return true
 		end
 		return false
@@ -175,7 +278,9 @@ return function(GB)
 
 	-- Choices live in DialogueUI.Main as cloned NodeFrames. ImageButton has no .Text;
 	-- label is sibling TextLabel. Template under DialogueHandler.NodeFrame is not clickable.
-	local function clickAccept()
+	local function clickAccept(opts)
+		opts = opts or {}
+		local expectQuest = type(opts.QuestName) == "string" and string.lower(opts.QuestName) or nil
 		local pg = GB.lp and GB.lp.PlayerGui
 		local ui = pg and pg:FindFirstChild("DialogueUI")
 		if not ui then
@@ -191,19 +296,34 @@ return function(GB)
 				local btn = frame:FindFirstChild("ImageButton")
 				if btn and btn:IsA("GuiButton") then
 					local t = guiText(frame) or guiText(btn) or ""
-					if not isDecline(t) then
-						local num = frame:FindFirstChild("Number")
-						local ntext = ""
-						if num and (num:IsA("TextLabel") or num:IsA("TextButton") or num:IsA("TextBox")) then
-							ntext = num.Text
-						end
-						candidates[#candidates + 1] = {
-							btn = btn,
-							text = t,
-							first = frame.Name == "1" or frame.Name == 1 or (type(ntext) == "string" and string.sub(ntext, 1, 1) == "1"),
-							glow = frame:FindFirstChild("Quest Glow") ~= nil,
-						}
+					local tn, tp = normalizeChoiceText(t)
+					local num = frame:FindFirstChild("Number")
+					local ntext = ""
+					if num and (num:IsA("TextLabel") or num:IsA("TextButton") or num:IsA("TextBox")) then
+						ntext = num.Text
 					end
+					local hints = collectCommandHints(frame, btn)
+					local questLinked = frame:FindFirstChild("Quest Glow") ~= nil
+						or hintsContain(hints, "quest")
+						or (expectQuest and string.find(tn, expectQuest, 1, true) ~= nil)
+					local row = {
+						btn = btn,
+						frame = frame,
+						text = t,
+						textNorm = tn,
+						textPlain = tp,
+						first = frame.Name == "1" or frame.Name == 1 or (type(ntext) == "string" and string.sub(ntext, 1, 1) == "1"),
+						glow = frame:FindFirstChild("Quest Glow") ~= nil,
+						questLinked = questLinked,
+						commandAccept = hintsContain(hints, "accept")
+							or hintsContain(hints, "begin")
+							or hintsContain(hints, "start"),
+						commandDecline = hintsContain(hints, "decline")
+							or hintsContain(hints, "cancel")
+							or hintsContain(hints, "close"),
+					}
+					row.verifiedDecline = isVerifiedDecline(row)
+					candidates[#candidates + 1] = row
 				end
 			end
 		end
@@ -211,24 +331,36 @@ return function(GB)
 			if not c then
 				return -1
 			end
-			local t = tostring(c.text or "")
+			local t = tostring(c.textNorm or "")
 			local score = 0
-			if c.glow then
-				score = score + 500
+			if c.commandAccept then
+				score = score + 900
 			end
-			if string.find(t, "I can help change that", 1, true) then
+			if c.glow then
+				score = score + 700
+			end
+			if c.questLinked then
+				score = score + 420
+			end
+			if c.commandDecline then
+				score = score - 350
+			end
+			if c.verifiedDecline then
+				score = score - 1400
+			end
+			if string.find(t, "i can help change that", 1, true) then
 				score = score + 280
 			end
-			if string.find(t, "Accept", 1, true) then
+			if string.find(t, "accept", 1, true) then
 				score = score + 240
 			end
-			if string.find(t, "Thank", 1, true) then
+			if string.find(t, "thank", 1, true) then
 				score = score + 220
 			end
-			if string.find(t, "Yes", 1, true) then
+			if string.find(t, "yes", 1, true) then
 				score = score + 180
 			end
-			if string.find(t, "Yeah", 1, true) then
+			if string.find(t, "yeah", 1, true) then
 				score = score + 170
 			end
 			if c.first then
@@ -239,8 +371,11 @@ return function(GB)
 			end
 			return score
 		end
-		local pick, best = nil, -1
+		local pick, best = nil, -1e9
 		for _, c in ipairs(candidates) do
+			if c.verifiedDecline then
+				continue
+			end
 			local s = scoreChoice(c)
 			if s > best then
 				best = s
@@ -249,13 +384,20 @@ return function(GB)
 		end
 		if not pick then
 			for _, c in ipairs(candidates) do
-				if c.first then
+				if c.first and not c.verifiedDecline then
 					pick = c
 					break
 				end
 			end
 		end
-		pick = pick or candidates[1]
+		if not pick then
+			for _, c in ipairs(candidates) do
+				if not c.verifiedDecline then
+					pick = c
+					break
+				end
+			end
+		end
 		if not pick then
 			return false
 		end
@@ -263,7 +405,7 @@ return function(GB)
 		if shown == "" then
 			shown = pick.btn.Name
 		end
-		GB.Log.log("QUEST", "Click " .. tostring(shown))
+		GB.Log.log("QUEST", "choice \"" .. tostring(shown) .. "\"")
 		return GB.State.clickGui(pick.btn)
 	end
 
@@ -379,7 +521,6 @@ return function(GB)
 	local function resolveMarineGate()
 		local pack = GB.Resolver.resolveObject and GB.Resolver.resolveObject("Marine Gate", {
 			Island = "Anchor Town",
-			deep = true,
 		})
 		if pack and pack.Instance then
 			local pr = GB.Resolver.prompt(pack.Instance, "Pushable Door") or GB.Resolver.prompt(pack.Instance)
@@ -836,6 +977,7 @@ return function(GB)
 		end
 		M.deferUntil[name] = nil
 		M.deferReason[name] = nil
+		M.acceptState[name] = nil
 		M.clearTrack(name)
 		GB.Recovery.markSuccess()
 	end
@@ -850,6 +992,18 @@ return function(GB)
 		return pack and pack.InternalName
 	end
 
+	local function setAcceptState(name, state, detail)
+		if type(name) ~= "string" or name == "" then
+			return
+		end
+		local key = tostring(state) .. "|" .. tostring(detail or "")
+		if M.acceptState[name] == key then
+			return
+		end
+		M.acceptState[name] = key
+		GB.Log.log("QUEST", string.format("%s accept_state=%s", tostring(name), tostring(state)))
+	end
+
 	function M.talk(request, automatic, opts)
 		opts = opts or {}
 		local qsName = opts.Quest
@@ -860,7 +1014,7 @@ return function(GB)
 			if os.clock() - (M.lastClick or 0) < 0.7 then
 				return false, "rate"
 			end
-			local clicked = clickAccept()
+			local clicked = clickAccept(opts)
 			if clicked then
 				M.lastClick = os.clock()
 			end
@@ -904,7 +1058,7 @@ return function(GB)
 							DisplayName = request,
 							Island = island,
 							ExpectedRole = "npc",
-							deep = true,
+							deep = false,
 						})
 					end
 				end
@@ -942,11 +1096,49 @@ return function(GB)
 			GB.Remotes.dialogueConfig(cfg)
 		end
 		task.wait(0.35)
-		if clickAccept() then
+		if clickAccept(opts) then
 			M.lastClick = os.clock()
 		end
 		M.lastTalk[key] = os.clock()
 		return true, shown
+	end
+
+	local function questAcceptedNow(name)
+		if type(name) ~= "string" or name == "" then
+			return false
+		end
+		local live = GB.PlayerData and GB.PlayerData.live and GB.PlayerData.live(name)
+		if live then
+			return true
+		end
+		local qs = M.questState(name)
+		return qs and qs.IsAccepted == true
+	end
+
+	local function waitQuestAccepted(name, timeout)
+		timeout = timeout or 5.4
+		local t0 = os.clock()
+		local nextRefreshAt = 0
+		while os.clock() - t0 < timeout do
+			if questAcceptedNow(name) then
+				return true, "accepted"
+			end
+			if dialogueOpen() and os.clock() - (M.lastClick or 0) >= 0.45 then
+				if clickAccept({ QuestName = name, Action = "accept" }) then
+					M.lastClick = os.clock()
+				end
+			end
+			if os.clock() >= nextRefreshAt then
+				nextRefreshAt = os.clock() + 0.9
+				if GB.PlayerData and GB.PlayerData.forceQuestRefresh then
+					GB.PlayerData.forceQuestRefresh("accept_wait:" .. tostring(name))
+				elseif GB.PlayerData and GB.PlayerData.refreshLive then
+					GB.PlayerData.refreshLive(true, "accept_wait:" .. tostring(name))
+				end
+			end
+			task.wait(0.18)
+		end
+		return questAcceptedNow(name), "timeout"
 	end
 
 	function M.waitProgress(name, beforeSig, timeout)
@@ -980,7 +1172,7 @@ return function(GB)
 				return true, sig
 			end
 			if dialogueOpen() and os.clock() - lastClick >= 0.55 then
-				if clickAccept() then
+				if clickAccept({ QuestName = name, Action = "progress" }) then
 					lastClick = os.clock()
 					M.lastClick = lastClick
 				end
@@ -1003,6 +1195,51 @@ return function(GB)
 			end
 		end
 		return GB.Shop.buy(name)
+	end
+
+	local function pushTarget(list, seen, target)
+		if type(target) ~= "string" or target == "" or target == "\\" then
+			return
+		end
+		if seen[target] then
+			return
+		end
+		seen[target] = true
+		list[#list + 1] = target
+	end
+
+	local function unfinishedKillTargets(questName, stage, preferred)
+		local out = {}
+		local seen = {}
+		pushTarget(out, seen, preferred)
+		local conds = stage and (stage.Conditions or stage.conditions) or {}
+		for _, row in ipairs(conds) do
+			if type(row) == "table" and not GB.QuestData.conditionComplete(row) then
+				local typ = row.Type or row.type
+				if typ == "Kill" or typ == "Defeat" or typ == "Hit" or typ == "Destroy" then
+					local name = GB.QuestData.conditionTarget(row)
+					if typ == "Kill" or typ == "Defeat" then
+						name = GB.QuestData.killName(questName, name)
+					end
+					pushTarget(out, seen, name)
+				end
+			end
+		end
+		return out
+	end
+
+	local function pickAvailableKillTarget(questName, stage, preferred)
+		local targets = unfinishedKillTargets(questName, stage, preferred)
+		if #targets <= 1 then
+			return targets[1] or preferred, targets
+		end
+		for _, name in ipairs(targets) do
+			local list = GB.Resolver and GB.Resolver.enemies and GB.Resolver.enemies(name)
+			if type(list) == "table" and #list > 0 then
+				return name, targets
+			end
+		end
+		return targets[1], targets
 	end
 
 	function M.handleCondition(questName, cond, stage)
@@ -1092,13 +1329,40 @@ return function(GB)
 			return false
 		end
 		if typ == "Kill" or typ == "Defeat" or typ == "Hit" or typ == "Destroy" then
+			if dialogueOpen() then
+				if os.clock() - (M.lastClick or 0) >= 0.45 then
+					if clickAccept({ QuestName = questName, Action = "accept" }) then
+						M.lastClick = os.clock()
+					end
+				end
+				return false
+			end
 			local before = M.questState(questName)
 			local beforeCur = before.Objective and before.Objective.Current or 0
+			local picked, targets = pickAvailableKillTarget(questName, stage, target)
+			if picked and picked ~= target then
+				GB.Log.log("QUEST", string.format("switch target %s -> %s", tostring(target), tostring(picked)))
+			end
+			local marker = GB.QuestData and GB.QuestData.combatMarker and GB.QuestData.combatMarker(
+				questName,
+				before.StageIndex,
+				typ,
+				picked or target
+			) or nil
+			local targetPlan = {
+				Quest = questName,
+				Target = picked or target or "Training Dummy",
+				Island = before.Island,
+				Marker = marker,
+				Stage = before.StageIndex,
+				ObjectiveType = typ,
+				Alternatives = targets,
+			}
 			local ok, why = false, nil
 			if GB.Combat.huntUntilDead then
-				ok, why = GB.Combat.huntUntilDead(target or "Training Dummy", 16, questName)
+				ok, why = GB.Combat.huntUntilDead(targetPlan.Target, 16, questName, targetPlan)
 			else
-				ok = GB.Combat.attack(target or "Training Dummy", questName)
+				ok = GB.Combat.attack(targetPlan.Target, questName)
 			end
 			if not ok then
 				local pos = GB.Resolver.lastDummyPos and GB.Resolver.lastDummyPos()
@@ -1111,7 +1375,7 @@ return function(GB)
 					end
 				end
 				if why ~= "dead" then
-					M.noteFail(questName, "resolve miss " .. tostring(target))
+					M.noteFail(questName, "resolve miss " .. tostring(targetPlan.Target))
 				end
 				return false
 			end
@@ -1484,10 +1748,10 @@ return function(GB)
 			end
 			local spec = GB.QuestSpecs and GB.QuestSpecs.lookup(questName, nil, typ, target)
 			local tag = (spec and (spec.marker or spec.source)) or GB.QuestData.markerOf(typ, target) or target
-			local objPack = GB.Resolver.resolveObject and GB.Resolver.resolveObject(tag, { deep = true }) or nil
+			local objPack = GB.Resolver.resolveObject and GB.Resolver.resolveObject(tag, { Island = GB.QuestData.islandOf(questName) }) or nil
 			local obj = objPack and objPack.Instance
 			if not obj and target and target ~= tag then
-				objPack = GB.Resolver.resolveObject and GB.Resolver.resolveObject(target, { deep = true }) or nil
+				objPack = GB.Resolver.resolveObject and GB.Resolver.resolveObject(target, { Island = GB.QuestData.islandOf(questName) }) or nil
 				obj = objPack and objPack.Instance
 			end
 			if not obj then
@@ -1601,14 +1865,25 @@ return function(GB)
 		return false
 	end
 
-	function M.doLive(name)
+	local function resultRow(name, attempted, progressed, reason)
+		local row = {
+			quest = name,
+			attempted = attempted == true,
+			progressed = progressed == true,
+			reason = reason,
+		}
+		M._lastResult = row
+		return row
+	end
+
+	local function doLiveRaw(name)
 		if GB.Config.SkipQuests[name] then
-			return false
+			return resultRow(name, false, false, "skip")
 		end
 		local qs = M.questState(name)
 		local t = M.trackOf(name)
 		if os.clock() < t.NextRetryAt and t.LastError then
-			return false
+			return resultRow(name, false, false, "retry_window")
 		end
 		local blocked, why = M.deferred(name)
 		if blocked then
@@ -1618,22 +1893,50 @@ return function(GB)
 				GB.Log.warn("QUEST", "defer " .. tostring(name) .. " " .. tostring(why))
 			end
 			t.NextRetryAt = os.clock() + 2.5
-			return false
+			return resultRow(name, false, false, "deferred")
 		end
 
 		if not qs.IsAccepted then
 			if qs.IsComplete then
-				return true
+				return resultRow(name, true, true, "already_complete")
 			end
 			if qs.Automatic then
+				setAcceptState(name, "NOT_ACCEPTED", "automatic")
 				GB.Remotes.beginAutomatic(name)
 			end
 			if qs.NPC then
-				return M.talk(qs.NPC, false, { Quest = name, Island = qs.Island, DisplayName = qs.NPC })
+				if not M._acceptLogAt or os.clock() - M._acceptLogAt > 2 then
+					M._acceptLogAt = os.clock()
+					GB.Log.log("QUEST", "Opening " .. tostring(name))
+					GB.Log.log("QUEST", string.format("accepting %s via %s", tostring(name), tostring(qs.NPC)))
+				end
+				setAcceptState(name, "RESOLVE_ACCEPT_NPC", qs.NPC)
+				local ok = M.talk(qs.NPC, false, {
+					Quest = name,
+					Island = qs.Island,
+					DisplayName = qs.NPC,
+					QuestName = name,
+					Action = "accept",
+				})
+				if ok then
+					setAcceptState(name, "WAIT_ACTIVE_VALIDATION", qs.NPC)
+					local active, reason = waitQuestAccepted(name, 5.6)
+					if active then
+						setAcceptState(name, "ACTIVE", qs.NPC)
+						GB.Log.log("QUEST", tostring(name) .. " ACTIVE")
+						M.noteOk(name)
+						return resultRow(name, true, true, "accepted")
+					end
+					M.noteFail(name, "accept_not_active " .. tostring(reason))
+					return resultRow(name, true, false, "accept_not_active")
+				end
+				return resultRow(name, true, false, "accept_pending")
 			end
-			return false
+			setAcceptState(name, "UNRESOLVED_START")
+			return resultRow(name, true, false, "unresolved_start")
 		end
 
+		M.acceptState[name] = nil
 		local sig = M.signature(qs)
 		if M.lastSig[name] ~= sig then
 			M.lastSig[name] = sig
@@ -1656,16 +1959,24 @@ return function(GB)
 
 		if qs.IsComplete then
 			M.noteOk(name)
-			return true
+			return resultRow(name, true, true, "complete")
+		end
+
+		if dialogueOpen() then
+			if os.clock() - (M.lastClick or 0) >= 0.45 and clickAccept({ QuestName = name, Action = "progress" }) then
+				M.lastClick = os.clock()
+			end
+			return resultRow(name, true, false, "dialogue_open")
 		end
 
 		if qs.Objective then
 			if GB.State.tutorialOverlayVisible() then
 				GB.State.dismissTutorialOverlay()
-				return false
+				return resultRow(name, true, false, "dismiss_overlay")
 			end
 			if GB.Tutorial and GB.Tutorial.IsBlocking and select(1, GB.Tutorial.IsBlocking()) then
-				return GB.Tutorial.ExecuteCurrentStep()
+				local ok = GB.Tutorial.ExecuteCurrentStep()
+				return resultRow(name, true, ok == true, ok and "tutorial_progress" or "tutorial_block")
 			end
 			local typ = qs.Objective.Type
 			if typ and not HANDLED[typ] then
@@ -1674,36 +1985,43 @@ return function(GB)
 					"UNKNOWN_OBJECTIVE " .. tostring(typ) .. " " .. tostring(qs.Objective.TargetName)
 				)
 				t.NextRetryAt = os.clock() + 6
-				return false
+				return resultRow(name, true, false, "unknown_objective")
 			end
 			if GB.Planner then
 				local plan = GB.Planner.build(qs)
 				if plan then
-					return GB.Planner.execute(qs, plan)
+					local ok = GB.Planner.execute(qs, plan)
+					return resultRow(name, true, ok == true, ok and "planner_progress" or "planner_pending")
 				end
 			end
-			return M.handleCondition(name, qs.Objective.Raw, qs.Stage)
+			local ok = M.handleCondition(name, qs.Objective.Raw, qs.Stage)
+			return resultRow(name, true, ok == true, ok and "condition_progress" or "condition_pending")
 		end
 
 		if qs.NPC then
 			if GB.State.tutorialOverlayVisible() then
 				GB.State.dismissTutorialOverlay()
-				return false
+				return resultRow(name, true, false, "dismiss_overlay")
 			end
-			return M.talk(qs.NPC, false, { Quest = name, Island = qs.Island, DisplayName = qs.NPC })
+			local ok = M.talk(qs.NPC, false, { Quest = name, Island = qs.Island, DisplayName = qs.NPC, QuestName = name })
+			return resultRow(name, true, ok == true, ok and "talk_progress" or "talk_pending")
 		end
-		return false
+		return resultRow(name, true, false, "idle")
 	end
 
-	local _doLiveRaw = M.doLive
-	function M.doLive(name)
+	function M.doLiveResult(name)
 		local t0 = pbegin()
-		local out = { pcall(_doLiveRaw, name) }
+		local out = { pcall(doLiveRaw, name) }
 		pdone("Quest.doLive", t0)
 		if not out[1] then
 			error(out[2])
 		end
-		return unpack(out, 2)
+		return out[2]
+	end
+
+	function M.doLive(name)
+		local row = M.doLiveResult(name)
+		return type(row) == "table" and row.progressed == true
 	end
 
 	function M.Refresh()
@@ -1715,6 +2033,8 @@ return function(GB)
 		local cur = GB.PlayerData and GB.PlayerData.current and GB.PlayerData.current()
 		return cur and M.questState(cur) or nil
 	end
+
+	M.dialogueOpen = dialogueOpen
 
 	return M
 end

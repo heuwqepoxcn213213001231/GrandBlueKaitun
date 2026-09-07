@@ -9,6 +9,16 @@ return function(GB)
 		_running = false,
 	}
 
+	local function pbegin()
+		return GB.Profiler and GB.Profiler.begin and GB.Profiler.begin() or nil
+	end
+
+	local function pdone(name, t0)
+		if t0 and GB.Profiler and GB.Profiler.done then
+			GB.Profiler.done(name, t0)
+		end
+	end
+
 	function M.add(name, fn, every)
 		M._jobs[name] = {
 			fn = fn,
@@ -32,10 +42,13 @@ return function(GB)
 	end
 
 	function M.step()
+		local t0 = pbegin()
 		if not GB.Config.Enabled then
+			pdone("Scheduler.step", t0)
 			return
 		end
 		if GB.dead and GB.dead() then
+			pdone("Scheduler.step", t0)
 			return
 		end
 		local now = os.clock()
@@ -43,12 +56,18 @@ return function(GB)
 			local j = M._jobs[name]
 			if j and now - j.at >= (j.every or 0) then
 				j.at = now
+				local jt = pbegin()
 				local ok, err = pcall(j.fn)
+				pdone("Scheduler.job." .. tostring(name), jt)
 				if not ok then
 					GB.Log.err("ERROR", name .. " " .. tostring(err))
 				end
 			end
 		end
+		if GB.Profiler and GB.Profiler.tick then
+			GB.Profiler.tick()
+		end
+		pdone("Scheduler.step", t0)
 	end
 
 	function M.start()

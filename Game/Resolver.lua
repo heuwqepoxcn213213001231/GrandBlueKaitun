@@ -55,9 +55,22 @@ return function(GB)
 	local dummyPos = nil
 	local dummyMiss = 0
 	M.lastCandidates = {}
-	local negativeCache = {}
-	local negativeEpoch = 1
+	local negativeCache = {
+		enemy = {},
+		npc = {},
+		any = {},
+		object = {},
+		marker = {},
+		shop = {},
+	}
 	local NEG_TTL = 3.8
+
+	local indexes = {
+		enemy = { keyToInst = {}, instKeys = {}, built = false, root = nil },
+		npc = { keyToInst = {}, instKeys = {}, built = false, root = nil },
+		marker = { keyToInst = {}, instKeys = {}, built = false, root = nil },
+		object = { keyToInst = {}, instKeys = {}, built = false, root = nil },
+	}
 
 	local function pbegin()
 		return GB.Profiler and GB.Profiler.begin and GB.Profiler.begin() or nil
@@ -75,32 +88,82 @@ return function(GB)
 		end
 	end
 
-	local function clearNegative()
-		negativeCache = {}
-		negativeEpoch = negativeEpoch + 1
+	local function normalizeKey(v)
+		if type(v) ~= "string" then
+			return ""
+		end
+		local s = string.lower(v)
+		s = s:gsub("[%c\r\n\t]+", " ")
+		s = s:gsub("%s+", " ")
+		s = s:gsub("^%s+", "")
+		s = s:gsub("%s+$", "")
+		return s
 	end
 
-	local function negativeHit(key)
-		local row = negativeCache[key]
-		if type(row) ~= "table" then
-			return false
-		end
-		if row.epoch ~= negativeEpoch then
-			negativeCache[key] = nil
-			return false
-		end
-		if os.clock() >= (row.untilAt or 0) then
-			negativeCache[key] = nil
-			return false
-		end
-		return true
+	local function bucketFor(kind)
+		return negativeCache[kind or "any"] or negativeCache.any
 	end
 
-	local function noteNegative(key, ttl)
-		negativeCache[key] = {
-			untilAt = os.clock() + (ttl or NEG_TTL),
-			epoch = negativeEpoch,
-		}
+	local function negKey(kind, name, island)
+		local base = normalizeKey(name)
+		local isl = normalizeKey(island or "")
+		return tostring(kind or "any") .. ":" .. base .. "|" .. isl
+	end
+
+	local function noteNegative(kind, names, island, ttl)
+		local untilAt = os.clock() + (ttl or NEG_TTL)
+		local bucket = bucketFor(kind)
+		for _, raw in ipairs(names or {}) do
+			local n = normalizeKey(raw)
+			if n ~= "" then
+				bucket[negKey(kind, n, island)] = untilAt
+				if island and island ~= "" then
+					bucket[negKey(kind, n, nil)] = untilAt
+				end
+			end
+		end
+	end
+
+	local function negativeHit(kind, names, island)
+		local bucket = bucketFor(kind)
+		local now = os.clock()
+		for _, raw in ipairs(names or {}) do
+			local n = normalizeKey(raw)
+			if n ~= "" then
+				local k1 = negKey(kind, n, island)
+				local u1 = bucket[k1]
+				if u1 and u1 > now then
+					return true
+				elseif u1 then
+					bucket[k1] = nil
+				end
+				local k2 = negKey(kind, n, nil)
+				local u2 = bucket[k2]
+				if u2 and u2 > now then
+					return true
+				elseif u2 then
+					bucket[k2] = nil
+				end
+			end
+		end
+		return false
+	end
+
+	local function clearNegativeKind(kind)
+		local bucket = bucketFor(kind)
+		for key in pairs(bucket) do
+			bucket[key] = nil
+		end
+	end
+
+	local function invalidateNegativeKindName(kind, name, island)
+		local n = normalizeKey(name)
+		if n == "" then
+			return
+		end
+		local bucket = bucketFor(kind)
+		bucket[negKey(kind, n, island)] = nil
+		bucket[negKey(kind, n, nil)] = nil
 	end
 
 	function M.isDummyName(name)
@@ -398,7 +461,7 @@ return function(GB)
 		return nil
 	end
 
-	local function islandOf(inst)
+	islandOf = function(inst)
 		if not inst then
 			return nil
 		end
@@ -452,11 +515,184 @@ return function(GB)
 		return roots
 	end
 
+	local islandOf
+
 	function M.baseName(s)
 		if type(s) ~= "string" then
 			return ""
 		end
 		return (string.gsub(s, " %d+$", ""))
+	end
+
+	local function addIndexKey(ix, key, inst)
+		if not (ix and type(key) == "string" and key ~= "" and inst) then
+			return
+		end
+		local list = ix.keyToInst[key]
+		if not list then
+			list = {}
+			ix.keyToInst[key] = list
+		end
+		for i = 1, #list do
+			if list[i] == inst then
+				return
+			end
+		end
+		list[#list + 1] = inst
+	end
+
+	local function removeIndexKey(ix, key, inst)
+		local list = ix and ix.keyToInst and ix.keyToInst[key]
+		if not list then
+			return
+		end
+		for i = #list, 1, -1 do
+			if list[i] == inst or not list[i] or not list[i].Parent then
+				table.remove(list, i)
+			end
+		end
+		if #list == 0 then
+			ix.keyToInst[key] = nil
+		end
+	end
+
+	local function clearIndex(ix)
+		if not ix then
+			return
+		end
+		ix.keyToInst = {}
+		ix.instKeys = {}
+	end
+
+	local function readTags(inst)
+		local ok, tags = pcall(CS.GetTags, CS, inst)
+		if ok and type(tags) == "table" then
+			return tags
+		end
+		return {}
+	end
+
+	local function semanticNames(inst)
+		local out = {}
+		local seen = {}
+		local function push(name)
+			if type(name) ~= "string" or name == "" then
+				return
+			end
+			local norm = normalizeKey(name)
+			if norm == "" or seen[norm] then
+				return
+			end
+			seen[norm] = true
+			out[#out + 1] = norm
+		end
+		push(inst.Name)
+		push(M.baseName(inst.Name))
+		local disp = M.displayName(inst)
+		push(disp)
+		push(M.baseName(disp or ""))
+		local npcName = inst:GetAttribute("NPCName")
+		if type(npcName) == "string" then
+			push(npcName)
+			push(M.baseName(npcName))
+		end
+		local attrDisp = inst:GetAttribute("DisplayName")
+		if type(attrDisp) == "string" then
+			push(attrDisp)
+			push(M.baseName(attrDisp))
+		end
+		for _, tag in ipairs(readTags(inst)) do
+			push(tag)
+		end
+		return out
+	end
+
+	local function indexAddInstance(kind, inst)
+		local ix = indexes[kind]
+		if not ix or not inst then
+			return
+		end
+		local root = climbRoot(inst) or inst
+		if not (root and root.Parent) then
+			return
+		end
+		local useKind = (kind == "enemy") and "enemy" or "npc"
+		if kind == "marker" or kind == "object" then
+			useKind = "any"
+		end
+		if not usable(root, useKind) then
+			return
+		end
+		local old = ix.instKeys[root]
+		if old then
+			for _, key in ipairs(old) do
+				removeIndexKey(ix, key, root)
+			end
+		end
+		local keys = semanticNames(root)
+		ix.instKeys[root] = keys
+		for _, key in ipairs(keys) do
+			addIndexKey(ix, key, root)
+		end
+	end
+
+	local function indexRemoveInstance(kind, inst)
+		local ix = indexes[kind]
+		if not ix or not inst then
+			return
+		end
+		local root = climbRoot(inst) or inst
+		local keys = ix.instKeys[root]
+		if not keys then
+			return
+		end
+		for _, key in ipairs(keys) do
+			removeIndexKey(ix, key, root)
+		end
+		ix.instKeys[root] = nil
+	end
+
+	local function indexQuery(kind, names, opts)
+		local ix = indexes[kind]
+		if not ix then
+			return {}
+		end
+		opts = opts or {}
+		local out = {}
+		local seen = {}
+		for _, raw in ipairs(names or {}) do
+			local key = normalizeKey(raw)
+			if key ~= "" then
+				local list = ix.keyToInst[key]
+				if list then
+					for i = #list, 1, -1 do
+						local inst = list[i]
+						if not (inst and inst.Parent) then
+							table.remove(list, i)
+						elseif not seen[inst] then
+							if (not opts.Island) or islandOf(inst) == opts.Island then
+								seen[inst] = true
+								out[#out + 1] = inst
+							end
+						end
+					end
+					if #list == 0 then
+						ix.keyToInst[key] = nil
+					end
+				end
+			end
+		end
+		return out
+	end
+
+	local function invalidateNegativeForInstance(kind, inst)
+		if not inst then
+			return
+		end
+		local island = islandOf(inst)
+		for _, key in ipairs(semanticNames(inst)) do
+			invalidateNegativeKindName(kind, key, island)
+		end
 	end
 
 	function M.isCorruptOfficer(inst)
@@ -538,13 +774,13 @@ return function(GB)
 		return false
 	end
 
-	local function firstWorldTagged(tag)
+	local function firstWorldTagged(tag, kind)
 		local ok, tagged = pcall(CS.GetTagged, CS, tag)
 		if not ok or type(tagged) ~= "table" then
 			return nil
 		end
 		for _, t in ipairs(tagged) do
-			if usable(t, "npc") then
+			if usable(t, kind or "npc") then
 				return climbRoot(t)
 			end
 		end
@@ -611,6 +847,139 @@ return function(GB)
 			s = s - 200
 		end
 		return s
+	end
+
+	local function walkDepth(root, maxDepth, fn)
+		if not root then
+			return
+		end
+		local queue = { { inst = root, depth = 0 } }
+		local head = 1
+		while head <= #queue do
+			local row = queue[head]
+			head = head + 1
+			local inst = row.inst
+			local depth = row.depth
+			if inst ~= root then
+				fn(inst, depth)
+			end
+			if depth < maxDepth then
+				for _, ch in ipairs(inst:GetChildren()) do
+					queue[#queue + 1] = { inst = ch, depth = depth + 1 }
+				end
+			end
+		end
+	end
+
+	local function indexBuildEnemy()
+		local t0 = pbegin()
+		clearIndex(indexes.enemy)
+		local ents = workspace:FindFirstChild("Entities")
+		indexes.enemy.root = ents
+		if ents then
+			for _, ch in ipairs(ents:GetChildren()) do
+				indexAddInstance("enemy", ch)
+			end
+		end
+		indexes.enemy.built = true
+		perfCount("EnemyIndexBuild", 1)
+		pdone("Resolver.enemyIndexBuild", t0)
+	end
+
+	local function indexBuildNpc()
+		local t0 = pbegin()
+		clearIndex(indexes.npc)
+		local aa = workspace:FindFirstChild("AA IMPORTANT")
+		local dlg = (aa and aa:FindFirstChild("DialogueNPCs")) or workspace:FindFirstChild("DialogueNPCs")
+		indexes.npc.root = dlg
+		if dlg then
+			for _, island in ipairs(dlg:GetChildren()) do
+				if island:IsA("Folder") then
+					for _, npc in ipairs(island:GetChildren()) do
+						indexAddInstance("npc", npc)
+					end
+				else
+					indexAddInstance("npc", island)
+				end
+			end
+		end
+		indexes.npc.built = true
+		perfCount("NPCIndexBuild", 1)
+		pdone("Resolver.npcIndexBuild", t0)
+	end
+
+	local function indexBuildMarker()
+		local t0 = pbegin()
+		clearIndex(indexes.marker)
+		local aa = workspace:FindFirstChild("AA IMPORTANT")
+		indexes.marker.root = aa
+		if aa then
+			for _, folderName in ipairs({ "Markers", "NPCAreas", "PointsOfInterest" }) do
+				local folder = aa:FindFirstChild(folderName)
+				if folder then
+					walkDepth(folder, 3, function(inst)
+						indexAddInstance("marker", inst)
+					end)
+				end
+			end
+		end
+		indexes.marker.built = true
+		perfCount("MarkerIndexBuild", 1)
+		pdone("Resolver.markerIndexBuild", t0)
+	end
+
+	local function indexBuildObject()
+		local t0 = pbegin()
+		clearIndex(indexes.object)
+		local roots = {
+			workspace:FindFirstChild("Afuaru's Chests"),
+			workspace:FindFirstChild("DialogueNPCs"),
+			workspace:FindFirstChild("Islands"),
+		}
+		for _, root in ipairs(roots) do
+			if root then
+				walkDepth(root, 2, function(inst)
+					if inst:HasTag("Interactable") or inst:HasTag("ClientInteractable") then
+						indexAddInstance("object", inst)
+					end
+				end)
+			end
+		end
+		indexes.object.built = true
+		perfCount("ObjectIndexBuild", 1)
+		pdone("Resolver.objectIndexBuild", t0)
+	end
+
+	local function ensureIndex(kind)
+		local ix = indexes[kind]
+		if not ix then
+			return
+		end
+		if kind == "enemy" then
+			local ents = workspace:FindFirstChild("Entities")
+			if (not ix.built) or ix.root ~= ents then
+				indexBuildEnemy()
+			end
+			return
+		end
+		if kind == "npc" then
+			local aa = workspace:FindFirstChild("AA IMPORTANT")
+			local dlg = (aa and aa:FindFirstChild("DialogueNPCs")) or workspace:FindFirstChild("DialogueNPCs")
+			if (not ix.built) or ix.root ~= dlg then
+				indexBuildNpc()
+			end
+			return
+		end
+		if kind == "marker" then
+			local aa = workspace:FindFirstChild("AA IMPORTANT")
+			if (not ix.built) or ix.root ~= aa then
+				indexBuildMarker()
+			end
+			return
+		end
+		if kind == "object" and not ix.built then
+			indexBuildObject()
+		end
 	end
 
 	function M.dumpNearby(request, opts)
@@ -713,14 +1082,14 @@ return function(GB)
 		end
 		local names = M.namesFor(request, opts)
 		local kind = opts.ExpectedRole or opts.kind or "npc"
-		local cacheKey = "res:" .. kind .. ":" .. table.concat(names, "|")
+		local cacheKey = "res:" .. kind .. ":" .. table.concat(names, "|") .. "|" .. tostring(opts.Island or "")
 		local hit = GB.Cache.get(cacheKey, opts.deep and 0.4 or 2.0)
 		if hit and hit.Parent and usable(hit, kind) then
 			local out = M.pack(hit, request)
 			pdone("Resolver.resolve", t0)
 			return out
 		end
-		if not opts.deep and negativeHit(cacheKey) then
+		if not opts.deep and negativeHit(kind, names, opts.Island) then
 			pdone("Resolver.resolve", t0)
 			return nil
 		end
@@ -743,18 +1112,42 @@ return function(GB)
 			end
 		end
 
+		local function considerFromIndex(indexKind)
+			ensureIndex(indexKind)
+			for _, inst in ipairs(indexQuery(indexKind, names, opts)) do
+				consider(inst)
+			end
+		end
+
+		if kind == "enemy" then
+			considerFromIndex("enemy")
+		elseif kind == "npc" then
+			considerFromIndex("npc")
+		elseif kind == "marker" then
+			considerFromIndex("marker")
+		elseif kind == "object" or kind == "shop" or kind == "ore" or kind == "chest" then
+			considerFromIndex("object")
+			considerFromIndex("marker")
+		else
+			considerFromIndex("npc")
+			considerFromIndex("marker")
+			considerFromIndex("object")
+			considerFromIndex("enemy")
+		end
+
 		for _, n in ipairs(names) do
-			local tagged = firstWorldTagged(n)
+			local tagged = firstWorldTagged(n, kind == "enemy" and "enemy" or "any")
 			if tagged then
 				consider(tagged)
 			end
 		end
 
 		local ents = workspace:FindFirstChild("Entities")
-		if ents then
+		if ents and (kind == "enemy" or kind == "any") then
 			for _, n in ipairs(names) do
 				local c = ents:FindFirstChild(n)
 				if c then
+					indexAddInstance("enemy", c)
 					consider(c)
 				end
 			end
@@ -762,23 +1155,27 @@ return function(GB)
 
 		local aa = workspace:FindFirstChild("AA IMPORTANT")
 		local dlg = (aa and aa:FindFirstChild("DialogueNPCs")) or workspace:FindFirstChild("DialogueNPCs")
-		if dlg then
+		if dlg and (kind == "npc" or kind == "any") then
 			if opts.Island then
 				local folder = dlg:FindFirstChild(opts.Island)
 				if folder then
 					for _, c in ipairs(folder:GetChildren()) do
+						indexAddInstance("npc", c)
 						consider(c)
 					end
 				end
 			end
 			for _, islandFolder in ipairs(dlg:GetChildren()) do
 				for _, c in ipairs(islandFolder:GetChildren()) do
+					indexAddInstance("npc", c)
 					consider(c)
 				end
 			end
 		end
 
-		if not best or opts.deep then
+		local allowDeep = opts.deep == true
+			or ((GB.Config and GB.Config.DebugResolverDeepScan == true) and opts.allowDiagnosticDeep == true)
+		if (not best) and allowDeep then
 			scanRoots(function(d)
 				if d:IsA("Model") or d:IsA("Folder") or d:IsA("BasePart") then
 					consider(d)
@@ -789,7 +1186,9 @@ return function(GB)
 
 		if best then
 			GB.Cache.set(cacheKey, best)
-			negativeCache[cacheKey] = nil
+			for _, n in ipairs(names) do
+				invalidateNegativeKindName(kind, n, opts.Island)
+			end
 			local pack = M.pack(best, request)
 			GB.Log.log("RESOLVE", string.format("%s -> %s", request, best:GetFullName()))
 			pdone("Resolver.resolve", t0)
@@ -802,7 +1201,7 @@ return function(GB)
 			missLog[mk] = now
 			GB.Log.warn("ERROR", "resolve miss " .. table.concat(names, " / "))
 		end
-		noteNegative(cacheKey, opts.negTTL or NEG_TTL)
+		noteNegative(kind, names, opts.Island, opts.negTTL or NEG_TTL)
 		pdone("Resolver.resolve", t0)
 		return nil
 	end
@@ -841,8 +1240,8 @@ return function(GB)
 		local spec = GB.QuestData and GB.QuestData.objectSpec and GB.QuestData.objectSpec(name) or nil
 		if not spec then
 			return M.resolve(name, {
-				kind = "any",
-				ExpectedRole = "any",
+				kind = "object",
+				ExpectedRole = "object",
 				Island = opts.Island,
 				deep = opts.deep,
 			})
@@ -856,7 +1255,7 @@ return function(GB)
 		end
 		if type(spec.Tags) == "table" then
 			for _, tag in ipairs(spec.Tags) do
-				local tagged = firstWorldTagged(tag)
+				local tagged = firstWorldTagged(tag, "any")
 				if tagged then
 					local root = climbRoot(tagged) or tagged
 					if (not spec.Island) or islandOf(root) == spec.Island then
@@ -866,8 +1265,8 @@ return function(GB)
 			end
 		end
 		local pack = M.resolve(name, {
-			kind = "any",
-			ExpectedRole = "any",
+			kind = "object",
+			ExpectedRole = "object",
 			Island = spec.Island or opts.Island,
 			deep = opts.deep,
 		})
@@ -897,6 +1296,18 @@ return function(GB)
 		return M.resolve(name, opts)
 	end
 
+	function M.resolveMarker(name, opts)
+		opts = opts or {}
+		opts.ExpectedRole = opts.ExpectedRole or "marker"
+		opts.kind = "marker"
+		return M.resolve(name, opts)
+	end
+
+	function M.marker(name, opts)
+		local pack = M.resolveMarker(name, opts)
+		return pack and pack.Instance
+	end
+
 	local _resolveObjectRaw = M.resolveObject
 	function M.resolveObject(name, opts)
 		local t0 = pbegin()
@@ -920,8 +1331,10 @@ return function(GB)
 	end
 
 	function M.enemies(name)
+		local t0 = pbegin()
 		local out = {}
 		if name == "\\" or name == "" then
+			pdone("Resolver.EnemyIndexLookup", t0)
 			return out
 		end
 		if M.isDummyName(name) then
@@ -929,6 +1342,7 @@ return function(GB)
 			if d then
 				out[1] = d
 			end
+			pdone("Resolver.EnemyIndexLookup", t0)
 			return out
 		end
 		local origin
@@ -957,26 +1371,19 @@ return function(GB)
 			local d = (origin and pos) and (pos - origin).Magnitude or 1e9
 			out[#out + 1] = { inst = root, dist = d }
 		end
-		for _, n in ipairs(names) do
-			local ok, tagged = pcall(CS.GetTagged, CS, n)
-			if ok and type(tagged) == "table" then
-				for _, inst in ipairs(tagged) do
-					consider(inst)
-				end
-			end
-		end
-		local ents = workspace:FindFirstChild("Entities")
-		if ents then
-			for _, c in ipairs(ents:GetChildren()) do
-				if nameHit(c, names) then
-					consider(c)
-				end
-			end
+		ensureIndex("enemy")
+		for _, inst in ipairs(indexQuery("enemy", names, {})) do
+			consider(inst)
 		end
 		if #out == 0 then
-			local pack = M.resolve(name, { kind = "enemy", ExpectedRole = "enemy" })
-			if pack and pack.Instance then
-				consider(pack.Instance)
+			local ents = workspace:FindFirstChild("Entities")
+			if ents then
+				for _, c in ipairs(ents:GetChildren()) do
+					if nameHit(c, names) then
+						indexAddInstance("enemy", c)
+						consider(c)
+					end
+				end
 			end
 		end
 		table.sort(out, function(a, b)
@@ -986,6 +1393,7 @@ return function(GB)
 		for i, row in ipairs(out) do
 			flat[i] = row.inst
 		end
+		pdone("Resolver.EnemyIndexLookup", t0)
 		return flat
 	end
 
@@ -1054,26 +1462,14 @@ return function(GB)
 			GB.Cache.set(cacheKey, root)
 			return root
 		end
-		local function isShop(d)
-			if d:IsA("ProximityPrompt") and d.Name == "Shop Item" then
-				local p = d.Parent
-				local item = p and (p:GetAttribute("Item") or p.Name)
-				local climb = M.interactableOf and M.interactableOf(d)
-				return item == name or (p and p.Name == name) or (climb and climb.Name == name)
+		ensureIndex("object")
+		local names = M.namesFor(name, { kind = "object", ExpectedRole = "object" })
+		for _, inst in ipairs(indexQuery("object", names, {})) do
+			if inst:GetAttribute("Interaction") == "Shop Item" or M.prompt(inst, "Shop Item") then
+				local root = M.interactableOf and M.interactableOf(inst) or inst
+				GB.Cache.set(cacheKey, root)
+				return root
 			end
-			if d:GetAttribute("Interaction") == "Shop Item" then
-				return (d:GetAttribute("Item") or d.Name) == name
-			end
-			return false
-		end
-		local found = scanRoots(isShop, 6)
-		if found[1] then
-			local part = found[1]
-			if part:IsA("ProximityPrompt") then
-				part = (M.interactableOf and M.interactableOf(part)) or part.Parent
-			end
-			GB.Cache.set(cacheKey, part)
-			return part
 		end
 		return M.byName(name, "shop")
 	end
@@ -1091,7 +1487,7 @@ return function(GB)
 		if cfg then
 			return cfg
 		end
-		perfCount("ResolverDeepScan", 1)
+		perfCount("ResolverLocalScan", 1)
 		for _, d in ipairs(model:GetDescendants()) do
 			if d:IsA("Configuration") then
 				return d
@@ -1104,7 +1500,7 @@ return function(GB)
 		if not model then
 			return nil
 		end
-		perfCount("ResolverDeepScan", 1)
+		perfCount("ResolverLocalScan", 1)
 		for _, d in ipairs(model:GetDescendants()) do
 			if d:IsA("ProximityPrompt") then
 				if not interaction or d.Name == interaction or d:GetAttribute("Interaction") == interaction then
@@ -1213,38 +1609,129 @@ return function(GB)
 		return M.byName("Afuaru's Chests", "chest")
 	end
 
-	local function watchInvalidate(root)
-		if not (root and root.Parent) then
+	local function dropConns(ix)
+		if not (ix and ix.conns) then
 			return
 		end
-		GB.conns[#GB.conns + 1] = root.ChildAdded:Connect(function()
-			clearNegative()
+		for _, conn in ipairs(ix.conns) do
+			pcall(function()
+				conn:Disconnect()
+			end)
+		end
+		ix.conns = {}
+	end
+
+	local function hookEnemyIndex()
+		local ix = indexes.enemy
+		local root = workspace:FindFirstChild("Entities")
+		if ix.root == root and ix.conns then
+			return
+		end
+		dropConns(ix)
+		ix.root = root
+		ix.conns = {}
+		indexBuildEnemy()
+		if not root then
+			return
+		end
+		ix.conns[#ix.conns + 1] = root.ChildAdded:Connect(function(ch)
+			indexAddInstance("enemy", ch)
+			invalidateNegativeForInstance("enemy", ch)
 		end)
-		GB.conns[#GB.conns + 1] = root.ChildRemoved:Connect(function()
-			clearNegative()
+		ix.conns[#ix.conns + 1] = root.ChildRemoved:Connect(function(ch)
+			indexRemoveInstance("enemy", ch)
 		end)
 	end
 
-	local function hookNegativeInvalidation()
-		watchInvalidate(workspace:FindFirstChild("Entities"))
-		watchInvalidate(workspace:FindFirstChild("Islands"))
+	local function hookNpcIndex()
+		local ix = indexes.npc
 		local aa = workspace:FindFirstChild("AA IMPORTANT")
-		if aa then
-			watchInvalidate(aa)
-			watchInvalidate(aa:FindFirstChild("DialogueNPCs"))
+		local root = (aa and aa:FindFirstChild("DialogueNPCs")) or workspace:FindFirstChild("DialogueNPCs")
+		if ix.root == root and ix.conns then
+			return
 		end
-		GB.conns[#GB.conns + 1] = workspace.ChildAdded:Connect(function(ch)
-			if ch.Name == "Entities" or ch.Name == "Islands" or ch.Name == "AA IMPORTANT" then
-				clearNegative()
-				watchInvalidate(ch)
-				if ch.Name == "AA IMPORTANT" then
-					watchInvalidate(ch:FindFirstChild("DialogueNPCs"))
+		dropConns(ix)
+		ix.root = root
+		ix.conns = {}
+		indexBuildNpc()
+		if not root then
+			return
+		end
+		ix.conns[#ix.conns + 1] = root.DescendantAdded:Connect(function(ch)
+			indexAddInstance("npc", ch)
+			invalidateNegativeForInstance("npc", ch)
+		end)
+		ix.conns[#ix.conns + 1] = root.DescendantRemoving:Connect(function(ch)
+			indexRemoveInstance("npc", ch)
+		end)
+	end
+
+	local function hookMarkerIndex()
+		local ix = indexes.marker
+		local aa = workspace:FindFirstChild("AA IMPORTANT")
+		if ix.root == aa and ix.conns then
+			return
+		end
+		dropConns(ix)
+		ix.root = aa
+		ix.conns = {}
+		indexBuildMarker()
+		if not aa then
+			return
+		end
+		local function isMarkerDesc(inst)
+			local cur = inst
+			while cur and cur ~= aa do
+				local n = cur.Name
+				if n == "Markers" or n == "NPCAreas" or n == "PointsOfInterest" then
+					return true
 				end
+				cur = cur.Parent
+			end
+			return false
+		end
+		ix.conns[#ix.conns + 1] = aa.DescendantAdded:Connect(function(ch)
+			if isMarkerDesc(ch) then
+				indexAddInstance("marker", ch)
+				invalidateNegativeForInstance("marker", ch)
+			end
+		end)
+		ix.conns[#ix.conns + 1] = aa.DescendantRemoving:Connect(function(ch)
+			if isMarkerDesc(ch) then
+				indexRemoveInstance("marker", ch)
 			end
 		end)
 	end
 
-	hookNegativeInvalidation()
+	local function hookResolverInvalidation()
+		hookEnemyIndex()
+		hookNpcIndex()
+		hookMarkerIndex()
+		GB.conns[#GB.conns + 1] = workspace.ChildAdded:Connect(function(ch)
+			if ch.Name == "Entities" then
+				hookEnemyIndex()
+			elseif ch.Name == "AA IMPORTANT" or ch.Name == "DialogueNPCs" then
+				hookNpcIndex()
+				hookMarkerIndex()
+			elseif ch.Name == "Islands" then
+				indexes.object.built = false
+				clearNegativeKind("object")
+			end
+		end)
+		GB.conns[#GB.conns + 1] = workspace.ChildRemoved:Connect(function(ch)
+			if ch.Name == "Entities" then
+				hookEnemyIndex()
+			elseif ch.Name == "AA IMPORTANT" or ch.Name == "DialogueNPCs" then
+				hookNpcIndex()
+				hookMarkerIndex()
+			elseif ch.Name == "Islands" then
+				indexes.object.built = false
+				clearNegativeKind("object")
+			end
+		end)
+	end
+
+	hookResolverInvalidation()
 
 	return M
 end

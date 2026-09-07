@@ -3,19 +3,88 @@
 return function(GB)
 	local M = {}
 	local lastFire = {}
+	local order = {}
+	local orderPos = {}
+	local MAX_KEYS = 2400
+	local TTL = 90
+	local PRUNE_STRIDE = 32
+	local PRUNE_GAP = 0.2
+
+	local function dropKey(key)
+		lastFire[key] = nil
+		local pos = orderPos[key]
+		if not pos then
+			return
+		end
+		local last = #order
+		local lastKey = order[last]
+		order[pos] = lastKey
+		order[last] = nil
+		orderPos[key] = nil
+		if lastKey and lastKey ~= key then
+			orderPos[lastKey] = pos
+		end
+	end
+
+	local function touchKey(key, now)
+		dropKey(key)
+		lastFire[key] = now
+		order[#order + 1] = key
+		orderPos[key] = #order
+	end
+
+	local function prune()
+		local now = os.clock()
+		if now - (M._lastPruneAt or 0) < PRUNE_GAP then
+			return
+		end
+		M._lastPruneAt = now
+		local n = math.min(PRUNE_STRIDE, #order)
+		for _ = 1, n do
+			local key = table.remove(order, 1)
+			if not key then
+				break
+			end
+			orderPos[key] = nil
+			local ts = lastFire[key]
+			if ts and now - ts <= TTL then
+				order[#order + 1] = key
+				orderPos[key] = #order
+			else
+				lastFire[key] = nil
+			end
+		end
+	end
+
+	local function enforceMax()
+		while #order > MAX_KEYS do
+			local key = table.remove(order, 1)
+			if not key then
+				break
+			end
+			orderPos[key] = nil
+			lastFire[key] = nil
+		end
+		for i = 1, #order do
+			orderPos[order[i]] = i
+		end
+	end
 
 	function M.rateOk(key, gap)
+		prune()
 		gap = gap or 0.6
 		local t = lastFire[key] or 0
 		if os.clock() - t < gap then
 			return false
 		end
-		lastFire[key] = os.clock()
+		touchKey(key, os.clock())
+		enforceMax()
 		return true
 	end
 
 	function M.mark(key)
-		lastFire[key] = os.clock()
+		touchKey(key, os.clock())
+		enforceMax()
 	end
 
 	function M.run(opts)

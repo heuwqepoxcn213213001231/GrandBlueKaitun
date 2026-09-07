@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
--- Version: 1.1.23
--- Commit: 342f877
--- BuiltAt: 2026-09-08T03:11:20+07:00
+-- Version: 1.1.24
+-- Commit: 5958e62
+-- BuiltAt: 2026-09-08T03:35:51+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -35,9 +35,9 @@ return function(meta)
 
 	stopPreviousInstance()
 
-	local BUILD_VERSION = "1.1.23"
-	local BUILD_COMMIT = "342f877"
-	local BUILD_AT = "2026-09-08T03:11:20+07:00"
+	local BUILD_VERSION = "1.1.24"
+	local BUILD_COMMIT = "5958e62"
+	local BUILD_AT = "2026-09-08T03:35:51+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -67,6 +67,12 @@ return function(GB)
 	def("LogLevel", "INFO") -- DEBUG INFO WARN ERROR
 	def("Debug", false)
 	def("Persist", true)
+	def("RuntimeDiagnostics", true)
+	def("RuntimeLogMaxBytes", 450000)
+	def("RuntimeLogMaxFiles", 5)
+	def("PerfDebug", true)
+	def("PerfReportInterval", 35)
+	def("DebugResolverDeepScan", false)
 
 	-- Auto flags
 	def("AutoQuest", true)
@@ -157,41 +163,133 @@ return function(GB)
 	return C
 end
 ]],
-    ["Core/Cache.lua"] = [[-- World / scan cache. Refresh on island, quest, target-lost, timeout, state change.
+    ["Core/Cache.lua"] = [=[-- World / scan cache. Refresh on island, quest, target-lost, timeout, state change.
 
 return function(GB)
 	local M = {
 		_store = {},
 		_at = {},
+		_order = {},
+		_orderPos = {},
 	}
 
 	local DEFAULT_TTL = 2.5
+	local MAX_KEYS = 2200
+	local PRUNE_STRIDE = 28
+	local PRUNE_GAP = 0.2
+
+	local function removeOrderKey(key)
+		local pos = M._orderPos[key]
+		if not pos then
+			return
+		end
+		local last = #M._order
+		local lastKey = M._order[last]
+		M._order[pos] = lastKey
+		M._order[last] = nil
+		M._orderPos[key] = nil
+		if lastKey and lastKey ~= key then
+			M._orderPos[lastKey] = pos
+		end
+	end
+
+	local function touchOrder(key)
+		removeOrderKey(key)
+		M._order[#M._order + 1] = key
+		M._orderPos[key] = #M._order
+	end
+
+	local function dropKey(key)
+		M._store[key] = nil
+		M._at[key] = nil
+		removeOrderKey(key)
+	end
+
+	local function enforceMax()
+		while #M._order > MAX_KEYS do
+			local drop = table.remove(M._order, 1)
+			if drop then
+				M._orderPos[drop] = nil
+				M._store[drop] = nil
+				M._at[drop] = nil
+			end
+			for i = 1, #M._order do
+				M._orderPos[M._order[i]] = i
+			end
+		end
+	end
+
+	local function pruneIncremental()
+		local now = os.clock()
+		if now - (M._lastPruneAt or 0) < PRUNE_GAP then
+			return
+		end
+		M._lastPruneAt = now
+		local steps = math.min(PRUNE_STRIDE, #M._order)
+		for _ = 1, steps do
+			local key = table.remove(M._order, 1)
+			if not key then
+				break
+			end
+			M._orderPos[key] = nil
+			if M._store[key] ~= nil then
+				if now - (M._at[key] or 0) > DEFAULT_TTL * 3 then
+					M._store[key] = nil
+					M._at[key] = nil
+				else
+					M._order[#M._order + 1] = key
+					M._orderPos[key] = #M._order
+				end
+			end
+		end
+	end
 
 	function M.get(key, ttl)
+		pruneIncremental()
 		local row = M._store[key]
 		if not row then
 			return nil
 		end
 		if os.clock() - (M._at[key] or 0) > (ttl or DEFAULT_TTL) then
+			dropKey(key)
 			return nil
 		end
 		return row
 	end
 
 	function M.set(key, value)
+		pruneIncremental()
 		M._store[key] = value
 		M._at[key] = os.clock()
+		touchOrder(key)
+		enforceMax()
 		return value
 	end
 
 	function M.invalidate(key)
 		if key then
-			M._store[key] = nil
-			M._at[key] = nil
+			dropKey(key)
 			return
 		end
 		M._store = {}
 		M._at = {}
+		M._order = {}
+		M._orderPos = {}
+	end
+
+	function M.invalidatePrefix(prefix)
+		if type(prefix) ~= "string" or prefix == "" then
+			return
+		end
+		local drops = {}
+		for key in pairs(M._store) do
+			if string.sub(key, 1, #prefix) == prefix then
+				drops[#drops + 1] = key
+			end
+		end
+		for _, key in ipairs(drops) do
+			dropKey(key)
+		end
 	end
 
 	function M.memo(key, ttl, fn)
@@ -206,16 +304,26 @@ return function(GB)
 		return v
 	end
 
+	function M.stats()
+		return {
+			keys = #M._order,
+			max = MAX_KEYS,
+		}
+	end
+
 	return M
 end
-]],
+]=],
     ["Core/Logger.lua"] = [[-- [Kaitun][CAT] message
 
 return function(GB)
 	local LEVEL = { DEBUG = 1, INFO = 2, WARN = 3, ERROR = 4 }
 	local last = {}
 	local order = {}
-	local MAX_KEYS = 720
+	local MAX_KEYS = 1000
+	local KEY_TTL = 75
+	local PRUNE_STEP = 24
+	local PRUNE_GAP = 0.2
 	local M = {}
 
 	local function dedupeKey(cat, msg)
@@ -231,13 +339,33 @@ return function(GB)
 		if last[key] == nil then
 			order[#order + 1] = key
 		end
-		last[key] = now
+		last[key] = { at = now }
 		if #order <= MAX_KEYS then
 			return
 		end
 		local drop = table.remove(order, 1)
 		if drop then
 			last[drop] = nil
+		end
+	end
+
+	local function pruneKeys(now)
+		if now - (M._lastPruneAt or 0) < PRUNE_GAP then
+			return
+		end
+		M._lastPruneAt = now
+		local n = math.min(PRUNE_STEP, #order)
+		for _ = 1, n do
+			local key = table.remove(order, 1)
+			if not key then
+				break
+			end
+			local row = last[key]
+			if row and now - (row.at or 0) <= KEY_TTL then
+				order[#order + 1] = key
+			else
+				last[key] = nil
+			end
 		end
 	end
 
@@ -250,6 +378,7 @@ return function(GB)
 		local line = string.format("[Kaitun][%s] %s", cat, tostring(msg))
 		local key = dedupeKey(cat, msg)
 		local now = os.clock()
+		pruneKeys(now)
 		local gap = 2.5
 		if cat == "ERROR" then
 			gap = 8
@@ -270,7 +399,8 @@ return function(GB)
 				gap = 8
 			end
 		end
-		if last[key] and now - last[key] < gap then
+		local row = last[key]
+		if row and now - (row.at or 0) < gap then
 			return
 		end
 		rememberKey(key, now)
@@ -304,6 +434,8 @@ return function(GB)
 			failedRemotes = {},
 			session = nil,
 		},
+		_lastSaved = nil,
+		_lastSaveAt = 0,
 	}
 
 	local function canIO()
@@ -334,6 +466,28 @@ return function(GB)
 			end
 		end
 		return nil
+	end
+
+	local function sameValue(a, b)
+		if type(a) ~= type(b) then
+			return false
+		end
+		if type(a) ~= "table" then
+			return a == b
+		end
+		local seen = {}
+		for k, v in pairs(a) do
+			if not sameValue(v, b[k]) then
+				return false
+			end
+			seen[k] = true
+		end
+		for k in pairs(b) do
+			if not seen[k] then
+				return false
+			end
+		end
+		return true
 	end
 
 	function M.load()
@@ -370,38 +524,61 @@ return function(GB)
 			end
 		end
 		getgenv().GBCodes = M.data.codes
+		M._lastSaved = encode(M.data)
+		M._lastSaveAt = os.clock()
 	end
 
-	function M.save()
+	function M.save(force)
 		if not GB.Config.Persist or not canIO() then
-			return
+			return false
 		end
 		local s = encode(M.data)
 		if s then
+			if not force and M._lastSaved == s and os.clock() - (M._lastSaveAt or 0) < 2.5 then
+				return false
+			end
 			pcall(writefile, M.path, s)
+			M._lastSaved = s
+			M._lastSaveAt = os.clock()
+			if GB.Profiler and GB.Profiler.count then
+				GB.Profiler.count("PersistWrite", 1)
+			end
+			return true
 		end
+		return false
 	end
 
 	function M.codeState(code, state)
+		local prev = M.data.codes[code]
+		if type(prev) == "table" and prev.state == state then
+			return false
+		end
 		M.data.codes[code] = {
 			state = state,
 			at = os.time(),
 		}
 		getgenv().GBCodes = M.data.codes
-		M.save()
+		return M.save()
 	end
 
 	function M.failRemote(name, why)
+		local prev = M.data.failedRemotes[name]
+		if type(prev) == "table" and tostring(prev.why) == tostring(why) then
+			return false
+		end
 		M.data.failedRemotes[name] = {
 			why = tostring(why),
 			at = os.time(),
 		}
-		M.save()
+		return M.save()
 	end
 
 	function M.checkpoint(key, value)
+		if sameValue(M.data.checkpoint[key], value) then
+			return false
+		end
 		M.data.checkpoint[key] = value
-		M.save()
+		return M.save()
 	end
 
 	return M
@@ -673,6 +850,16 @@ return function(GB)
 
 	M.STRATS = { "lookup", "enemy", "diagnostic", "blocker" }
 
+	local function pbegin()
+		return GB.Profiler and GB.Profiler.begin and GB.Profiler.begin() or nil
+	end
+
+	local function pdone(name, t0)
+		if t0 and GB.Profiler and GB.Profiler.done then
+			GB.Profiler.done(name, t0)
+		end
+	end
+
 	function M.currentStrategy()
 		return M.STRATS[M.si] or "lookup"
 	end
@@ -711,7 +898,33 @@ return function(GB)
 		return idle >= (cfg.StuckSeconds or 18)
 	end
 
-	function M.run(why)
+	local function scopedInvalidate(qs)
+		if not GB.Cache then
+			return
+		end
+		if not GB.Cache.invalidatePrefix then
+			GB.Cache.invalidate()
+			return
+		end
+		local o = qs and qs.Objective
+		local typ = o and o.Type
+		if typ == "Kill" or typ == "Defeat" or typ == "Hit" or typ == "Destroy" or typ == "Shoot" then
+			GB.Cache.invalidatePrefix("res:enemy:")
+			return
+		end
+		if typ == "Talk" or typ == "Automatic Talk" or typ == "GiveItemTo" or typ == "Deliver" then
+			GB.Cache.invalidatePrefix("res:npc:")
+			return
+		end
+		if typ == "Open" or typ == "Unlock" or typ == "Interact" or typ == "Collect" or typ == "CollectLocal" then
+			GB.Cache.invalidatePrefix("res:object:")
+			GB.Cache.invalidatePrefix("res:marker:")
+			return
+		end
+		GB.Cache.invalidatePrefix("res:")
+	end
+
+	local function runRaw(why)
 		if os.clock() - M.last < (GB.Config.RecoveryCooldown or 8) then
 			return
 		end
@@ -755,7 +968,7 @@ return function(GB)
 			end
 		end
 		GB.Log.warn("RECOVERY", string.format("level=%d strategy=%s %s", M.level, tostring(strat), tostring(why)))
-		GB.Cache.invalidate()
+		scopedInvalidate(qs)
 
 		if strat == "lookup" or strat == "enemy" then
 			GB.State.track.TaskStartedAt = os.clock()
@@ -808,7 +1021,17 @@ return function(GB)
 		GB.State.track.TaskStartedAt = os.clock()
 	end
 
-	function M.tick()
+	function M.run(why)
+		local t0 = pbegin()
+		local out = { pcall(runRaw, why) }
+		pdone("Recovery.run", t0)
+		if not out[1] then
+			error(out[2])
+		end
+		return out[2]
+	end
+
+	local function tickRaw()
 		if M.stuck() then
 			M.run("stuck " .. tostring(GB.State.track.TaskName))
 		end
@@ -817,27 +1040,106 @@ return function(GB)
 		end
 	end
 
+	function M.tick()
+		local t0 = pbegin()
+		local out = { pcall(tickRaw) }
+		pdone("Recovery.tick", t0)
+		if not out[1] then
+			error(out[2])
+		end
+		return out[2]
+	end
+
 	return M
 end
 ]],
-    ["Core/Retry.lua"] = [[-- RunAction: Timeout, MaxRetries, Validate, Recovery. No infinite retry.
+    ["Core/Retry.lua"] = [=[-- RunAction: Timeout, MaxRetries, Validate, Recovery. No infinite retry.
 
 return function(GB)
 	local M = {}
 	local lastFire = {}
+	local order = {}
+	local orderPos = {}
+	local MAX_KEYS = 2400
+	local TTL = 90
+	local PRUNE_STRIDE = 32
+	local PRUNE_GAP = 0.2
+
+	local function dropKey(key)
+		lastFire[key] = nil
+		local pos = orderPos[key]
+		if not pos then
+			return
+		end
+		local last = #order
+		local lastKey = order[last]
+		order[pos] = lastKey
+		order[last] = nil
+		orderPos[key] = nil
+		if lastKey and lastKey ~= key then
+			orderPos[lastKey] = pos
+		end
+	end
+
+	local function touchKey(key, now)
+		dropKey(key)
+		lastFire[key] = now
+		order[#order + 1] = key
+		orderPos[key] = #order
+	end
+
+	local function prune()
+		local now = os.clock()
+		if now - (M._lastPruneAt or 0) < PRUNE_GAP then
+			return
+		end
+		M._lastPruneAt = now
+		local n = math.min(PRUNE_STRIDE, #order)
+		for _ = 1, n do
+			local key = table.remove(order, 1)
+			if not key then
+				break
+			end
+			orderPos[key] = nil
+			local ts = lastFire[key]
+			if ts and now - ts <= TTL then
+				order[#order + 1] = key
+				orderPos[key] = #order
+			else
+				lastFire[key] = nil
+			end
+		end
+	end
+
+	local function enforceMax()
+		while #order > MAX_KEYS do
+			local key = table.remove(order, 1)
+			if not key then
+				break
+			end
+			orderPos[key] = nil
+			lastFire[key] = nil
+		end
+		for i = 1, #order do
+			orderPos[order[i]] = i
+		end
+	end
 
 	function M.rateOk(key, gap)
+		prune()
 		gap = gap or 0.6
 		local t = lastFire[key] or 0
 		if os.clock() - t < gap then
 			return false
 		end
-		lastFire[key] = os.clock()
+		touchKey(key, os.clock())
+		enforceMax()
 		return true
 	end
 
 	function M.mark(key)
-		lastFire[key] = os.clock()
+		touchKey(key, os.clock())
+		enforceMax()
 	end
 
 	function M.run(opts)
@@ -893,7 +1195,7 @@ return function(GB)
 
 	return M
 end
-]],
+]=],
     ["Core/Scheduler.lua"] = [[-- Tick loop. No giant while-true spaghetti in systems.
 
 return function(GB)
@@ -904,6 +1206,16 @@ return function(GB)
 		_last = 0,
 		_running = false,
 	}
+
+	local function pbegin()
+		return GB.Profiler and GB.Profiler.begin and GB.Profiler.begin() or nil
+	end
+
+	local function pdone(name, t0)
+		if t0 and GB.Profiler and GB.Profiler.done then
+			GB.Profiler.done(name, t0)
+		end
+	end
 
 	function M.add(name, fn, every)
 		M._jobs[name] = {
@@ -928,10 +1240,13 @@ return function(GB)
 	end
 
 	function M.step()
+		local t0 = pbegin()
 		if not GB.Config.Enabled then
+			pdone("Scheduler.step", t0)
 			return
 		end
 		if GB.dead and GB.dead() then
+			pdone("Scheduler.step", t0)
 			return
 		end
 		local now = os.clock()
@@ -939,12 +1254,18 @@ return function(GB)
 			local j = M._jobs[name]
 			if j and now - j.at >= (j.every or 0) then
 				j.at = now
+				local jt = pbegin()
 				local ok, err = pcall(j.fn)
+				pdone("Scheduler.job." .. tostring(name), jt)
 				if not ok then
 					GB.Log.err("ERROR", name .. " " .. tostring(err))
 				end
 			end
 		end
+		if GB.Profiler and GB.Profiler.tick then
+			GB.Profiler.tick()
+		end
+		pdone("Scheduler.step", t0)
 	end
 
 	function M.start()
@@ -2930,6 +3251,97 @@ return function(GB)
 		{ name = "Peace of Mind", island = "Maple Village", accept = 70, full_until = 81, exp = 1215, prereq = "The Island's Protector" },
 	}
 
+	M.REPEAT_START = {
+		["Bullies in Suits"] = {
+			Status = "STARTABLE",
+			Automatic = false,
+			AcceptNPC = "Koro",
+			TurnInNPC = "Koro",
+			OtherVerifiedStartMethod = nil,
+			DirectCombatVerified = false,
+		},
+		["Officer Termination"] = {
+			Status = "STARTABLE",
+			Automatic = false,
+			AcceptNPC = "Maeve",
+			TurnInNPC = "Maeve",
+			OtherVerifiedStartMethod = nil,
+			DirectCombatVerified = false,
+		},
+		["Granny's Nemesis"] = {
+			Status = "STARTABLE",
+			Automatic = false,
+			AcceptNPC = "Granny Todo",
+			TurnInNPC = "Granny Todo",
+			OtherVerifiedStartMethod = nil,
+			DirectCombatVerified = false,
+		},
+		["Tyrannical Captain"] = {
+			Status = "UNRESOLVED_START",
+			Automatic = false,
+			AcceptNPC = nil,
+			TurnInNPC = nil,
+			OtherVerifiedStartMethod = nil,
+			DirectCombatVerified = false,
+		},
+		["This Is Personal"] = {
+			Status = "STARTABLE",
+			Automatic = false,
+			AcceptNPC = "Clowny D. Clown",
+			TurnInNPC = "Clowny D. Clown",
+			OtherVerifiedStartMethod = nil,
+			DirectCombatVerified = false,
+		},
+		["Cat Problem"] = {
+			Status = "STARTABLE",
+			Automatic = false,
+			AcceptNPC = "Stephon",
+			TurnInNPC = "Stephon",
+			OtherVerifiedStartMethod = nil,
+			DirectCombatVerified = false,
+		},
+		["Billy's Business"] = {
+			Status = "STARTABLE",
+			Automatic = false,
+			AcceptNPC = "Billy B.",
+			TurnInNPC = "Billy B.",
+			OtherVerifiedStartMethod = nil,
+			DirectCombatVerified = false,
+		},
+		["Nibblebottom's Revenge"] = {
+			Status = "STARTABLE",
+			Automatic = false,
+			AcceptNPC = "Johnny Nibblebottom",
+			TurnInNPC = "Johnny Nibblebottom",
+			OtherVerifiedStartMethod = nil,
+			DirectCombatVerified = false,
+		},
+		["Choppy The Clown"] = {
+			Status = "STARTABLE",
+			Automatic = false,
+			AcceptNPC = "Mayor Kiyoshi [2]",
+			TurnInNPC = "Mayor Kiyoshi [2]",
+			OtherVerifiedStartMethod = nil,
+			DirectCombatVerified = false,
+		},
+		["Clear the Road"] = {
+			Status = "STARTABLE",
+			Automatic = false,
+			AcceptNPC = "Nell",
+			TurnInNPC = "Nell",
+			OtherVerifiedStartMethod = nil,
+			DirectCombatVerified = false,
+		},
+		["Peace of Mind"] = {
+			Status = "STARTABLE",
+			Automatic = false,
+			AcceptNPC = "Gus",
+			TurnInNPC = "Gus",
+			OtherVerifiedStartMethod = nil,
+			DirectCombatVerified = false,
+		},
+	}
+
 	-- Verified Studio: world model Name / CollectionService tag.
 	-- Humanoid.DisplayName of Graves [2] is "Officer Graves". RS "Officer Graves" is character-create.
 	M.NPC_ALIAS = {
@@ -3100,6 +3512,17 @@ return function(GB)
 		},
 	}
 
+	local function copyRow(src)
+		if type(src) ~= "table" then
+			return nil
+		end
+		local out = {}
+		for k, v in pairs(src) do
+			out[k] = v
+		end
+		return out
+	end
+
 	function M.currentStage(q)
 		if type(q) ~= "table" or type(q.Stages) ~= "table" then
 			return nil, nil
@@ -3194,6 +3617,16 @@ return function(GB)
 		return M.MARKER_TAG[typ] or target
 	end
 
+	function M.combatMarker(questName, stage, typ, target)
+		if GB.QuestSpecs and GB.QuestSpecs.lookup then
+			local spec = GB.QuestSpecs.lookup(questName, stage, typ, target)
+			if spec and type(spec.marker) == "string" and spec.marker ~= "" and spec.marker ~= "\\" then
+				return spec.marker
+			end
+		end
+		return M.markerOf(typ, target)
+	end
+
 	function M.deliverSpec(target)
 		return M.DELIVER[target]
 	end
@@ -3212,6 +3645,54 @@ return function(GB)
 
 	function M.talkNpc(name)
 		return M.TALK_NPC[name]
+	end
+
+	function M.repeatEntry(name)
+		if type(name) ~= "string" or name == "" then
+			return nil
+		end
+		for _, row in ipairs(M.REPEATS) do
+			if row.name == name then
+				return row
+			end
+		end
+		return nil
+	end
+
+	function M.repeatStartSpec(name)
+		local base = copyRow(M.REPEAT_START[name])
+		if not base then
+			local npc = M.TALK_NPC[name]
+			base = {
+				Status = npc and "STARTABLE" or "UNRESOLVED_START",
+				Automatic = M.AUTOMATIC[name] == true,
+				AcceptNPC = npc,
+				TurnInNPC = npc,
+				OtherVerifiedStartMethod = nil,
+				DirectCombatVerified = false,
+			}
+		end
+		if base.AcceptNPC == nil then
+			local npc = M.TALK_NPC[name]
+			if type(npc) == "string" and npc ~= "" then
+				base.AcceptNPC = npc
+			end
+		end
+		if base.TurnInNPC == nil and type(base.AcceptNPC) == "string" then
+			base.TurnInNPC = base.AcceptNPC
+		end
+		if base.Automatic == nil then
+			base.Automatic = M.AUTOMATIC[name] == true
+		end
+		if base.Status == nil then
+			base.Status = (base.Automatic or (type(base.AcceptNPC) == "string" and base.AcceptNPC ~= ""))
+				and "STARTABLE"
+				or "UNRESOLVED_START"
+		end
+		if base.DirectCombatVerified == nil then
+			base.DirectCombatVerified = false
+		end
+		return base
 	end
 
 	if GB.Resolver then
@@ -3785,6 +4266,12 @@ return function(GB)
 		failed = {},
 	}
 
+	local function perfCount(name, n)
+		if GB.Profiler and GB.Profiler.count then
+			GB.Profiler.count(name, n or 1)
+		end
+	end
+
 	local function ev(name)
 		local e = RS:FindFirstChild("Events")
 		return e and e:FindFirstChild(name)
@@ -3885,6 +4372,7 @@ return function(GB)
 			GB.Log.err("ERROR", "StatPoints FireServer " .. tostring(err))
 			return false, err
 		end
+		perfCount("StatInvest", 1)
 		return true
 	end
 
@@ -4044,6 +4532,7 @@ return function(GB)
 			GB.Log.err("ERROR", "GetData Quests " .. tostring(a))
 			return nil, nil
 		end
+		perfCount("GetDataQuests", 1)
 		return a, b
 	end
 
@@ -4076,6 +4565,7 @@ return function(GB)
 			GB.Persist.failRemote("GetStats", a)
 			return nil, nil
 		end
+		perfCount("GetStats", 1)
 		return a, b
 	end
 
@@ -4148,9 +4638,22 @@ return function(GB)
 	local dummyPos = nil
 	local dummyMiss = 0
 	M.lastCandidates = {}
-	local negativeCache = {}
-	local negativeEpoch = 1
+	local negativeCache = {
+		enemy = {},
+		npc = {},
+		any = {},
+		object = {},
+		marker = {},
+		shop = {},
+	}
 	local NEG_TTL = 3.8
+
+	local indexes = {
+		enemy = { keyToInst = {}, instKeys = {}, built = false, root = nil },
+		npc = { keyToInst = {}, instKeys = {}, built = false, root = nil },
+		marker = { keyToInst = {}, instKeys = {}, built = false, root = nil },
+		object = { keyToInst = {}, instKeys = {}, built = false, root = nil },
+	}
 
 	local function pbegin()
 		return GB.Profiler and GB.Profiler.begin and GB.Profiler.begin() or nil
@@ -4168,32 +4671,82 @@ return function(GB)
 		end
 	end
 
-	local function clearNegative()
-		negativeCache = {}
-		negativeEpoch = negativeEpoch + 1
+	local function normalizeKey(v)
+		if type(v) ~= "string" then
+			return ""
+		end
+		local s = string.lower(v)
+		s = s:gsub("[%c\r\n\t]+", " ")
+		s = s:gsub("%s+", " ")
+		s = s:gsub("^%s+", "")
+		s = s:gsub("%s+$", "")
+		return s
 	end
 
-	local function negativeHit(key)
-		local row = negativeCache[key]
-		if type(row) ~= "table" then
-			return false
-		end
-		if row.epoch ~= negativeEpoch then
-			negativeCache[key] = nil
-			return false
-		end
-		if os.clock() >= (row.untilAt or 0) then
-			negativeCache[key] = nil
-			return false
-		end
-		return true
+	local function bucketFor(kind)
+		return negativeCache[kind or "any"] or negativeCache.any
 	end
 
-	local function noteNegative(key, ttl)
-		negativeCache[key] = {
-			untilAt = os.clock() + (ttl or NEG_TTL),
-			epoch = negativeEpoch,
-		}
+	local function negKey(kind, name, island)
+		local base = normalizeKey(name)
+		local isl = normalizeKey(island or "")
+		return tostring(kind or "any") .. ":" .. base .. "|" .. isl
+	end
+
+	local function noteNegative(kind, names, island, ttl)
+		local untilAt = os.clock() + (ttl or NEG_TTL)
+		local bucket = bucketFor(kind)
+		for _, raw in ipairs(names or {}) do
+			local n = normalizeKey(raw)
+			if n ~= "" then
+				bucket[negKey(kind, n, island)] = untilAt
+				if island and island ~= "" then
+					bucket[negKey(kind, n, nil)] = untilAt
+				end
+			end
+		end
+	end
+
+	local function negativeHit(kind, names, island)
+		local bucket = bucketFor(kind)
+		local now = os.clock()
+		for _, raw in ipairs(names or {}) do
+			local n = normalizeKey(raw)
+			if n ~= "" then
+				local k1 = negKey(kind, n, island)
+				local u1 = bucket[k1]
+				if u1 and u1 > now then
+					return true
+				elseif u1 then
+					bucket[k1] = nil
+				end
+				local k2 = negKey(kind, n, nil)
+				local u2 = bucket[k2]
+				if u2 and u2 > now then
+					return true
+				elseif u2 then
+					bucket[k2] = nil
+				end
+			end
+		end
+		return false
+	end
+
+	local function clearNegativeKind(kind)
+		local bucket = bucketFor(kind)
+		for key in pairs(bucket) do
+			bucket[key] = nil
+		end
+	end
+
+	local function invalidateNegativeKindName(kind, name, island)
+		local n = normalizeKey(name)
+		if n == "" then
+			return
+		end
+		local bucket = bucketFor(kind)
+		bucket[negKey(kind, n, island)] = nil
+		bucket[negKey(kind, n, nil)] = nil
 	end
 
 	function M.isDummyName(name)
@@ -4491,7 +5044,7 @@ return function(GB)
 		return nil
 	end
 
-	local function islandOf(inst)
+	islandOf = function(inst)
 		if not inst then
 			return nil
 		end
@@ -4545,11 +5098,184 @@ return function(GB)
 		return roots
 	end
 
+	local islandOf
+
 	function M.baseName(s)
 		if type(s) ~= "string" then
 			return ""
 		end
 		return (string.gsub(s, " %d+$", ""))
+	end
+
+	local function addIndexKey(ix, key, inst)
+		if not (ix and type(key) == "string" and key ~= "" and inst) then
+			return
+		end
+		local list = ix.keyToInst[key]
+		if not list then
+			list = {}
+			ix.keyToInst[key] = list
+		end
+		for i = 1, #list do
+			if list[i] == inst then
+				return
+			end
+		end
+		list[#list + 1] = inst
+	end
+
+	local function removeIndexKey(ix, key, inst)
+		local list = ix and ix.keyToInst and ix.keyToInst[key]
+		if not list then
+			return
+		end
+		for i = #list, 1, -1 do
+			if list[i] == inst or not list[i] or not list[i].Parent then
+				table.remove(list, i)
+			end
+		end
+		if #list == 0 then
+			ix.keyToInst[key] = nil
+		end
+	end
+
+	local function clearIndex(ix)
+		if not ix then
+			return
+		end
+		ix.keyToInst = {}
+		ix.instKeys = {}
+	end
+
+	local function readTags(inst)
+		local ok, tags = pcall(CS.GetTags, CS, inst)
+		if ok and type(tags) == "table" then
+			return tags
+		end
+		return {}
+	end
+
+	local function semanticNames(inst)
+		local out = {}
+		local seen = {}
+		local function push(name)
+			if type(name) ~= "string" or name == "" then
+				return
+			end
+			local norm = normalizeKey(name)
+			if norm == "" or seen[norm] then
+				return
+			end
+			seen[norm] = true
+			out[#out + 1] = norm
+		end
+		push(inst.Name)
+		push(M.baseName(inst.Name))
+		local disp = M.displayName(inst)
+		push(disp)
+		push(M.baseName(disp or ""))
+		local npcName = inst:GetAttribute("NPCName")
+		if type(npcName) == "string" then
+			push(npcName)
+			push(M.baseName(npcName))
+		end
+		local attrDisp = inst:GetAttribute("DisplayName")
+		if type(attrDisp) == "string" then
+			push(attrDisp)
+			push(M.baseName(attrDisp))
+		end
+		for _, tag in ipairs(readTags(inst)) do
+			push(tag)
+		end
+		return out
+	end
+
+	local function indexAddInstance(kind, inst)
+		local ix = indexes[kind]
+		if not ix or not inst then
+			return
+		end
+		local root = climbRoot(inst) or inst
+		if not (root and root.Parent) then
+			return
+		end
+		local useKind = (kind == "enemy") and "enemy" or "npc"
+		if kind == "marker" or kind == "object" then
+			useKind = "any"
+		end
+		if not usable(root, useKind) then
+			return
+		end
+		local old = ix.instKeys[root]
+		if old then
+			for _, key in ipairs(old) do
+				removeIndexKey(ix, key, root)
+			end
+		end
+		local keys = semanticNames(root)
+		ix.instKeys[root] = keys
+		for _, key in ipairs(keys) do
+			addIndexKey(ix, key, root)
+		end
+	end
+
+	local function indexRemoveInstance(kind, inst)
+		local ix = indexes[kind]
+		if not ix or not inst then
+			return
+		end
+		local root = climbRoot(inst) or inst
+		local keys = ix.instKeys[root]
+		if not keys then
+			return
+		end
+		for _, key in ipairs(keys) do
+			removeIndexKey(ix, key, root)
+		end
+		ix.instKeys[root] = nil
+	end
+
+	local function indexQuery(kind, names, opts)
+		local ix = indexes[kind]
+		if not ix then
+			return {}
+		end
+		opts = opts or {}
+		local out = {}
+		local seen = {}
+		for _, raw in ipairs(names or {}) do
+			local key = normalizeKey(raw)
+			if key ~= "" then
+				local list = ix.keyToInst[key]
+				if list then
+					for i = #list, 1, -1 do
+						local inst = list[i]
+						if not (inst and inst.Parent) then
+							table.remove(list, i)
+						elseif not seen[inst] then
+							if (not opts.Island) or islandOf(inst) == opts.Island then
+								seen[inst] = true
+								out[#out + 1] = inst
+							end
+						end
+					end
+					if #list == 0 then
+						ix.keyToInst[key] = nil
+					end
+				end
+			end
+		end
+		return out
+	end
+
+	local function invalidateNegativeForInstance(kind, inst)
+		if not inst then
+			return
+		end
+		local island = islandOf(inst)
+		for _, key in ipairs(semanticNames(inst)) do
+			invalidateNegativeKindName(kind, key, island)
+		end
 	end
 
 	function M.isCorruptOfficer(inst)
@@ -4631,13 +5357,13 @@ return function(GB)
 		return false
 	end
 
-	local function firstWorldTagged(tag)
+	local function firstWorldTagged(tag, kind)
 		local ok, tagged = pcall(CS.GetTagged, CS, tag)
 		if not ok or type(tagged) ~= "table" then
 			return nil
 		end
 		for _, t in ipairs(tagged) do
-			if usable(t, "npc") then
+			if usable(t, kind or "npc") then
 				return climbRoot(t)
 			end
 		end
@@ -4704,6 +5430,139 @@ return function(GB)
 			s = s - 200
 		end
 		return s
+	end
+
+	local function walkDepth(root, maxDepth, fn)
+		if not root then
+			return
+		end
+		local queue = { { inst = root, depth = 0 } }
+		local head = 1
+		while head <= #queue do
+			local row = queue[head]
+			head = head + 1
+			local inst = row.inst
+			local depth = row.depth
+			if inst ~= root then
+				fn(inst, depth)
+			end
+			if depth < maxDepth then
+				for _, ch in ipairs(inst:GetChildren()) do
+					queue[#queue + 1] = { inst = ch, depth = depth + 1 }
+				end
+			end
+		end
+	end
+
+	local function indexBuildEnemy()
+		local t0 = pbegin()
+		clearIndex(indexes.enemy)
+		local ents = workspace:FindFirstChild("Entities")
+		indexes.enemy.root = ents
+		if ents then
+			for _, ch in ipairs(ents:GetChildren()) do
+				indexAddInstance("enemy", ch)
+			end
+		end
+		indexes.enemy.built = true
+		perfCount("EnemyIndexBuild", 1)
+		pdone("Resolver.enemyIndexBuild", t0)
+	end
+
+	local function indexBuildNpc()
+		local t0 = pbegin()
+		clearIndex(indexes.npc)
+		local aa = workspace:FindFirstChild("AA IMPORTANT")
+		local dlg = (aa and aa:FindFirstChild("DialogueNPCs")) or workspace:FindFirstChild("DialogueNPCs")
+		indexes.npc.root = dlg
+		if dlg then
+			for _, island in ipairs(dlg:GetChildren()) do
+				if island:IsA("Folder") then
+					for _, npc in ipairs(island:GetChildren()) do
+						indexAddInstance("npc", npc)
+					end
+				else
+					indexAddInstance("npc", island)
+				end
+			end
+		end
+		indexes.npc.built = true
+		perfCount("NPCIndexBuild", 1)
+		pdone("Resolver.npcIndexBuild", t0)
+	end
+
+	local function indexBuildMarker()
+		local t0 = pbegin()
+		clearIndex(indexes.marker)
+		local aa = workspace:FindFirstChild("AA IMPORTANT")
+		indexes.marker.root = aa
+		if aa then
+			for _, folderName in ipairs({ "Markers", "NPCAreas", "PointsOfInterest" }) do
+				local folder = aa:FindFirstChild(folderName)
+				if folder then
+					walkDepth(folder, 3, function(inst)
+						indexAddInstance("marker", inst)
+					end)
+				end
+			end
+		end
+		indexes.marker.built = true
+		perfCount("MarkerIndexBuild", 1)
+		pdone("Resolver.markerIndexBuild", t0)
+	end
+
+	local function indexBuildObject()
+		local t0 = pbegin()
+		clearIndex(indexes.object)
+		local roots = {
+			workspace:FindFirstChild("Afuaru's Chests"),
+			workspace:FindFirstChild("DialogueNPCs"),
+			workspace:FindFirstChild("Islands"),
+		}
+		for _, root in ipairs(roots) do
+			if root then
+				walkDepth(root, 2, function(inst)
+					if inst:HasTag("Interactable") or inst:HasTag("ClientInteractable") then
+						indexAddInstance("object", inst)
+					end
+				end)
+			end
+		end
+		indexes.object.built = true
+		perfCount("ObjectIndexBuild", 1)
+		pdone("Resolver.objectIndexBuild", t0)
+	end
+
+	local function ensureIndex(kind)
+		local ix = indexes[kind]
+		if not ix then
+			return
+		end
+		if kind == "enemy" then
+			local ents = workspace:FindFirstChild("Entities")
+			if (not ix.built) or ix.root ~= ents then
+				indexBuildEnemy()
+			end
+			return
+		end
+		if kind == "npc" then
+			local aa = workspace:FindFirstChild("AA IMPORTANT")
+			local dlg = (aa and aa:FindFirstChild("DialogueNPCs")) or workspace:FindFirstChild("DialogueNPCs")
+			if (not ix.built) or ix.root ~= dlg then
+				indexBuildNpc()
+			end
+			return
+		end
+		if kind == "marker" then
+			local aa = workspace:FindFirstChild("AA IMPORTANT")
+			if (not ix.built) or ix.root ~= aa then
+				indexBuildMarker()
+			end
+			return
+		end
+		if kind == "object" and not ix.built then
+			indexBuildObject()
+		end
 	end
 
 	function M.dumpNearby(request, opts)
@@ -4806,14 +5665,14 @@ return function(GB)
 		end
 		local names = M.namesFor(request, opts)
 		local kind = opts.ExpectedRole or opts.kind or "npc"
-		local cacheKey = "res:" .. kind .. ":" .. table.concat(names, "|")
+		local cacheKey = "res:" .. kind .. ":" .. table.concat(names, "|") .. "|" .. tostring(opts.Island or "")
 		local hit = GB.Cache.get(cacheKey, opts.deep and 0.4 or 2.0)
 		if hit and hit.Parent and usable(hit, kind) then
 			local out = M.pack(hit, request)
 			pdone("Resolver.resolve", t0)
 			return out
 		end
-		if not opts.deep and negativeHit(cacheKey) then
+		if not opts.deep and negativeHit(kind, names, opts.Island) then
 			pdone("Resolver.resolve", t0)
 			return nil
 		end
@@ -4836,18 +5695,42 @@ return function(GB)
 			end
 		end
 
+		local function considerFromIndex(indexKind)
+			ensureIndex(indexKind)
+			for _, inst in ipairs(indexQuery(indexKind, names, opts)) do
+				consider(inst)
+			end
+		end
+
+		if kind == "enemy" then
+			considerFromIndex("enemy")
+		elseif kind == "npc" then
+			considerFromIndex("npc")
+		elseif kind == "marker" then
+			considerFromIndex("marker")
+		elseif kind == "object" or kind == "shop" or kind == "ore" or kind == "chest" then
+			considerFromIndex("object")
+			considerFromIndex("marker")
+		else
+			considerFromIndex("npc")
+			considerFromIndex("marker")
+			considerFromIndex("object")
+			considerFromIndex("enemy")
+		end
+
 		for _, n in ipairs(names) do
-			local tagged = firstWorldTagged(n)
+			local tagged = firstWorldTagged(n, kind == "enemy" and "enemy" or "any")
 			if tagged then
 				consider(tagged)
 			end
 		end
 
 		local ents = workspace:FindFirstChild("Entities")
-		if ents then
+		if ents and (kind == "enemy" or kind == "any") then
 			for _, n in ipairs(names) do
 				local c = ents:FindFirstChild(n)
 				if c then
+					indexAddInstance("enemy", c)
 					consider(c)
 				end
 			end
@@ -4855,23 +5738,27 @@ return function(GB)
 
 		local aa = workspace:FindFirstChild("AA IMPORTANT")
 		local dlg = (aa and aa:FindFirstChild("DialogueNPCs")) or workspace:FindFirstChild("DialogueNPCs")
-		if dlg then
+		if dlg and (kind == "npc" or kind == "any") then
 			if opts.Island then
 				local folder = dlg:FindFirstChild(opts.Island)
 				if folder then
 					for _, c in ipairs(folder:GetChildren()) do
+						indexAddInstance("npc", c)
 						consider(c)
 					end
 				end
 			end
 			for _, islandFolder in ipairs(dlg:GetChildren()) do
 				for _, c in ipairs(islandFolder:GetChildren()) do
+					indexAddInstance("npc", c)
 					consider(c)
 				end
 			end
 		end
 
-		if not best or opts.deep then
+		local allowDeep = opts.deep == true
+			or ((GB.Config and GB.Config.DebugResolverDeepScan == true) and opts.allowDiagnosticDeep == true)
+		if (not best) and allowDeep then
 			scanRoots(function(d)
 				if d:IsA("Model") or d:IsA("Folder") or d:IsA("BasePart") then
 					consider(d)
@@ -4882,7 +5769,9 @@ return function(GB)
 
 		if best then
 			GB.Cache.set(cacheKey, best)
-			negativeCache[cacheKey] = nil
+			for _, n in ipairs(names) do
+				invalidateNegativeKindName(kind, n, opts.Island)
+			end
 			local pack = M.pack(best, request)
 			GB.Log.log("RESOLVE", string.format("%s -> %s", request, best:GetFullName()))
 			pdone("Resolver.resolve", t0)
@@ -4895,7 +5784,7 @@ return function(GB)
 			missLog[mk] = now
 			GB.Log.warn("ERROR", "resolve miss " .. table.concat(names, " / "))
 		end
-		noteNegative(cacheKey, opts.negTTL or NEG_TTL)
+		noteNegative(kind, names, opts.Island, opts.negTTL or NEG_TTL)
 		pdone("Resolver.resolve", t0)
 		return nil
 	end
@@ -4934,8 +5823,8 @@ return function(GB)
 		local spec = GB.QuestData and GB.QuestData.objectSpec and GB.QuestData.objectSpec(name) or nil
 		if not spec then
 			return M.resolve(name, {
-				kind = "any",
-				ExpectedRole = "any",
+				kind = "object",
+				ExpectedRole = "object",
 				Island = opts.Island,
 				deep = opts.deep,
 			})
@@ -4949,7 +5838,7 @@ return function(GB)
 		end
 		if type(spec.Tags) == "table" then
 			for _, tag in ipairs(spec.Tags) do
-				local tagged = firstWorldTagged(tag)
+				local tagged = firstWorldTagged(tag, "any")
 				if tagged then
 					local root = climbRoot(tagged) or tagged
 					if (not spec.Island) or islandOf(root) == spec.Island then
@@ -4959,8 +5848,8 @@ return function(GB)
 			end
 		end
 		local pack = M.resolve(name, {
-			kind = "any",
-			ExpectedRole = "any",
+			kind = "object",
+			ExpectedRole = "object",
 			Island = spec.Island or opts.Island,
 			deep = opts.deep,
 		})
@@ -4990,6 +5879,18 @@ return function(GB)
 		return M.resolve(name, opts)
 	end
 
+	function M.resolveMarker(name, opts)
+		opts = opts or {}
+		opts.ExpectedRole = opts.ExpectedRole or "marker"
+		opts.kind = "marker"
+		return M.resolve(name, opts)
+	end
+
+	function M.marker(name, opts)
+		local pack = M.resolveMarker(name, opts)
+		return pack and pack.Instance
+	end
+
 	local _resolveObjectRaw = M.resolveObject
 	function M.resolveObject(name, opts)
 		local t0 = pbegin()
@@ -5013,8 +5914,10 @@ return function(GB)
 	end
 
 	function M.enemies(name)
+		local t0 = pbegin()
 		local out = {}
 		if name == "\\" or name == "" then
+			pdone("Resolver.EnemyIndexLookup", t0)
 			return out
 		end
 		if M.isDummyName(name) then
@@ -5022,6 +5925,7 @@ return function(GB)
 			if d then
 				out[1] = d
 			end
+			pdone("Resolver.EnemyIndexLookup", t0)
 			return out
 		end
 		local origin
@@ -5050,26 +5954,19 @@ return function(GB)
 			local d = (origin and pos) and (pos - origin).Magnitude or 1e9
 			out[#out + 1] = { inst = root, dist = d }
 		end
-		for _, n in ipairs(names) do
-			local ok, tagged = pcall(CS.GetTagged, CS, n)
-			if ok and type(tagged) == "table" then
-				for _, inst in ipairs(tagged) do
-					consider(inst)
-				end
-			end
-		end
-		local ents = workspace:FindFirstChild("Entities")
-		if ents then
-			for _, c in ipairs(ents:GetChildren()) do
-				if nameHit(c, names) then
-					consider(c)
-				end
-			end
+		ensureIndex("enemy")
+		for _, inst in ipairs(indexQuery("enemy", names, {})) do
+			consider(inst)
 		end
 		if #out == 0 then
-			local pack = M.resolve(name, { kind = "enemy", ExpectedRole = "enemy" })
-			if pack and pack.Instance then
-				consider(pack.Instance)
+			local ents = workspace:FindFirstChild("Entities")
+			if ents then
+				for _, c in ipairs(ents:GetChildren()) do
+					if nameHit(c, names) then
+						indexAddInstance("enemy", c)
+						consider(c)
+					end
+				end
 			end
 		end
 		table.sort(out, function(a, b)
@@ -5079,6 +5976,7 @@ return function(GB)
 		for i, row in ipairs(out) do
 			flat[i] = row.inst
 		end
+		pdone("Resolver.EnemyIndexLookup", t0)
 		return flat
 	end
 
@@ -5147,26 +6045,14 @@ return function(GB)
 			GB.Cache.set(cacheKey, root)
 			return root
 		end
-		local function isShop(d)
-			if d:IsA("ProximityPrompt") and d.Name == "Shop Item" then
-				local p = d.Parent
-				local item = p and (p:GetAttribute("Item") or p.Name)
-				local climb = M.interactableOf and M.interactableOf(d)
-				return item == name or (p and p.Name == name) or (climb and climb.Name == name)
+		ensureIndex("object")
+		local names = M.namesFor(name, { kind = "object", ExpectedRole = "object" })
+		for _, inst in ipairs(indexQuery("object", names, {})) do
+			if inst:GetAttribute("Interaction") == "Shop Item" or M.prompt(inst, "Shop Item") then
+				local root = M.interactableOf and M.interactableOf(inst) or inst
+				GB.Cache.set(cacheKey, root)
+				return root
 			end
-			if d:GetAttribute("Interaction") == "Shop Item" then
-				return (d:GetAttribute("Item") or d.Name) == name
-			end
-			return false
-		end
-		local found = scanRoots(isShop, 6)
-		if found[1] then
-			local part = found[1]
-			if part:IsA("ProximityPrompt") then
-				part = (M.interactableOf and M.interactableOf(part)) or part.Parent
-			end
-			GB.Cache.set(cacheKey, part)
-			return part
 		end
 		return M.byName(name, "shop")
 	end
@@ -5184,7 +6070,7 @@ return function(GB)
 		if cfg then
 			return cfg
 		end
-		perfCount("ResolverDeepScan", 1)
+		perfCount("ResolverLocalScan", 1)
 		for _, d in ipairs(model:GetDescendants()) do
 			if d:IsA("Configuration") then
 				return d
@@ -5197,7 +6083,7 @@ return function(GB)
 		if not model then
 			return nil
 		end
-		perfCount("ResolverDeepScan", 1)
+		perfCount("ResolverLocalScan", 1)
 		for _, d in ipairs(model:GetDescendants()) do
 			if d:IsA("ProximityPrompt") then
 				if not interaction or d.Name == interaction or d:GetAttribute("Interaction") == interaction then
@@ -5306,38 +6192,129 @@ return function(GB)
 		return M.byName("Afuaru's Chests", "chest")
 	end
 
-	local function watchInvalidate(root)
-		if not (root and root.Parent) then
+	local function dropConns(ix)
+		if not (ix and ix.conns) then
 			return
 		end
-		GB.conns[#GB.conns + 1] = root.ChildAdded:Connect(function()
-			clearNegative()
+		for _, conn in ipairs(ix.conns) do
+			pcall(function()
+				conn:Disconnect()
+			end)
+		end
+		ix.conns = {}
+	end
+
+	local function hookEnemyIndex()
+		local ix = indexes.enemy
+		local root = workspace:FindFirstChild("Entities")
+		if ix.root == root and ix.conns then
+			return
+		end
+		dropConns(ix)
+		ix.root = root
+		ix.conns = {}
+		indexBuildEnemy()
+		if not root then
+			return
+		end
+		ix.conns[#ix.conns + 1] = root.ChildAdded:Connect(function(ch)
+			indexAddInstance("enemy", ch)
+			invalidateNegativeForInstance("enemy", ch)
 		end)
-		GB.conns[#GB.conns + 1] = root.ChildRemoved:Connect(function()
-			clearNegative()
+		ix.conns[#ix.conns + 1] = root.ChildRemoved:Connect(function(ch)
+			indexRemoveInstance("enemy", ch)
 		end)
 	end
 
-	local function hookNegativeInvalidation()
-		watchInvalidate(workspace:FindFirstChild("Entities"))
-		watchInvalidate(workspace:FindFirstChild("Islands"))
+	local function hookNpcIndex()
+		local ix = indexes.npc
 		local aa = workspace:FindFirstChild("AA IMPORTANT")
-		if aa then
-			watchInvalidate(aa)
-			watchInvalidate(aa:FindFirstChild("DialogueNPCs"))
+		local root = (aa and aa:FindFirstChild("DialogueNPCs")) or workspace:FindFirstChild("DialogueNPCs")
+		if ix.root == root and ix.conns then
+			return
 		end
-		GB.conns[#GB.conns + 1] = workspace.ChildAdded:Connect(function(ch)
-			if ch.Name == "Entities" or ch.Name == "Islands" or ch.Name == "AA IMPORTANT" then
-				clearNegative()
-				watchInvalidate(ch)
-				if ch.Name == "AA IMPORTANT" then
-					watchInvalidate(ch:FindFirstChild("DialogueNPCs"))
+		dropConns(ix)
+		ix.root = root
+		ix.conns = {}
+		indexBuildNpc()
+		if not root then
+			return
+		end
+		ix.conns[#ix.conns + 1] = root.DescendantAdded:Connect(function(ch)
+			indexAddInstance("npc", ch)
+			invalidateNegativeForInstance("npc", ch)
+		end)
+		ix.conns[#ix.conns + 1] = root.DescendantRemoving:Connect(function(ch)
+			indexRemoveInstance("npc", ch)
+		end)
+	end
+
+	local function hookMarkerIndex()
+		local ix = indexes.marker
+		local aa = workspace:FindFirstChild("AA IMPORTANT")
+		if ix.root == aa and ix.conns then
+			return
+		end
+		dropConns(ix)
+		ix.root = aa
+		ix.conns = {}
+		indexBuildMarker()
+		if not aa then
+			return
+		end
+		local function isMarkerDesc(inst)
+			local cur = inst
+			while cur and cur ~= aa do
+				local n = cur.Name
+				if n == "Markers" or n == "NPCAreas" or n == "PointsOfInterest" then
+					return true
 				end
+				cur = cur.Parent
+			end
+			return false
+		end
+		ix.conns[#ix.conns + 1] = aa.DescendantAdded:Connect(function(ch)
+			if isMarkerDesc(ch) then
+				indexAddInstance("marker", ch)
+				invalidateNegativeForInstance("marker", ch)
+			end
+		end)
+		ix.conns[#ix.conns + 1] = aa.DescendantRemoving:Connect(function(ch)
+			if isMarkerDesc(ch) then
+				indexRemoveInstance("marker", ch)
 			end
 		end)
 	end
 
-	hookNegativeInvalidation()
+	local function hookResolverInvalidation()
+		hookEnemyIndex()
+		hookNpcIndex()
+		hookMarkerIndex()
+		GB.conns[#GB.conns + 1] = workspace.ChildAdded:Connect(function(ch)
+			if ch.Name == "Entities" then
+				hookEnemyIndex()
+			elseif ch.Name == "AA IMPORTANT" or ch.Name == "DialogueNPCs" then
+				hookNpcIndex()
+				hookMarkerIndex()
+			elseif ch.Name == "Islands" then
+				indexes.object.built = false
+				clearNegativeKind("object")
+			end
+		end)
+		GB.conns[#GB.conns + 1] = workspace.ChildRemoved:Connect(function(ch)
+			if ch.Name == "Entities" then
+				hookEnemyIndex()
+			elseif ch.Name == "AA IMPORTANT" or ch.Name == "DialogueNPCs" then
+				hookNpcIndex()
+				hookMarkerIndex()
+			elseif ch.Name == "Islands" then
+				indexes.object.built = false
+				clearNegativeKind("object")
+			end
+		end)
+	end
+
+	hookResolverInvalidation()
 
 	return M
 end
@@ -6577,8 +7554,40 @@ return function(GB)
 	local M = {
 		goal = nil,
 		task = nil,
+		owner = "IDLE",
 	}
 	local logDoing
+
+	local function setOwner(owner, target)
+		owner = owner or "IDLE"
+		local key = tostring(owner) .. "|" .. tostring(target or "-")
+		if M._ownerKey == key then
+			return
+		end
+		M._ownerKey = key
+		M.owner = owner
+		GB.Log.log("STATE", string.format("owner=%s target=%s", tostring(owner), tostring(target or "-")))
+	end
+
+	local function ownerForTask(taskName)
+		local t = tostring(taskName or "")
+		if string.find(t, "quest_accept:", 1, true) then
+			return "QUEST_ACCEPT"
+		end
+		if string.find(t, "farm_direct:", 1, true) then
+			return "COMBAT"
+		end
+		if string.find(t, "tutorial", 1, true) then
+			return "TUTORIAL"
+		end
+		if string.find(t, "recovery", 1, true) then
+			return "RECOVERY"
+		end
+		if string.find(t, "quest:", 1, true) or string.find(t, "story:", 1, true) or string.find(t, "farm:", 1, true) then
+			return "QUEST_OBJECTIVE"
+		end
+		return "IDLE"
+	end
 
 	local function pbegin()
 		return GB.Profiler and GB.Profiler.begin and GB.Profiler.begin() or nil
@@ -6597,6 +7606,7 @@ return function(GB)
 			GB.Log.log("STATE", "task " .. tostring(name))
 		end
 		M.task = name
+		setOwner(ownerForTask(name), name)
 	end
 
 	local function picker()
@@ -6642,43 +7652,38 @@ return function(GB)
 		end
 	end
 
-	local function repeatDirectTarget(name)
-		local stages = GB.QuestSpecs and GB.QuestSpecs.STAGES
-		if type(stages) ~= "table" then
-			return nil
+	local function repeatStartability(name)
+		local start = GB.QuestData and GB.QuestData.repeatStartSpec and GB.QuestData.repeatStartSpec(name) or nil
+		local qs = GB.Quest and GB.Quest.questState and GB.Quest.questState(name) or nil
+		if qs and qs.IsAccepted then
+			return {
+				Mode = "quest",
+				Status = "ACTIVE",
+				StartSpec = start,
+			}
 		end
-		local bestTarget, bestStage
-		for _, row in pairs(stages) do
-			if type(row) == "table" and row.quest == name then
-				local target = row.target
-				local obj = tostring(row.objective or "")
-				local goal = tostring(row.goal or "")
-				local isCombat = obj == "Kill" or obj == "Defeat" or obj == "Hit" or obj == "Shoot" or goal == "Kill"
-				if isCombat and type(target) == "string" and target ~= "" then
-					local st = tonumber(row.stage) or 9999
-					if not bestTarget or st < bestStage then
-						bestTarget = target
-						bestStage = st
-					end
-				end
-			end
+		local auto = start and start.Automatic == true
+		local hasNpc = start and type(start.AcceptNPC) == "string" and start.AcceptNPC ~= ""
+		local hasOther = start and type(start.OtherVerifiedStartMethod) == "string" and start.OtherVerifiedStartMethod ~= ""
+		if auto or hasNpc or hasOther then
+			return {
+				Mode = "quest",
+				Status = "STARTABLE",
+				StartSpec = start,
+			}
 		end
-		return bestTarget
-	end
-
-	local function repeatMode(name)
-		if not (GB.Quest and GB.Quest.questState) then
-			return "quest", nil
+		if start and start.DirectCombatVerified == true then
+			return {
+				Mode = "direct",
+				Status = "DIRECT_VERIFIED",
+				StartSpec = start,
+			}
 		end
-		local qs = GB.Quest.questState(name)
-		if qs and (qs.IsAccepted or qs.Automatic or (type(qs.NPC) == "string" and qs.NPC ~= "")) then
-			return "quest", nil
-		end
-		local target = repeatDirectTarget(name)
-		if target then
-			return "direct", target
-		end
-		return nil, nil
+		return {
+			Mode = nil,
+			Status = "UNRESOLVED_START",
+			StartSpec = start,
+		}
 	end
 
 	local function bestRepeat(island, lv)
@@ -6687,35 +7692,41 @@ return function(GB)
 		for _, e in ipairs(GB.QuestData.REPEATS) do
 			if e.island == island and lv >= (e.accept or 0) and lv <= (e.full_until or 999) then
 				if GB.QuestData.prereqOk(e.prereq) then
-					local mode, target = repeatMode(e.name)
-					if mode == "quest" then
+					local start = repeatStartability(e.name)
+					if start.Mode == "quest" then
 						if not bestQuest or e.exp > bestQuest.exp then
-							bestQuest = e
+							bestQuest = {
+								Name = e.name,
+								Mode = "quest",
+								Entry = e,
+								StartSpec = start.StartSpec,
+							}
 						end
-					elseif mode == "direct" and target then
+					elseif start.Mode == "direct" then
 						if not bestDirect or e.exp > bestDirect.exp then
 							bestDirect = {
-								name = e.name,
-								exp = e.exp,
-								target = target,
+								Name = e.name,
+								Mode = "direct",
+								Entry = e,
+								StartSpec = start.StartSpec,
 							}
+						end
+					elseif start.Status == "UNRESOLVED_START" then
+						local key = "repeat_unresolved:" .. tostring(e.name)
+						if M._repeatUnresolvedKey ~= key or os.clock() - (M._repeatUnresolvedAt or 0) > 25 then
+							M._repeatUnresolvedKey = key
+							M._repeatUnresolvedAt = os.clock()
+							GB.Log.warn("PLANNER", "UNRESOLVED_START " .. tostring(e.name))
 						end
 					end
 				end
 			end
 		end
 		if bestQuest then
-			return {
-				Name = bestQuest.name,
-				Mode = "quest",
-			}
+			return bestQuest
 		end
 		if bestDirect then
-			return {
-				Name = bestDirect.name,
-				Mode = "direct",
-				Target = bestDirect.target,
-			}
+			return bestDirect
 		end
 		return nil
 	end
@@ -6769,7 +7780,11 @@ return function(GB)
 	local function runFarmGoal(snap, why)
 		local rep = bestRepeat(snap.CurrentIsland, snap.Level or 0)
 		if not rep then
-			return false
+			return {
+				attempted = false,
+				progressed = false,
+				reason = "no_repeat",
+			}
 		end
 		local repName = rep.Name or tostring(rep)
 		local blockers = blockerList()
@@ -6780,46 +7795,91 @@ return function(GB)
 				break
 			end
 		end
-		if rep.Mode == "direct" and rep.Target then
-			note = note .. " direct:" .. tostring(rep.Target)
-		end
 		if M._farmNote ~= (repName .. "|" .. note) then
 			M._farmNote = repName .. "|" .. note
 			GB.Log.log("PLANNER", "farm goal " .. note)
 			GB.Log.log("PLANNER", "next=" .. tostring(repName))
 		end
-		M.goal = { Type = "FARM", Quest = repName, Note = note, Mode = rep.Mode, Target = rep.Target, At = os.clock() }
-		if rep.Mode == "direct" and rep.Target and GB.Combat then
-			setTask("farm_direct:" .. tostring(rep.Target))
-			logDoing("farm_direct", rep.Target)
+		M.goal = { Type = "FARM", Quest = repName, Note = note, Mode = rep.Mode, At = os.clock() }
+		if rep.Mode == "direct" and rep.StartSpec and rep.StartSpec.DirectCombatVerified and GB.Combat then
+			local target = rep.StartSpec.DirectTarget
+			if type(target) ~= "string" or target == "" then
+				return {
+					attempted = false,
+					progressed = false,
+					reason = "direct_target_missing",
+				}
+			end
+			setTask("farm_direct:" .. tostring(target))
+			logDoing("farm_direct", target)
+			setOwner("COMBAT", target)
 			local ok = false
 			if GB.Combat.huntUntilDead then
-				ok = select(1, GB.Combat.huntUntilDead(rep.Target, 16))
+				ok = select(1, GB.Combat.huntUntilDead(target, 16))
 			elseif GB.Combat.attack then
-				ok = GB.Combat.attack(rep.Target)
+				ok = GB.Combat.attack(target)
 			end
 			if not ok then
-				GB.Log.warn("PLANNER", "direct farm miss " .. tostring(rep.Target))
+				GB.Log.warn("PLANNER", "direct farm miss " .. tostring(target))
 			end
-			return true
+			return {
+				attempted = true,
+				progressed = ok == true,
+				reason = ok and "direct_progress" or "direct_miss",
+				quest = repName,
+				target = target,
+			}
 		end
-		setTask("farm:" .. repName)
-		logDoing("farm", repName)
-		local ok = GB.Quest.doLive(repName)
-		if not ok then
-			local fallback = repeatDirectTarget(repName)
-			if fallback and GB.Combat then
-				setTask("farm_direct:" .. tostring(fallback))
-				logDoing("farm_direct", fallback)
-				GB.Log.warn("PLANNER", "fallback direct farm " .. tostring(repName) .. " -> " .. tostring(fallback))
-				if GB.Combat.huntUntilDead then
-					GB.Combat.huntUntilDead(fallback, 16)
-				elseif GB.Combat.attack then
-					GB.Combat.attack(fallback)
-				end
+		if GB.Quest and GB.Quest.dialogueOpen and GB.Quest.dialogueOpen() then
+			local acceptNpc = rep.StartSpec and rep.StartSpec.AcceptNPC or repName
+			setTask("quest_accept:" .. tostring(acceptNpc))
+			logDoing("quest_accept", acceptNpc)
+			setOwner("QUEST_ACCEPT", acceptNpc)
+			local row
+			if GB.Quest.doLiveResult then
+				row = GB.Quest.doLiveResult(repName)
+			else
+				local ok = GB.Quest.doLive(repName)
+				row = { attempted = true, progressed = ok == true, reason = ok and "quest_progress" or "quest_pending" }
 			end
+			return {
+				attempted = row.attempted ~= false,
+				progressed = row.progressed == true,
+				reason = row.reason or "dialogue_open",
+				quest = repName,
+			}
 		end
-		return true
+		local live = GB.Quest and GB.Quest.questState and GB.Quest.questState(repName) or nil
+		local acceptNpc = rep.StartSpec and rep.StartSpec.AcceptNPC
+		if live and not live.IsAccepted and type(acceptNpc) == "string" and acceptNpc ~= "" then
+			setTask("quest_accept:" .. tostring(acceptNpc))
+			logDoing("quest_accept", acceptNpc)
+			setOwner("QUEST_ACCEPT", acceptNpc)
+		else
+			setTask("farm:" .. repName)
+			logDoing("farm", repName)
+			setOwner("QUEST_OBJECTIVE", repName)
+		end
+		local row
+		if GB.Quest.doLiveResult then
+			row = GB.Quest.doLiveResult(repName)
+		else
+			local ok = GB.Quest.doLive(repName)
+			row = { attempted = true, progressed = ok == true, reason = ok and "quest_progress" or "quest_pending" }
+		end
+		if row.progressed ~= true and rep.StartSpec and rep.StartSpec.Status == "STARTABLE" then
+			GB.Log.warn("PLANNER", "farm quest pending accept/credit " .. tostring(repName))
+		end
+		return {
+			attempted = row.attempted ~= false,
+			progressed = row.progressed == true,
+			reason = row.reason or (row.progressed and "quest_progress" or "quest_not_progressed"),
+			quest = repName,
+		}
+	end
+
+	local function farmHandled(result)
+		return type(result) == "table" and result.attempted == true
 	end
 
 	function M.optionalOk()
@@ -7019,7 +8079,7 @@ return function(GB)
 				afterQuest(nextQuest)
 				return true
 			end
-			if runFarmGoal(snap, reason or "no_ready_active") then
+			if farmHandled(runFarmGoal(snap, reason or "no_ready_active")) then
 				return true
 			end
 			return false
@@ -7044,7 +8104,7 @@ return function(GB)
 				local gated = obj and obj.Type == "Required" and obj.TargetName == "Level"
 				local need = gated and (obj.Amount or GB.QuestData.needLevel(cur)) or 0
 				if gated and (snap.Level or 0) < need then
-					if runFarmGoal(snap, "FarmUntilLevel(" .. tostring(need) .. ")") then
+					if farmHandled(runFarmGoal(snap, "FarmUntilLevel(" .. tostring(need) .. ")")) then
 						return
 					end
 					setTask("wait_level:" .. cur)
@@ -7110,7 +8170,7 @@ return function(GB)
 			afterQuest(readyFallback)
 			return
 		end
-		if #blockerList() > 0 and runFarmGoal(snap, "active_blocked") then
+		if #blockerList() > 0 and farmHandled(runFarmGoal(snap, "active_blocked")) then
 			return
 		end
 
@@ -7128,7 +8188,7 @@ return function(GB)
 		local story = nextStory(island, lv)
 		if story then
 			if lv < GB.QuestData.needLevel(story) then
-				if runFarmGoal(snap, "FarmUntilLevel(" .. tostring(GB.QuestData.needLevel(story)) .. ")") then
+				if farmHandled(runFarmGoal(snap, "FarmUntilLevel(" .. tostring(GB.QuestData.needLevel(story)) .. ")")) then
 					return
 				end
 				setTask("wait_level:" .. story)
@@ -7144,7 +8204,7 @@ return function(GB)
 
 		local rep = bestRepeat(island, lv)
 		if rep then
-			runFarmGoal(snap, "story_idle")
+			farmHandled(runFarmGoal(snap, "story_idle"))
 			return
 		end
 
@@ -8431,6 +9491,8 @@ return function(GB)
 	local TARGET_MOVED = 3.5
 	local DEAD_TTL = 12
 	local SWING_RANGE_PAD = 1.8
+	local APPROACH_SWING_PAD = 10
+	local APPROACH_SWING_GAP = 0.95
 	local QUEST_CHECK_MIN_GAP = 0.32
 	local QUEST_CHECK_SAFETY = 2.8
 
@@ -8839,7 +9901,43 @@ return function(GB)
 		end
 	end
 
-	function M.findTarget(name, questName)
+	local function markerForPlan(plan)
+		if type(plan) ~= "table" then
+			return nil
+		end
+		local marker = plan.Marker
+		if type(marker) ~= "string" or marker == "" then
+			return nil
+		end
+		local pack = GB.Resolver.resolveMarker and GB.Resolver.resolveMarker(marker, { Island = plan.Island }) or nil
+		if pack and pack.Instance then
+			return pack.Instance
+		end
+		local byTag = GB.Resolver.taggedAny and GB.Resolver.taggedAny(marker)
+		if byTag then
+			return byTag
+		end
+		local byName = GB.Resolver.byName and GB.Resolver.byName(marker, "marker")
+		return byName
+	end
+
+	local function streamToMarker(plan, targetName)
+		local marker = markerForPlan(plan)
+		if not marker then
+			return false
+		end
+		GB.Log.warn("COMBAT", "target not streamed " .. tostring(targetName))
+		GB.Log.log("TRAVEL", "marker " .. tostring(plan.Marker))
+		if GB.World and GB.World.moveTo then
+			GB.World.moveTo(marker, 10)
+		end
+		if GB.World and GB.World.pullStream and plan and plan.Island then
+			GB.World.pullStream(plan.Island)
+		end
+		return true
+	end
+
+	function M.findTarget(name, questName, targetPlan)
 		name = GB.QuestData.killName(questName, name)
 		if not name then
 			GB.Log.warn("COMBAT", "kill name unresolved")
@@ -8866,6 +9964,21 @@ return function(GB)
 		local mob = GB.Resolver.enemy(name)
 		if mob and M.IsValidTarget(mob, { Name = name }) then
 			return mob
+		end
+		if streamToMarker(targetPlan, name) then
+			local t0 = os.clock()
+			while os.clock() - t0 < 2.6 do
+				local list = GB.Resolver.enemies and GB.Resolver.enemies(name) or nil
+				if type(list) == "table" then
+					for _, inst in ipairs(list) do
+						if M.IsValidTarget(inst, { Name = name }) then
+							GB.Log.log("COMBAT", tostring(name) .. " loaded")
+							return inst
+						end
+					end
+				end
+				task.wait(0.15)
+			end
 		end
 		return nil
 	end
@@ -8950,16 +10063,27 @@ return function(GB)
 		if M.lockMob and not M.IsEnemyAlive(M.lockMob) then
 			return
 		end
-		if GB.World.tweenPlaying and GB.World.tweenPlaying() then
-			return
-		end
 		if M.lockMob then
 			local root = GB.World.hrp and GB.World.hrp()
 			local part = GB.Resolver and GB.Resolver.part and GB.Resolver.part(M.lockMob) or nil
 			if root and part and part:IsA("BasePart") then
 				local maxRange = (GB.Config.CombatRange or 5.5) + SWING_RANGE_PAD
-				if (root.Position - part.Position).Magnitude > maxRange then
+				local maxApproach = maxRange + APPROACH_SWING_PAD
+				local dist = (root.Position - part.Position).Magnitude
+				if dist > maxApproach then
 					return
+				end
+				local moving = GB.World.tweenPlaying and GB.World.tweenPlaying()
+				if dist > maxRange and not moving then
+					return
+				end
+				if dist > maxRange and moving then
+					if os.clock() - (M.lastApproachSwing or 0) < APPROACH_SWING_GAP then
+						return
+					end
+					M.lastApproachSwing = os.clock()
+				elseif dist <= maxRange then
+					M.lastApproachSwing = 0
 				end
 			end
 		end
@@ -9018,8 +10142,8 @@ return function(GB)
 		end)
 	end
 
-	function M.hunt(name, questName)
-		local mob = M.findTarget(name, questName)
+	function M.hunt(name, questName, targetPlan)
+		local mob = M.findTarget(name, questName, targetPlan)
 		if not mob then
 			return false
 		end
@@ -9053,7 +10177,7 @@ return function(GB)
 		return true
 	end
 
-	function M.huntUntilDead(name, timeout, questName)
+	function M.huntUntilDead(name, timeout, questName, targetPlan)
 		timeout = timeout or 14
 		if questName and GB.Quest then
 			local qs = GB.Quest.questState(questName)
@@ -9063,11 +10187,35 @@ return function(GB)
 				StageIndex = qs.StageIndex,
 			} or nil
 		end
-		local mob = M.findTarget(name, questName)
+		local mob = M.findTarget(name, questName, targetPlan)
+		if (not M.IsEnemyAlive(mob)) and type(targetPlan) == "table" and type(targetPlan.Alternatives) == "table" then
+			for _, alt in ipairs(targetPlan.Alternatives) do
+				if type(alt) == "string" and alt ~= "" and alt ~= name then
+					local altPlan = {
+						Quest = targetPlan.Quest,
+						Target = alt,
+						Island = targetPlan.Island,
+						Marker = GB.QuestData and GB.QuestData.combatMarker and GB.QuestData.combatMarker(
+							questName,
+							targetPlan.Stage,
+							targetPlan.ObjectiveType,
+							alt
+						) or targetPlan.Marker,
+					}
+					local altMob = M.findTarget(alt, questName, altPlan)
+					if M.IsEnemyAlive(altMob) then
+						name = alt
+						targetPlan = altPlan
+						mob = altMob
+						break
+					end
+				end
+			end
+		end
 		if not M.IsEnemyAlive(mob) then
 			return false, "no_enemy"
 		end
-		if not M.hunt(name, questName) then
+		if not M.hunt(name, questName, targetPlan) then
 			return false, "travel"
 		end
 		local t0 = os.clock()
@@ -9950,6 +11098,7 @@ return function(GB)
 		detailByFingerprint = {},
 		deferUntil = {},
 		deferReason = {},
+		acceptState = {},
 	}
 
 	M.STATUS = {
@@ -9983,12 +11132,31 @@ return function(GB)
 		end
 	end
 
-	local DECLINE = {
-		Decline = true,
-		["Good luck with"] = true,
-		Bye = true,
-		No = true,
-		Cancel = true,
+	local DECLINE_EXACT = {
+		["no"] = true,
+		["decline"] = true,
+		["cancel"] = true,
+		["bye"] = true,
+		["goodbye"] = true,
+		["never mind"] = true,
+		["not now"] = true,
+	}
+
+	local DECLINE_PHRASES = {
+		["good luck with that"] = true,
+	}
+
+	local COMMAND_HINT_KEYS = {
+		"Command",
+		"DialogueCommand",
+		"Action",
+		"Response",
+		"ResponseType",
+		"ChoiceType",
+		"NodeType",
+		"QuestName",
+		"QuestId",
+		"Quest",
 	}
 
 	local HANDLED = {
@@ -10053,39 +11221,122 @@ return function(GB)
 		return GB.State.guiText(inst)
 	end
 
-	local function isDecline(t)
+	local function normalizeChoiceText(t)
 		if type(t) ~= "string" then
-			return false
+			return "", ""
 		end
-		for bad in pairs(DECLINE) do
-			if string.find(t, bad, 1, true) then
-				return true
-			end
-		end
-		return false
+		local low = string.lower(t)
+		low = low:gsub("[%c\r\n\t]+", " ")
+		low = low:gsub("%s+", " ")
+		low = low:gsub("^%s+", "")
+		low = low:gsub("%s+$", "")
+		local compact = low:gsub("[%p]+", "")
+		compact = compact:gsub("%s+", " ")
+		compact = compact:gsub("^%s+", "")
+		compact = compact:gsub("%s+$", "")
+		return low, compact
 	end
 
 	local function isAcceptText(t)
 		if type(t) ~= "string" then
 			return false
 		end
-		if string.find(t, "Accept", 1, true) then
+		local low = string.lower(t)
+		if string.find(low, "accept", 1, true) then
 			return true
 		end
-		if string.find(t, "Thank", 1, true) then
+		if string.find(low, "thank", 1, true) then
 			return true
 		end
-		if string.find(t, "Yes", 1, true) then
+		if string.find(low, "yes", 1, true) then
 			return true
 		end
-		-- Officer Graves Dialogue.Definition FirstAgree — Introduction first node
-		if string.find(t, "I can help change that", 1, true) then
+		if string.find(low, "yeah", 1, true) then
 			return true
 		end
-		if string.find(t, "upgrade my flintlock", 1, true) then
+		if string.find(low, "i can help change that", 1, true) then
 			return true
 		end
-		if string.find(t, "I need you", 1, true) then
+		if string.find(low, "upgrade my flintlock", 1, true) then
+			return true
+		end
+		if string.find(low, "i need you", 1, true) then
+			return true
+		end
+		return false
+	end
+
+	local function collectCommandHints(frame, btn)
+		local hints = {}
+		local function push(v)
+			if type(v) ~= "string" then
+				return
+			end
+			local low, compact = normalizeChoiceText(v)
+			if low ~= "" then
+				hints[low] = true
+			end
+			if compact ~= "" then
+				hints[compact] = true
+			end
+		end
+		local function scanInst(inst)
+			if not inst then
+				return
+			end
+			for _, key in ipairs(COMMAND_HINT_KEYS) do
+				push(inst:GetAttribute(key))
+			end
+			local n = 0
+			for _, c in ipairs(inst:GetChildren()) do
+				if c:IsA("StringValue") then
+					local key = string.lower(c.Name or "")
+					if string.find(key, "command", 1, true)
+						or string.find(key, "action", 1, true)
+						or string.find(key, "choice", 1, true)
+						or string.find(key, "quest", 1, true)
+						or string.find(key, "node", 1, true)
+					then
+						push(c.Value)
+						n = n + 1
+						if n >= 8 then
+							break
+						end
+					end
+				end
+			end
+		end
+		scanInst(frame)
+		scanInst(btn)
+		return hints
+	end
+
+	local function hintsContain(hints, token)
+		if type(hints) ~= "table" or type(token) ~= "string" or token == "" then
+			return false
+		end
+		for hint in pairs(hints) do
+			if string.find(hint, token, 1, true) then
+				return true
+			end
+		end
+		return false
+	end
+
+	local function isVerifiedDecline(choice)
+		if not choice then
+			return false
+		end
+		if choice.glow or choice.commandAccept then
+			return false
+		end
+		if choice.commandDecline and not choice.questLinked then
+			return true
+		end
+		if DECLINE_EXACT[choice.textNorm] or DECLINE_EXACT[choice.textPlain] then
+			return true
+		end
+		if DECLINE_PHRASES[choice.textNorm] or DECLINE_PHRASES[choice.textPlain] then
 			return true
 		end
 		return false
@@ -10113,7 +11364,9 @@ return function(GB)
 
 	-- Choices live in DialogueUI.Main as cloned NodeFrames. ImageButton has no .Text;
 	-- label is sibling TextLabel. Template under DialogueHandler.NodeFrame is not clickable.
-	local function clickAccept()
+	local function clickAccept(opts)
+		opts = opts or {}
+		local expectQuest = type(opts.QuestName) == "string" and string.lower(opts.QuestName) or nil
 		local pg = GB.lp and GB.lp.PlayerGui
 		local ui = pg and pg:FindFirstChild("DialogueUI")
 		if not ui then
@@ -10129,19 +11382,34 @@ return function(GB)
 				local btn = frame:FindFirstChild("ImageButton")
 				if btn and btn:IsA("GuiButton") then
 					local t = guiText(frame) or guiText(btn) or ""
-					if not isDecline(t) then
-						local num = frame:FindFirstChild("Number")
-						local ntext = ""
-						if num and (num:IsA("TextLabel") or num:IsA("TextButton") or num:IsA("TextBox")) then
-							ntext = num.Text
-						end
-						candidates[#candidates + 1] = {
-							btn = btn,
-							text = t,
-							first = frame.Name == "1" or frame.Name == 1 or (type(ntext) == "string" and string.sub(ntext, 1, 1) == "1"),
-							glow = frame:FindFirstChild("Quest Glow") ~= nil,
-						}
+					local tn, tp = normalizeChoiceText(t)
+					local num = frame:FindFirstChild("Number")
+					local ntext = ""
+					if num and (num:IsA("TextLabel") or num:IsA("TextButton") or num:IsA("TextBox")) then
+						ntext = num.Text
 					end
+					local hints = collectCommandHints(frame, btn)
+					local questLinked = frame:FindFirstChild("Quest Glow") ~= nil
+						or hintsContain(hints, "quest")
+						or (expectQuest and string.find(tn, expectQuest, 1, true) ~= nil)
+					local row = {
+						btn = btn,
+						frame = frame,
+						text = t,
+						textNorm = tn,
+						textPlain = tp,
+						first = frame.Name == "1" or frame.Name == 1 or (type(ntext) == "string" and string.sub(ntext, 1, 1) == "1"),
+						glow = frame:FindFirstChild("Quest Glow") ~= nil,
+						questLinked = questLinked,
+						commandAccept = hintsContain(hints, "accept")
+							or hintsContain(hints, "begin")
+							or hintsContain(hints, "start"),
+						commandDecline = hintsContain(hints, "decline")
+							or hintsContain(hints, "cancel")
+							or hintsContain(hints, "close"),
+					}
+					row.verifiedDecline = isVerifiedDecline(row)
+					candidates[#candidates + 1] = row
 				end
 			end
 		end
@@ -10149,24 +11417,36 @@ return function(GB)
 			if not c then
 				return -1
 			end
-			local t = tostring(c.text or "")
+			local t = tostring(c.textNorm or "")
 			local score = 0
-			if c.glow then
-				score = score + 500
+			if c.commandAccept then
+				score = score + 900
 			end
-			if string.find(t, "I can help change that", 1, true) then
+			if c.glow then
+				score = score + 700
+			end
+			if c.questLinked then
+				score = score + 420
+			end
+			if c.commandDecline then
+				score = score - 350
+			end
+			if c.verifiedDecline then
+				score = score - 1400
+			end
+			if string.find(t, "i can help change that", 1, true) then
 				score = score + 280
 			end
-			if string.find(t, "Accept", 1, true) then
+			if string.find(t, "accept", 1, true) then
 				score = score + 240
 			end
-			if string.find(t, "Thank", 1, true) then
+			if string.find(t, "thank", 1, true) then
 				score = score + 220
 			end
-			if string.find(t, "Yes", 1, true) then
+			if string.find(t, "yes", 1, true) then
 				score = score + 180
 			end
-			if string.find(t, "Yeah", 1, true) then
+			if string.find(t, "yeah", 1, true) then
 				score = score + 170
 			end
 			if c.first then
@@ -10177,8 +11457,11 @@ return function(GB)
 			end
 			return score
 		end
-		local pick, best = nil, -1
+		local pick, best = nil, -1e9
 		for _, c in ipairs(candidates) do
+			if c.verifiedDecline then
+				continue
+			end
 			local s = scoreChoice(c)
 			if s > best then
 				best = s
@@ -10187,13 +11470,20 @@ return function(GB)
 		end
 		if not pick then
 			for _, c in ipairs(candidates) do
-				if c.first then
+				if c.first and not c.verifiedDecline then
 					pick = c
 					break
 				end
 			end
 		end
-		pick = pick or candidates[1]
+		if not pick then
+			for _, c in ipairs(candidates) do
+				if not c.verifiedDecline then
+					pick = c
+					break
+				end
+			end
+		end
 		if not pick then
 			return false
 		end
@@ -10201,7 +11491,7 @@ return function(GB)
 		if shown == "" then
 			shown = pick.btn.Name
 		end
-		GB.Log.log("QUEST", "Click " .. tostring(shown))
+		GB.Log.log("QUEST", "choice \"" .. tostring(shown) .. "\"")
 		return GB.State.clickGui(pick.btn)
 	end
 
@@ -10317,7 +11607,6 @@ return function(GB)
 	local function resolveMarineGate()
 		local pack = GB.Resolver.resolveObject and GB.Resolver.resolveObject("Marine Gate", {
 			Island = "Anchor Town",
-			deep = true,
 		})
 		if pack and pack.Instance then
 			local pr = GB.Resolver.prompt(pack.Instance, "Pushable Door") or GB.Resolver.prompt(pack.Instance)
@@ -10774,6 +12063,7 @@ return function(GB)
 		end
 		M.deferUntil[name] = nil
 		M.deferReason[name] = nil
+		M.acceptState[name] = nil
 		M.clearTrack(name)
 		GB.Recovery.markSuccess()
 	end
@@ -10788,6 +12078,18 @@ return function(GB)
 		return pack and pack.InternalName
 	end
 
+	local function setAcceptState(name, state, detail)
+		if type(name) ~= "string" or name == "" then
+			return
+		end
+		local key = tostring(state) .. "|" .. tostring(detail or "")
+		if M.acceptState[name] == key then
+			return
+		end
+		M.acceptState[name] = key
+		GB.Log.log("QUEST", string.format("%s accept_state=%s", tostring(name), tostring(state)))
+	end
+
 	function M.talk(request, automatic, opts)
 		opts = opts or {}
 		local qsName = opts.Quest
@@ -10798,7 +12100,7 @@ return function(GB)
 			if os.clock() - (M.lastClick or 0) < 0.7 then
 				return false, "rate"
 			end
-			local clicked = clickAccept()
+			local clicked = clickAccept(opts)
 			if clicked then
 				M.lastClick = os.clock()
 			end
@@ -10842,7 +12144,7 @@ return function(GB)
 							DisplayName = request,
 							Island = island,
 							ExpectedRole = "npc",
-							deep = true,
+							deep = false,
 						})
 					end
 				end
@@ -10880,11 +12182,49 @@ return function(GB)
 			GB.Remotes.dialogueConfig(cfg)
 		end
 		task.wait(0.35)
-		if clickAccept() then
+		if clickAccept(opts) then
 			M.lastClick = os.clock()
 		end
 		M.lastTalk[key] = os.clock()
 		return true, shown
+	end
+
+	local function questAcceptedNow(name)
+		if type(name) ~= "string" or name == "" then
+			return false
+		end
+		local live = GB.PlayerData and GB.PlayerData.live and GB.PlayerData.live(name)
+		if live then
+			return true
+		end
+		local qs = M.questState(name)
+		return qs and qs.IsAccepted == true
+	end
+
+	local function waitQuestAccepted(name, timeout)
+		timeout = timeout or 5.4
+		local t0 = os.clock()
+		local nextRefreshAt = 0
+		while os.clock() - t0 < timeout do
+			if questAcceptedNow(name) then
+				return true, "accepted"
+			end
+			if dialogueOpen() and os.clock() - (M.lastClick or 0) >= 0.45 then
+				if clickAccept({ QuestName = name, Action = "accept" }) then
+					M.lastClick = os.clock()
+				end
+			end
+			if os.clock() >= nextRefreshAt then
+				nextRefreshAt = os.clock() + 0.9
+				if GB.PlayerData and GB.PlayerData.forceQuestRefresh then
+					GB.PlayerData.forceQuestRefresh("accept_wait:" .. tostring(name))
+				elseif GB.PlayerData and GB.PlayerData.refreshLive then
+					GB.PlayerData.refreshLive(true, "accept_wait:" .. tostring(name))
+				end
+			end
+			task.wait(0.18)
+		end
+		return questAcceptedNow(name), "timeout"
 	end
 
 	function M.waitProgress(name, beforeSig, timeout)
@@ -10918,7 +12258,7 @@ return function(GB)
 				return true, sig
 			end
 			if dialogueOpen() and os.clock() - lastClick >= 0.55 then
-				if clickAccept() then
+				if clickAccept({ QuestName = name, Action = "progress" }) then
 					lastClick = os.clock()
 					M.lastClick = lastClick
 				end
@@ -10941,6 +12281,51 @@ return function(GB)
 			end
 		end
 		return GB.Shop.buy(name)
+	end
+
+	local function pushTarget(list, seen, target)
+		if type(target) ~= "string" or target == "" or target == "\\" then
+			return
+		end
+		if seen[target] then
+			return
+		end
+		seen[target] = true
+		list[#list + 1] = target
+	end
+
+	local function unfinishedKillTargets(questName, stage, preferred)
+		local out = {}
+		local seen = {}
+		pushTarget(out, seen, preferred)
+		local conds = stage and (stage.Conditions or stage.conditions) or {}
+		for _, row in ipairs(conds) do
+			if type(row) == "table" and not GB.QuestData.conditionComplete(row) then
+				local typ = row.Type or row.type
+				if typ == "Kill" or typ == "Defeat" or typ == "Hit" or typ == "Destroy" then
+					local name = GB.QuestData.conditionTarget(row)
+					if typ == "Kill" or typ == "Defeat" then
+						name = GB.QuestData.killName(questName, name)
+					end
+					pushTarget(out, seen, name)
+				end
+			end
+		end
+		return out
+	end
+
+	local function pickAvailableKillTarget(questName, stage, preferred)
+		local targets = unfinishedKillTargets(questName, stage, preferred)
+		if #targets <= 1 then
+			return targets[1] or preferred, targets
+		end
+		for _, name in ipairs(targets) do
+			local list = GB.Resolver and GB.Resolver.enemies and GB.Resolver.enemies(name)
+			if type(list) == "table" and #list > 0 then
+				return name, targets
+			end
+		end
+		return targets[1], targets
 	end
 
 	function M.handleCondition(questName, cond, stage)
@@ -11030,13 +12415,40 @@ return function(GB)
 			return false
 		end
 		if typ == "Kill" or typ == "Defeat" or typ == "Hit" or typ == "Destroy" then
+			if dialogueOpen() then
+				if os.clock() - (M.lastClick or 0) >= 0.45 then
+					if clickAccept({ QuestName = questName, Action = "accept" }) then
+						M.lastClick = os.clock()
+					end
+				end
+				return false
+			end
 			local before = M.questState(questName)
 			local beforeCur = before.Objective and before.Objective.Current or 0
+			local picked, targets = pickAvailableKillTarget(questName, stage, target)
+			if picked and picked ~= target then
+				GB.Log.log("QUEST", string.format("switch target %s -> %s", tostring(target), tostring(picked)))
+			end
+			local marker = GB.QuestData and GB.QuestData.combatMarker and GB.QuestData.combatMarker(
+				questName,
+				before.StageIndex,
+				typ,
+				picked or target
+			) or nil
+			local targetPlan = {
+				Quest = questName,
+				Target = picked or target or "Training Dummy",
+				Island = before.Island,
+				Marker = marker,
+				Stage = before.StageIndex,
+				ObjectiveType = typ,
+				Alternatives = targets,
+			}
 			local ok, why = false, nil
 			if GB.Combat.huntUntilDead then
-				ok, why = GB.Combat.huntUntilDead(target or "Training Dummy", 16, questName)
+				ok, why = GB.Combat.huntUntilDead(targetPlan.Target, 16, questName, targetPlan)
 			else
-				ok = GB.Combat.attack(target or "Training Dummy", questName)
+				ok = GB.Combat.attack(targetPlan.Target, questName)
 			end
 			if not ok then
 				local pos = GB.Resolver.lastDummyPos and GB.Resolver.lastDummyPos()
@@ -11049,7 +12461,7 @@ return function(GB)
 					end
 				end
 				if why ~= "dead" then
-					M.noteFail(questName, "resolve miss " .. tostring(target))
+					M.noteFail(questName, "resolve miss " .. tostring(targetPlan.Target))
 				end
 				return false
 			end
@@ -11422,10 +12834,10 @@ return function(GB)
 			end
 			local spec = GB.QuestSpecs and GB.QuestSpecs.lookup(questName, nil, typ, target)
 			local tag = (spec and (spec.marker or spec.source)) or GB.QuestData.markerOf(typ, target) or target
-			local objPack = GB.Resolver.resolveObject and GB.Resolver.resolveObject(tag, { deep = true }) or nil
+			local objPack = GB.Resolver.resolveObject and GB.Resolver.resolveObject(tag, { Island = GB.QuestData.islandOf(questName) }) or nil
 			local obj = objPack and objPack.Instance
 			if not obj and target and target ~= tag then
-				objPack = GB.Resolver.resolveObject and GB.Resolver.resolveObject(target, { deep = true }) or nil
+				objPack = GB.Resolver.resolveObject and GB.Resolver.resolveObject(target, { Island = GB.QuestData.islandOf(questName) }) or nil
 				obj = objPack and objPack.Instance
 			end
 			if not obj then
@@ -11539,14 +12951,25 @@ return function(GB)
 		return false
 	end
 
-	function M.doLive(name)
+	local function resultRow(name, attempted, progressed, reason)
+		local row = {
+			quest = name,
+			attempted = attempted == true,
+			progressed = progressed == true,
+			reason = reason,
+		}
+		M._lastResult = row
+		return row
+	end
+
+	local function doLiveRaw(name)
 		if GB.Config.SkipQuests[name] then
-			return false
+			return resultRow(name, false, false, "skip")
 		end
 		local qs = M.questState(name)
 		local t = M.trackOf(name)
 		if os.clock() < t.NextRetryAt and t.LastError then
-			return false
+			return resultRow(name, false, false, "retry_window")
 		end
 		local blocked, why = M.deferred(name)
 		if blocked then
@@ -11556,22 +12979,50 @@ return function(GB)
 				GB.Log.warn("QUEST", "defer " .. tostring(name) .. " " .. tostring(why))
 			end
 			t.NextRetryAt = os.clock() + 2.5
-			return false
+			return resultRow(name, false, false, "deferred")
 		end
 
 		if not qs.IsAccepted then
 			if qs.IsComplete then
-				return true
+				return resultRow(name, true, true, "already_complete")
 			end
 			if qs.Automatic then
+				setAcceptState(name, "NOT_ACCEPTED", "automatic")
 				GB.Remotes.beginAutomatic(name)
 			end
 			if qs.NPC then
-				return M.talk(qs.NPC, false, { Quest = name, Island = qs.Island, DisplayName = qs.NPC })
+				if not M._acceptLogAt or os.clock() - M._acceptLogAt > 2 then
+					M._acceptLogAt = os.clock()
+					GB.Log.log("QUEST", "Opening " .. tostring(name))
+					GB.Log.log("QUEST", string.format("accepting %s via %s", tostring(name), tostring(qs.NPC)))
+				end
+				setAcceptState(name, "RESOLVE_ACCEPT_NPC", qs.NPC)
+				local ok = M.talk(qs.NPC, false, {
+					Quest = name,
+					Island = qs.Island,
+					DisplayName = qs.NPC,
+					QuestName = name,
+					Action = "accept",
+				})
+				if ok then
+					setAcceptState(name, "WAIT_ACTIVE_VALIDATION", qs.NPC)
+					local active, reason = waitQuestAccepted(name, 5.6)
+					if active then
+						setAcceptState(name, "ACTIVE", qs.NPC)
+						GB.Log.log("QUEST", tostring(name) .. " ACTIVE")
+						M.noteOk(name)
+						return resultRow(name, true, true, "accepted")
+					end
+					M.noteFail(name, "accept_not_active " .. tostring(reason))
+					return resultRow(name, true, false, "accept_not_active")
+				end
+				return resultRow(name, true, false, "accept_pending")
 			end
-			return false
+			setAcceptState(name, "UNRESOLVED_START")
+			return resultRow(name, true, false, "unresolved_start")
 		end
 
+		M.acceptState[name] = nil
 		local sig = M.signature(qs)
 		if M.lastSig[name] ~= sig then
 			M.lastSig[name] = sig
@@ -11594,16 +13045,24 @@ return function(GB)
 
 		if qs.IsComplete then
 			M.noteOk(name)
-			return true
+			return resultRow(name, true, true, "complete")
+		end
+
+		if dialogueOpen() then
+			if os.clock() - (M.lastClick or 0) >= 0.45 and clickAccept({ QuestName = name, Action = "progress" }) then
+				M.lastClick = os.clock()
+			end
+			return resultRow(name, true, false, "dialogue_open")
 		end
 
 		if qs.Objective then
 			if GB.State.tutorialOverlayVisible() then
 				GB.State.dismissTutorialOverlay()
-				return false
+				return resultRow(name, true, false, "dismiss_overlay")
 			end
 			if GB.Tutorial and GB.Tutorial.IsBlocking and select(1, GB.Tutorial.IsBlocking()) then
-				return GB.Tutorial.ExecuteCurrentStep()
+				local ok = GB.Tutorial.ExecuteCurrentStep()
+				return resultRow(name, true, ok == true, ok and "tutorial_progress" or "tutorial_block")
 			end
 			local typ = qs.Objective.Type
 			if typ and not HANDLED[typ] then
@@ -11612,36 +13071,43 @@ return function(GB)
 					"UNKNOWN_OBJECTIVE " .. tostring(typ) .. " " .. tostring(qs.Objective.TargetName)
 				)
 				t.NextRetryAt = os.clock() + 6
-				return false
+				return resultRow(name, true, false, "unknown_objective")
 			end
 			if GB.Planner then
 				local plan = GB.Planner.build(qs)
 				if plan then
-					return GB.Planner.execute(qs, plan)
+					local ok = GB.Planner.execute(qs, plan)
+					return resultRow(name, true, ok == true, ok and "planner_progress" or "planner_pending")
 				end
 			end
-			return M.handleCondition(name, qs.Objective.Raw, qs.Stage)
+			local ok = M.handleCondition(name, qs.Objective.Raw, qs.Stage)
+			return resultRow(name, true, ok == true, ok and "condition_progress" or "condition_pending")
 		end
 
 		if qs.NPC then
 			if GB.State.tutorialOverlayVisible() then
 				GB.State.dismissTutorialOverlay()
-				return false
+				return resultRow(name, true, false, "dismiss_overlay")
 			end
-			return M.talk(qs.NPC, false, { Quest = name, Island = qs.Island, DisplayName = qs.NPC })
+			local ok = M.talk(qs.NPC, false, { Quest = name, Island = qs.Island, DisplayName = qs.NPC, QuestName = name })
+			return resultRow(name, true, ok == true, ok and "talk_progress" or "talk_pending")
 		end
-		return false
+		return resultRow(name, true, false, "idle")
 	end
 
-	local _doLiveRaw = M.doLive
-	function M.doLive(name)
+	function M.doLiveResult(name)
 		local t0 = pbegin()
-		local out = { pcall(_doLiveRaw, name) }
+		local out = { pcall(doLiveRaw, name) }
 		pdone("Quest.doLive", t0)
 		if not out[1] then
 			error(out[2])
 		end
-		return unpack(out, 2)
+		return out[2]
+	end
+
+	function M.doLive(name)
+		local row = M.doLiveResult(name)
+		return type(row) == "table" and row.progressed == true
 	end
 
 	function M.Refresh()
@@ -11653,6 +13119,8 @@ return function(GB)
 		local cur = GB.PlayerData and GB.PlayerData.current and GB.PlayerData.current()
 		return cur and M.questState(cur) or nil
 	end
+
+	M.dialogueOpen = dialogueOpen
 
 	return M
 end

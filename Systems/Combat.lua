@@ -40,6 +40,8 @@ return function(GB)
 	local TARGET_MOVED = 3.5
 	local DEAD_TTL = 12
 	local SWING_RANGE_PAD = 1.8
+	local APPROACH_SWING_PAD = 10
+	local APPROACH_SWING_GAP = 0.95
 	local QUEST_CHECK_MIN_GAP = 0.32
 	local QUEST_CHECK_SAFETY = 2.8
 
@@ -448,7 +450,43 @@ return function(GB)
 		end
 	end
 
-	function M.findTarget(name, questName)
+	local function markerForPlan(plan)
+		if type(plan) ~= "table" then
+			return nil
+		end
+		local marker = plan.Marker
+		if type(marker) ~= "string" or marker == "" then
+			return nil
+		end
+		local pack = GB.Resolver.resolveMarker and GB.Resolver.resolveMarker(marker, { Island = plan.Island }) or nil
+		if pack and pack.Instance then
+			return pack.Instance
+		end
+		local byTag = GB.Resolver.taggedAny and GB.Resolver.taggedAny(marker)
+		if byTag then
+			return byTag
+		end
+		local byName = GB.Resolver.byName and GB.Resolver.byName(marker, "marker")
+		return byName
+	end
+
+	local function streamToMarker(plan, targetName)
+		local marker = markerForPlan(plan)
+		if not marker then
+			return false
+		end
+		GB.Log.warn("COMBAT", "target not streamed " .. tostring(targetName))
+		GB.Log.log("TRAVEL", "marker " .. tostring(plan.Marker))
+		if GB.World and GB.World.moveTo then
+			GB.World.moveTo(marker, 10)
+		end
+		if GB.World and GB.World.pullStream and plan and plan.Island then
+			GB.World.pullStream(plan.Island)
+		end
+		return true
+	end
+
+	function M.findTarget(name, questName, targetPlan)
 		name = GB.QuestData.killName(questName, name)
 		if not name then
 			GB.Log.warn("COMBAT", "kill name unresolved")
@@ -475,6 +513,21 @@ return function(GB)
 		local mob = GB.Resolver.enemy(name)
 		if mob and M.IsValidTarget(mob, { Name = name }) then
 			return mob
+		end
+		if streamToMarker(targetPlan, name) then
+			local t0 = os.clock()
+			while os.clock() - t0 < 2.6 do
+				local list = GB.Resolver.enemies and GB.Resolver.enemies(name) or nil
+				if type(list) == "table" then
+					for _, inst in ipairs(list) do
+						if M.IsValidTarget(inst, { Name = name }) then
+							GB.Log.log("COMBAT", tostring(name) .. " loaded")
+							return inst
+						end
+					end
+				end
+				task.wait(0.15)
+			end
 		end
 		return nil
 	end
@@ -559,16 +612,27 @@ return function(GB)
 		if M.lockMob and not M.IsEnemyAlive(M.lockMob) then
 			return
 		end
-		if GB.World.tweenPlaying and GB.World.tweenPlaying() then
-			return
-		end
 		if M.lockMob then
 			local root = GB.World.hrp and GB.World.hrp()
 			local part = GB.Resolver and GB.Resolver.part and GB.Resolver.part(M.lockMob) or nil
 			if root and part and part:IsA("BasePart") then
 				local maxRange = (GB.Config.CombatRange or 5.5) + SWING_RANGE_PAD
-				if (root.Position - part.Position).Magnitude > maxRange then
+				local maxApproach = maxRange + APPROACH_SWING_PAD
+				local dist = (root.Position - part.Position).Magnitude
+				if dist > maxApproach then
 					return
+				end
+				local moving = GB.World.tweenPlaying and GB.World.tweenPlaying()
+				if dist > maxRange and not moving then
+					return
+				end
+				if dist > maxRange and moving then
+					if os.clock() - (M.lastApproachSwing or 0) < APPROACH_SWING_GAP then
+						return
+					end
+					M.lastApproachSwing = os.clock()
+				elseif dist <= maxRange then
+					M.lastApproachSwing = 0
 				end
 			end
 		end
@@ -627,8 +691,8 @@ return function(GB)
 		end)
 	end
 
-	function M.hunt(name, questName)
-		local mob = M.findTarget(name, questName)
+	function M.hunt(name, questName, targetPlan)
+		local mob = M.findTarget(name, questName, targetPlan)
 		if not mob then
 			return false
 		end
@@ -662,7 +726,7 @@ return function(GB)
 		return true
 	end
 
-	function M.huntUntilDead(name, timeout, questName)
+	function M.huntUntilDead(name, timeout, questName, targetPlan)
 		timeout = timeout or 14
 		if questName and GB.Quest then
 			local qs = GB.Quest.questState(questName)
@@ -672,11 +736,35 @@ return function(GB)
 				StageIndex = qs.StageIndex,
 			} or nil
 		end
-		local mob = M.findTarget(name, questName)
+		local mob = M.findTarget(name, questName, targetPlan)
+		if (not M.IsEnemyAlive(mob)) and type(targetPlan) == "table" and type(targetPlan.Alternatives) == "table" then
+			for _, alt in ipairs(targetPlan.Alternatives) do
+				if type(alt) == "string" and alt ~= "" and alt ~= name then
+					local altPlan = {
+						Quest = targetPlan.Quest,
+						Target = alt,
+						Island = targetPlan.Island,
+						Marker = GB.QuestData and GB.QuestData.combatMarker and GB.QuestData.combatMarker(
+							questName,
+							targetPlan.Stage,
+							targetPlan.ObjectiveType,
+							alt
+						) or targetPlan.Marker,
+					}
+					local altMob = M.findTarget(alt, questName, altPlan)
+					if M.IsEnemyAlive(altMob) then
+						name = alt
+						targetPlan = altPlan
+						mob = altMob
+						break
+					end
+				end
+			end
+		end
 		if not M.IsEnemyAlive(mob) then
 			return false, "no_enemy"
 		end
-		if not M.hunt(name, questName) then
+		if not M.hunt(name, questName, targetPlan) then
 			return false, "travel"
 		end
 		local t0 = os.clock()

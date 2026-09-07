@@ -13,6 +13,16 @@ return function(GB)
 
 	M.STRATS = { "lookup", "enemy", "diagnostic", "blocker" }
 
+	local function pbegin()
+		return GB.Profiler and GB.Profiler.begin and GB.Profiler.begin() or nil
+	end
+
+	local function pdone(name, t0)
+		if t0 and GB.Profiler and GB.Profiler.done then
+			GB.Profiler.done(name, t0)
+		end
+	end
+
 	function M.currentStrategy()
 		return M.STRATS[M.si] or "lookup"
 	end
@@ -51,7 +61,33 @@ return function(GB)
 		return idle >= (cfg.StuckSeconds or 18)
 	end
 
-	function M.run(why)
+	local function scopedInvalidate(qs)
+		if not GB.Cache then
+			return
+		end
+		if not GB.Cache.invalidatePrefix then
+			GB.Cache.invalidate()
+			return
+		end
+		local o = qs and qs.Objective
+		local typ = o and o.Type
+		if typ == "Kill" or typ == "Defeat" or typ == "Hit" or typ == "Destroy" or typ == "Shoot" then
+			GB.Cache.invalidatePrefix("res:enemy:")
+			return
+		end
+		if typ == "Talk" or typ == "Automatic Talk" or typ == "GiveItemTo" or typ == "Deliver" then
+			GB.Cache.invalidatePrefix("res:npc:")
+			return
+		end
+		if typ == "Open" or typ == "Unlock" or typ == "Interact" or typ == "Collect" or typ == "CollectLocal" then
+			GB.Cache.invalidatePrefix("res:object:")
+			GB.Cache.invalidatePrefix("res:marker:")
+			return
+		end
+		GB.Cache.invalidatePrefix("res:")
+	end
+
+	local function runRaw(why)
 		if os.clock() - M.last < (GB.Config.RecoveryCooldown or 8) then
 			return
 		end
@@ -95,7 +131,7 @@ return function(GB)
 			end
 		end
 		GB.Log.warn("RECOVERY", string.format("level=%d strategy=%s %s", M.level, tostring(strat), tostring(why)))
-		GB.Cache.invalidate()
+		scopedInvalidate(qs)
 
 		if strat == "lookup" or strat == "enemy" then
 			GB.State.track.TaskStartedAt = os.clock()
@@ -148,13 +184,33 @@ return function(GB)
 		GB.State.track.TaskStartedAt = os.clock()
 	end
 
-	function M.tick()
+	function M.run(why)
+		local t0 = pbegin()
+		local out = { pcall(runRaw, why) }
+		pdone("Recovery.run", t0)
+		if not out[1] then
+			error(out[2])
+		end
+		return out[2]
+	end
+
+	local function tickRaw()
 		if M.stuck() then
 			M.run("stuck " .. tostring(GB.State.track.TaskName))
 		end
 		if GB.World then
 			GB.World.rescue()
 		end
+	end
+
+	function M.tick()
+		local t0 = pbegin()
+		local out = { pcall(tickRaw) }
+		pdone("Recovery.tick", t0)
+		if not out[1] then
+			error(out[2])
+		end
+		return out[2]
 	end
 
 	return M

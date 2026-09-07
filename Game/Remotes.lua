@@ -6,6 +6,12 @@ return function(GB)
 		failed = {},
 	}
 
+	local function perfCount(name, n)
+		if GB.Profiler and GB.Profiler.count then
+			GB.Profiler.count(name, n or 1)
+		end
+	end
+
 	local function ev(name)
 		local e = RS:FindFirstChild("Events")
 		return e and e:FindFirstChild(name)
@@ -106,6 +112,7 @@ return function(GB)
 			GB.Log.err("ERROR", "StatPoints FireServer " .. tostring(err))
 			return false, err
 		end
+		perfCount("StatInvest", 1)
 		return true
 	end
 
@@ -265,6 +272,7 @@ return function(GB)
 			GB.Log.err("ERROR", "GetData Quests " .. tostring(a))
 			return nil, nil
 		end
+		perfCount("GetDataQuests", 1)
 		return a, b
 	end
 
@@ -297,6 +305,7 @@ return function(GB)
 			GB.Persist.failRemote("GetStats", a)
 			return nil, nil
 		end
+		perfCount("GetStats", 1)
 		return a, b
 	end
 

@@ -19,6 +19,12 @@ return function(GB)
 	def("LogLevel", "INFO") -- DEBUG INFO WARN ERROR
 	def("Debug", false)
 	def("Persist", true)
+	def("RuntimeDiagnostics", true)
+	def("RuntimeLogMaxBytes", 450000)
+	def("RuntimeLogMaxFiles", 5)
+	def("PerfDebug", true)
+	def("PerfReportInterval", 35)
+	def("DebugResolverDeepScan", false)
 
 	-- Auto flags
 	def("AutoQuest", true)

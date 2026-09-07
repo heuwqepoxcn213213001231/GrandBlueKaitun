@@ -75,6 +75,97 @@ return function(GB)
 		{ name = "Peace of Mind", island = "Maple Village", accept = 70, full_until = 81, exp = 1215, prereq = "The Island's Protector" },
 	}
 
+	M.REPEAT_START = {
+		["Bullies in Suits"] = {
+			Status = "STARTABLE",
+			Automatic = false,
+			AcceptNPC = "Koro",
+			TurnInNPC = "Koro",
+			OtherVerifiedStartMethod = nil,
+			DirectCombatVerified = false,
+		},
+		["Officer Termination"] = {
+			Status = "STARTABLE",
+			Automatic = false,
+			AcceptNPC = "Maeve",
+			TurnInNPC = "Maeve",
+			OtherVerifiedStartMethod = nil,
+			DirectCombatVerified = false,
+		},
+		["Granny's Nemesis"] = {
+			Status = "STARTABLE",
+			Automatic = false,
+			AcceptNPC = "Granny Todo",
+			TurnInNPC = "Granny Todo",
+			OtherVerifiedStartMethod = nil,
+			DirectCombatVerified = false,
+		},
+		["Tyrannical Captain"] = {
+			Status = "UNRESOLVED_START",
+			Automatic = false,
+			AcceptNPC = nil,
+			TurnInNPC = nil,
+			OtherVerifiedStartMethod = nil,
+			DirectCombatVerified = false,
+		},
+		["This Is Personal"] = {
+			Status = "STARTABLE",
+			Automatic = false,
+			AcceptNPC = "Clowny D. Clown",
+			TurnInNPC = "Clowny D. Clown",
+			OtherVerifiedStartMethod = nil,
+			DirectCombatVerified = false,
+		},
+		["Cat Problem"] = {
+			Status = "STARTABLE",
+			Automatic = false,
+			AcceptNPC = "Stephon",
+			TurnInNPC = "Stephon",
+			OtherVerifiedStartMethod = nil,
+			DirectCombatVerified = false,
+		},
+		["Billy's Business"] = {
+			Status = "STARTABLE",
+			Automatic = false,
+			AcceptNPC = "Billy B.",
+			TurnInNPC = "Billy B.",
+			OtherVerifiedStartMethod = nil,
+			DirectCombatVerified = false,
+		},
+		["Nibblebottom's Revenge"] = {
+			Status = "STARTABLE",
+			Automatic = false,
+			AcceptNPC = "Johnny Nibblebottom",
+			TurnInNPC = "Johnny Nibblebottom",
+			OtherVerifiedStartMethod = nil,
+			DirectCombatVerified = false,
+		},
+		["Choppy The Clown"] = {
+			Status = "STARTABLE",
+			Automatic = false,
+			AcceptNPC = "Mayor Kiyoshi [2]",
+			TurnInNPC = "Mayor Kiyoshi [2]",
+			OtherVerifiedStartMethod = nil,
+			DirectCombatVerified = false,
+		},
+		["Clear the Road"] = {
+			Status = "STARTABLE",
+			Automatic = false,
+			AcceptNPC = "Nell",
+			TurnInNPC = "Nell",
+			OtherVerifiedStartMethod = nil,
+			DirectCombatVerified = false,
+		},
+		["Peace of Mind"] = {
+			Status = "STARTABLE",
+			Automatic = false,
+			AcceptNPC = "Gus",
+			TurnInNPC = "Gus",
+			OtherVerifiedStartMethod = nil,
+			DirectCombatVerified = false,
+		},
+	}
+
 	-- Verified Studio: world model Name / CollectionService tag.
 	-- Humanoid.DisplayName of Graves [2] is "Officer Graves". RS "Officer Graves" is character-create.
 	M.NPC_ALIAS = {
@@ -245,6 +336,17 @@ return function(GB)
 		},
 	}
 
+	local function copyRow(src)
+		if type(src) ~= "table" then
+			return nil
+		end
+		local out = {}
+		for k, v in pairs(src) do
+			out[k] = v
+		end
+		return out
+	end
+
 	function M.currentStage(q)
 		if type(q) ~= "table" or type(q.Stages) ~= "table" then
 			return nil, nil
@@ -339,6 +441,16 @@ return function(GB)
 		return M.MARKER_TAG[typ] or target
 	end
 
+	function M.combatMarker(questName, stage, typ, target)
+		if GB.QuestSpecs and GB.QuestSpecs.lookup then
+			local spec = GB.QuestSpecs.lookup(questName, stage, typ, target)
+			if spec and type(spec.marker) == "string" and spec.marker ~= "" and spec.marker ~= "\\" then
+				return spec.marker
+			end
+		end
+		return M.markerOf(typ, target)
+	end
+
 	function M.deliverSpec(target)
 		return M.DELIVER[target]
 	end
@@ -357,6 +469,54 @@ return function(GB)
 
 	function M.talkNpc(name)
 		return M.TALK_NPC[name]
+	end
+
+	function M.repeatEntry(name)
+		if type(name) ~= "string" or name == "" then
+			return nil
+		end
+		for _, row in ipairs(M.REPEATS) do
+			if row.name == name then
+				return row
+			end
+		end
+		return nil
+	end
+
+	function M.repeatStartSpec(name)
+		local base = copyRow(M.REPEAT_START[name])
+		if not base then
+			local npc = M.TALK_NPC[name]
+			base = {
+				Status = npc and "STARTABLE" or "UNRESOLVED_START",
+				Automatic = M.AUTOMATIC[name] == true,
+				AcceptNPC = npc,
+				TurnInNPC = npc,
+				OtherVerifiedStartMethod = nil,
+				DirectCombatVerified = false,
+			}
+		end
+		if base.AcceptNPC == nil then
+			local npc = M.TALK_NPC[name]
+			if type(npc) == "string" and npc ~= "" then
+				base.AcceptNPC = npc
+			end
+		end
+		if base.TurnInNPC == nil and type(base.AcceptNPC) == "string" then
+			base.TurnInNPC = base.AcceptNPC
+		end
+		if base.Automatic == nil then
+			base.Automatic = M.AUTOMATIC[name] == true
+		end
+		if base.Status == nil then
+			base.Status = (base.Automatic or (type(base.AcceptNPC) == "string" and base.AcceptNPC ~= ""))
+				and "STARTABLE"
+				or "UNRESOLVED_START"
+		end
+		if base.DirectCombatVerified == nil then
+			base.DirectCombatVerified = false
+		end
+		return base
 	end
 
 	if GB.Resolver then

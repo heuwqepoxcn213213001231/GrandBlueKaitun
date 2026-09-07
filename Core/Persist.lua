@@ -10,6 +10,8 @@ return function(GB)
 			failedRemotes = {},
 			session = nil,
 		},
+		_lastSaved = nil,
+		_lastSaveAt = 0,
 	}
 
 	local function canIO()
@@ -40,6 +42,28 @@ return function(GB)
 			end
 		end
 		return nil
+	end
+
+	local function sameValue(a, b)
+		if type(a) ~= type(b) then
+			return false
+		end
+		if type(a) ~= "table" then
+			return a == b
+		end
+		local seen = {}
+		for k, v in pairs(a) do
+			if not sameValue(v, b[k]) then
+				return false
+			end
+			seen[k] = true
+		end
+		for k in pairs(b) do
+			if not seen[k] then
+				return false
+			end
+		end
+		return true
 	end
 
 	function M.load()
@@ -76,38 +100,61 @@ return function(GB)
 			end
 		end
 		getgenv().GBCodes = M.data.codes
+		M._lastSaved = encode(M.data)
+		M._lastSaveAt = os.clock()
 	end
 
-	function M.save()
+	function M.save(force)
 		if not GB.Config.Persist or not canIO() then
-			return
+			return false
 		end
 		local s = encode(M.data)
 		if s then
+			if not force and M._lastSaved == s and os.clock() - (M._lastSaveAt or 0) < 2.5 then
+				return false
+			end
 			pcall(writefile, M.path, s)
+			M._lastSaved = s
+			M._lastSaveAt = os.clock()
+			if GB.Profiler and GB.Profiler.count then
+				GB.Profiler.count("PersistWrite", 1)
+			end
+			return true
 		end
+		return false
 	end
 
 	function M.codeState(code, state)
+		local prev = M.data.codes[code]
+		if type(prev) == "table" and prev.state == state then
+			return false
+		end
 		M.data.codes[code] = {
 			state = state,
 			at = os.time(),
 		}
 		getgenv().GBCodes = M.data.codes
-		M.save()
+		return M.save()
 	end
 
 	function M.failRemote(name, why)
+		local prev = M.data.failedRemotes[name]
+		if type(prev) == "table" and tostring(prev.why) == tostring(why) then
+			return false
+		end
 		M.data.failedRemotes[name] = {
 			why = tostring(why),
 			at = os.time(),
 		}
-		M.save()
+		return M.save()
 	end
 
 	function M.checkpoint(key, value)
+		if sameValue(M.data.checkpoint[key], value) then
+			return false
+		end
 		M.data.checkpoint[key] = value
-		M.save()
+		return M.save()
 	end
 
 	return M

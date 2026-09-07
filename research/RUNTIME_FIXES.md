@@ -1,5 +1,57 @@
 # Runtime Fixes
 
+## 1.1.24 — Repeatable accept regression + resolver deep-scan stalls
+
+Farm loop regressed after `342f877`: when `Granny's Nemesis` accept flow stalled, planner forced `farm_direct:Corrupt Guard` and triggered repeated resolver deep scans (~2s spikes) while the correct dialogue accept option was open.
+
+**Observed bad path**
+
+```
+[Kaitun][STATE] task farm:Granny's Nemesis
+[Kaitun][STATE] task farm_direct:Corrupt Guard
+[Kaitun][PLANNER] fallback direct farm Granny's Nemesis -> Corrupt Guard
+[Kaitun][PERF][SPIKE] Resolver deep scan 2053ms
+[Kaitun][PERF][SPIKE] DecisionEngine.decide 2100-2400ms
+```
+
+**Root causes**
+
+1. Dialogue classifier treated any text containing `"No"` as decline.
+2. Quest glow/metadata never got scored because decline filter ran first.
+3. `Quest.doLive=false` was interpreted as direct-combat permission.
+4. Normal resolver miss path deep-scanned large roots (`Islands`, `Entities`, `DialogueNPCs`).
+5. Negative miss cache was globally cleared on any entity add/remove.
+
+**Fix**
+
+- Dialogue choice classification now:
+  - normalizes text first,
+  - classifies standalone decline forms only (`No`, `No.`, `Decline`, `Cancel`, `Bye`, exact phrases),
+  - scores metadata/quest-linked/glow options before fallback text heuristics,
+  - never rejects a sentence only because it contains `"No"`.
+- Accept flow now validates activation after click:
+  - `PlayerData.live(quest)` exists OR `QuestState.IsAccepted == true`.
+  - Logs explicit accept lifecycle (`Opening ...`, `accepting ... via ...`, `... ACTIVE`).
+- Repeatable planner now uses `QuestData.repeatStartSpec` and keeps NPC-start repeatables in quest mode.
+- Blind direct-farm fallback for startable repeatables is removed.
+- Resolver now:
+  - serves normal lookups from semantic indexes (`EnemyIndex`, `NPCIndex`, `MarkerIndex`, `ObjectIndex`),
+  - deep-scans only under explicit diagnostic intent,
+  - uses scoped negative invalidation by semantic key/kind.
+- Combat kill flow now supports marker-first streaming via `CombatTargetPlan`.
+
+**Expected good path**
+
+```
+[Kaitun][PLANNER] next=Granny's Nemesis
+[Kaitun][STATE] task quest_accept:Granny Todo
+[Kaitun][QUEST] Opening Granny's Nemesis
+[Kaitun][QUEST] choice "No, I'm here to put that punk in his place again!"
+[Kaitun][QUEST] Granny's Nemesis ACTIVE
+```
+
+---
+
 ## 1.1.17 — Player still on GitHub 1.1.13; Stats never ticked
 
 HttpGet loader default REMOTE. Origin was `ef90654` (1.1.13). Local 1.1.14–1.1.16 never pushed → execute still `resolve miss Marine Gate`, no `[STAT]`, 26 unused.

@@ -5,8 +5,40 @@ return function(GB)
 	local M = {
 		goal = nil,
 		task = nil,
+		owner = "IDLE",
 	}
 	local logDoing
+
+	local function setOwner(owner, target)
+		owner = owner or "IDLE"
+		local key = tostring(owner) .. "|" .. tostring(target or "-")
+		if M._ownerKey == key then
+			return
+		end
+		M._ownerKey = key
+		M.owner = owner
+		GB.Log.log("STATE", string.format("owner=%s target=%s", tostring(owner), tostring(target or "-")))
+	end
+
+	local function ownerForTask(taskName)
+		local t = tostring(taskName or "")
+		if string.find(t, "quest_accept:", 1, true) then
+			return "QUEST_ACCEPT"
+		end
+		if string.find(t, "farm_direct:", 1, true) then
+			return "COMBAT"
+		end
+		if string.find(t, "tutorial", 1, true) then
+			return "TUTORIAL"
+		end
+		if string.find(t, "recovery", 1, true) then
+			return "RECOVERY"
+		end
+		if string.find(t, "quest:", 1, true) or string.find(t, "story:", 1, true) or string.find(t, "farm:", 1, true) then
+			return "QUEST_OBJECTIVE"
+		end
+		return "IDLE"
+	end
 
 	local function pbegin()
 		return GB.Profiler and GB.Profiler.begin and GB.Profiler.begin() or nil
@@ -25,6 +57,7 @@ return function(GB)
 			GB.Log.log("STATE", "task " .. tostring(name))
 		end
 		M.task = name
+		setOwner(ownerForTask(name), name)
 	end
 
 	local function picker()
@@ -70,43 +103,38 @@ return function(GB)
 		end
 	end
 
-	local function repeatDirectTarget(name)
-		local stages = GB.QuestSpecs and GB.QuestSpecs.STAGES
-		if type(stages) ~= "table" then
-			return nil
+	local function repeatStartability(name)
+		local start = GB.QuestData and GB.QuestData.repeatStartSpec and GB.QuestData.repeatStartSpec(name) or nil
+		local qs = GB.Quest and GB.Quest.questState and GB.Quest.questState(name) or nil
+		if qs and qs.IsAccepted then
+			return {
+				Mode = "quest",
+				Status = "ACTIVE",
+				StartSpec = start,
+			}
 		end
-		local bestTarget, bestStage
-		for _, row in pairs(stages) do
-			if type(row) == "table" and row.quest == name then
-				local target = row.target
-				local obj = tostring(row.objective or "")
-				local goal = tostring(row.goal or "")
-				local isCombat = obj == "Kill" or obj == "Defeat" or obj == "Hit" or obj == "Shoot" or goal == "Kill"
-				if isCombat and type(target) == "string" and target ~= "" then
-					local st = tonumber(row.stage) or 9999
-					if not bestTarget or st < bestStage then
-						bestTarget = target
-						bestStage = st
-					end
-				end
-			end
+		local auto = start and start.Automatic == true
+		local hasNpc = start and type(start.AcceptNPC) == "string" and start.AcceptNPC ~= ""
+		local hasOther = start and type(start.OtherVerifiedStartMethod) == "string" and start.OtherVerifiedStartMethod ~= ""
+		if auto or hasNpc or hasOther then
+			return {
+				Mode = "quest",
+				Status = "STARTABLE",
+				StartSpec = start,
+			}
 		end
-		return bestTarget
-	end
-
-	local function repeatMode(name)
-		if not (GB.Quest and GB.Quest.questState) then
-			return "quest", nil
+		if start and start.DirectCombatVerified == true then
+			return {
+				Mode = "direct",
+				Status = "DIRECT_VERIFIED",
+				StartSpec = start,
+			}
 		end
-		local qs = GB.Quest.questState(name)
-		if qs and (qs.IsAccepted or qs.Automatic or (type(qs.NPC) == "string" and qs.NPC ~= "")) then
-			return "quest", nil
-		end
-		local target = repeatDirectTarget(name)
-		if target then
-			return "direct", target
-		end
-		return nil, nil
+		return {
+			Mode = nil,
+			Status = "UNRESOLVED_START",
+			StartSpec = start,
+		}
 	end
 
 	local function bestRepeat(island, lv)
@@ -115,35 +143,41 @@ return function(GB)
 		for _, e in ipairs(GB.QuestData.REPEATS) do
 			if e.island == island and lv >= (e.accept or 0) and lv <= (e.full_until or 999) then
 				if GB.QuestData.prereqOk(e.prereq) then
-					local mode, target = repeatMode(e.name)
-					if mode == "quest" then
+					local start = repeatStartability(e.name)
+					if start.Mode == "quest" then
 						if not bestQuest or e.exp > bestQuest.exp then
-							bestQuest = e
+							bestQuest = {
+								Name = e.name,
+								Mode = "quest",
+								Entry = e,
+								StartSpec = start.StartSpec,
+							}
 						end
-					elseif mode == "direct" and target then
+					elseif start.Mode == "direct" then
 						if not bestDirect or e.exp > bestDirect.exp then
 							bestDirect = {
-								name = e.name,
-								exp = e.exp,
-								target = target,
+								Name = e.name,
+								Mode = "direct",
+								Entry = e,
+								StartSpec = start.StartSpec,
 							}
+						end
+					elseif start.Status == "UNRESOLVED_START" then
+						local key = "repeat_unresolved:" .. tostring(e.name)
+						if M._repeatUnresolvedKey ~= key or os.clock() - (M._repeatUnresolvedAt or 0) > 25 then
+							M._repeatUnresolvedKey = key
+							M._repeatUnresolvedAt = os.clock()
+							GB.Log.warn("PLANNER", "UNRESOLVED_START " .. tostring(e.name))
 						end
 					end
 				end
 			end
 		end
 		if bestQuest then
-			return {
-				Name = bestQuest.name,
-				Mode = "quest",
-			}
+			return bestQuest
 		end
 		if bestDirect then
-			return {
-				Name = bestDirect.name,
-				Mode = "direct",
-				Target = bestDirect.target,
-			}
+			return bestDirect
 		end
 		return nil
 	end
@@ -197,7 +231,11 @@ return function(GB)
 	local function runFarmGoal(snap, why)
 		local rep = bestRepeat(snap.CurrentIsland, snap.Level or 0)
 		if not rep then
-			return false
+			return {
+				attempted = false,
+				progressed = false,
+				reason = "no_repeat",
+			}
 		end
 		local repName = rep.Name or tostring(rep)
 		local blockers = blockerList()
@@ -208,46 +246,91 @@ return function(GB)
 				break
 			end
 		end
-		if rep.Mode == "direct" and rep.Target then
-			note = note .. " direct:" .. tostring(rep.Target)
-		end
 		if M._farmNote ~= (repName .. "|" .. note) then
 			M._farmNote = repName .. "|" .. note
 			GB.Log.log("PLANNER", "farm goal " .. note)
 			GB.Log.log("PLANNER", "next=" .. tostring(repName))
 		end
-		M.goal = { Type = "FARM", Quest = repName, Note = note, Mode = rep.Mode, Target = rep.Target, At = os.clock() }
-		if rep.Mode == "direct" and rep.Target and GB.Combat then
-			setTask("farm_direct:" .. tostring(rep.Target))
-			logDoing("farm_direct", rep.Target)
+		M.goal = { Type = "FARM", Quest = repName, Note = note, Mode = rep.Mode, At = os.clock() }
+		if rep.Mode == "direct" and rep.StartSpec and rep.StartSpec.DirectCombatVerified and GB.Combat then
+			local target = rep.StartSpec.DirectTarget
+			if type(target) ~= "string" or target == "" then
+				return {
+					attempted = false,
+					progressed = false,
+					reason = "direct_target_missing",
+				}
+			end
+			setTask("farm_direct:" .. tostring(target))
+			logDoing("farm_direct", target)
+			setOwner("COMBAT", target)
 			local ok = false
 			if GB.Combat.huntUntilDead then
-				ok = select(1, GB.Combat.huntUntilDead(rep.Target, 16))
+				ok = select(1, GB.Combat.huntUntilDead(target, 16))
 			elseif GB.Combat.attack then
-				ok = GB.Combat.attack(rep.Target)
+				ok = GB.Combat.attack(target)
 			end
 			if not ok then
-				GB.Log.warn("PLANNER", "direct farm miss " .. tostring(rep.Target))
+				GB.Log.warn("PLANNER", "direct farm miss " .. tostring(target))
 			end
-			return true
+			return {
+				attempted = true,
+				progressed = ok == true,
+				reason = ok and "direct_progress" or "direct_miss",
+				quest = repName,
+				target = target,
+			}
 		end
-		setTask("farm:" .. repName)
-		logDoing("farm", repName)
-		local ok = GB.Quest.doLive(repName)
-		if not ok then
-			local fallback = repeatDirectTarget(repName)
-			if fallback and GB.Combat then
-				setTask("farm_direct:" .. tostring(fallback))
-				logDoing("farm_direct", fallback)
-				GB.Log.warn("PLANNER", "fallback direct farm " .. tostring(repName) .. " -> " .. tostring(fallback))
-				if GB.Combat.huntUntilDead then
-					GB.Combat.huntUntilDead(fallback, 16)
-				elseif GB.Combat.attack then
-					GB.Combat.attack(fallback)
-				end
+		if GB.Quest and GB.Quest.dialogueOpen and GB.Quest.dialogueOpen() then
+			local acceptNpc = rep.StartSpec and rep.StartSpec.AcceptNPC or repName
+			setTask("quest_accept:" .. tostring(acceptNpc))
+			logDoing("quest_accept", acceptNpc)
+			setOwner("QUEST_ACCEPT", acceptNpc)
+			local row
+			if GB.Quest.doLiveResult then
+				row = GB.Quest.doLiveResult(repName)
+			else
+				local ok = GB.Quest.doLive(repName)
+				row = { attempted = true, progressed = ok == true, reason = ok and "quest_progress" or "quest_pending" }
 			end
+			return {
+				attempted = row.attempted ~= false,
+				progressed = row.progressed == true,
+				reason = row.reason or "dialogue_open",
+				quest = repName,
+			}
 		end
-		return true
+		local live = GB.Quest and GB.Quest.questState and GB.Quest.questState(repName) or nil
+		local acceptNpc = rep.StartSpec and rep.StartSpec.AcceptNPC
+		if live and not live.IsAccepted and type(acceptNpc) == "string" and acceptNpc ~= "" then
+			setTask("quest_accept:" .. tostring(acceptNpc))
+			logDoing("quest_accept", acceptNpc)
+			setOwner("QUEST_ACCEPT", acceptNpc)
+		else
+			setTask("farm:" .. repName)
+			logDoing("farm", repName)
+			setOwner("QUEST_OBJECTIVE", repName)
+		end
+		local row
+		if GB.Quest.doLiveResult then
+			row = GB.Quest.doLiveResult(repName)
+		else
+			local ok = GB.Quest.doLive(repName)
+			row = { attempted = true, progressed = ok == true, reason = ok and "quest_progress" or "quest_pending" }
+		end
+		if row.progressed ~= true and rep.StartSpec and rep.StartSpec.Status == "STARTABLE" then
+			GB.Log.warn("PLANNER", "farm quest pending accept/credit " .. tostring(repName))
+		end
+		return {
+			attempted = row.attempted ~= false,
+			progressed = row.progressed == true,
+			reason = row.reason or (row.progressed and "quest_progress" or "quest_not_progressed"),
+			quest = repName,
+		}
+	end
+
+	local function farmHandled(result)
+		return type(result) == "table" and result.attempted == true
 	end
 
 	function M.optionalOk()
@@ -447,7 +530,7 @@ return function(GB)
 				afterQuest(nextQuest)
 				return true
 			end
-			if runFarmGoal(snap, reason or "no_ready_active") then
+			if farmHandled(runFarmGoal(snap, reason or "no_ready_active")) then
 				return true
 			end
 			return false
@@ -472,7 +555,7 @@ return function(GB)
 				local gated = obj and obj.Type == "Required" and obj.TargetName == "Level"
 				local need = gated and (obj.Amount or GB.QuestData.needLevel(cur)) or 0
 				if gated and (snap.Level or 0) < need then
-					if runFarmGoal(snap, "FarmUntilLevel(" .. tostring(need) .. ")") then
+					if farmHandled(runFarmGoal(snap, "FarmUntilLevel(" .. tostring(need) .. ")")) then
 						return
 					end
 					setTask("wait_level:" .. cur)
@@ -538,7 +621,7 @@ return function(GB)
 			afterQuest(readyFallback)
 			return
 		end
-		if #blockerList() > 0 and runFarmGoal(snap, "active_blocked") then
+		if #blockerList() > 0 and farmHandled(runFarmGoal(snap, "active_blocked")) then
 			return
 		end
 
@@ -556,7 +639,7 @@ return function(GB)
 		local story = nextStory(island, lv)
 		if story then
 			if lv < GB.QuestData.needLevel(story) then
-				if runFarmGoal(snap, "FarmUntilLevel(" .. tostring(GB.QuestData.needLevel(story)) .. ")") then
+				if farmHandled(runFarmGoal(snap, "FarmUntilLevel(" .. tostring(GB.QuestData.needLevel(story)) .. ")")) then
 					return
 				end
 				setTask("wait_level:" .. story)
@@ -572,7 +655,7 @@ return function(GB)
 
 		local rep = bestRepeat(island, lv)
 		if rep then
-			runFarmGoal(snap, "story_idle")
+			farmHandled(runFarmGoal(snap, "story_idle"))
 			return
 		end
 
