@@ -645,7 +645,34 @@ return function(GB)
 			end
 			return false
 		end
-		if typ == "Kill" or typ == "Defeat" or typ == "Hit" or typ == "Destroy" or typ == "Shoot" then
+		if typ == "Shoot" then
+			local before = M.questState(questName)
+			local beforeCur = before.Objective and before.Objective.Current or 0
+			local ok, why = GB.Combat.shootUntilCredit(target or "Training Dummy", questName, 24)
+			if GB.PlayerData.invalidateLive then
+				GB.PlayerData.invalidateLive()
+			end
+			local after = M.questState(questName)
+			if after.IsComplete or (after.Objective and after.Objective.Current and after.Objective.Current > beforeCur) or after.StageIndex ~= before.StageIndex then
+				M.noteOk(questName)
+				return true
+			end
+			if why == "quest_done" then
+				M.noteOk(questName)
+				return true
+			end
+			if not ok then
+				local pos = GB.Resolver.lastDummyPos and GB.Resolver.lastDummyPos()
+				if pos and GB.World.destOk(pos) then
+					GB.World.setPos(pos + Vector3.new(GB.Config.ShootRange or 9, 0, 0))
+				elseif before.Island then
+					GB.World.pullStream(before.Island)
+				end
+				M.noteFail(questName, "shoot miss " .. tostring(target))
+			end
+			return false
+		end
+		if typ == "Kill" or typ == "Defeat" or typ == "Hit" or typ == "Destroy" then
 			local before = M.questState(questName)
 			local beforeCur = before.Objective and before.Objective.Current or 0
 			local ok, why = false, nil

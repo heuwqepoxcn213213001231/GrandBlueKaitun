@@ -1,5 +1,5 @@
 {
-  "version": "1.1.5",
+  "version": "1.1.6",
   "source": "research/quests.json QuestInfo Studio dump",
   "items": {
     "Pirate Fan Letter": {
@@ -1546,7 +1546,7 @@
       "prerequisites": [
         "Pirate Fan Letter"
       ],
-      "handler": "Combat.attack",
+      "handler": "Combat.shootUntilCredit",
       "validation": "live Shoot Training Dummy count 1",
       "confidence": "STATIC_VERIFIED",
       "status": "IMPLEMENTED",

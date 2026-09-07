@@ -651,6 +651,92 @@ return function(GB)
 		return true, "timeout"
 	end
 
+	function M.shootStance(mob)
+		if not M.IsEnemyAlive(mob) then
+			return false
+		end
+		local root = GB.World.hrp()
+		local part = GB.Resolver.part(mob)
+		if not (root and part) then
+			return false
+		end
+		local range = GB.Config.ShootRange or 9
+		local look = part.CFrame.LookVector
+		local off = Vector3.new(look.X, 0, look.Z)
+		if off.Magnitude < 0.2 then
+			off = Vector3.new(range, 0, 0)
+		else
+			off = off.Unit * range
+		end
+		local dest = part.Position + off
+		if not GB.World.destOk(dest) then
+			dest = part.Position + Vector3.new(range, 0, 0)
+		end
+		local g = GB.World.groundAt(dest)
+		if g then
+			dest = g
+		end
+		root.CFrame = CFrame.new(dest, Vector3.new(part.Position.X, dest.Y, part.Position.Z))
+		if GB.Skills and GB.Skills.aimAt then
+			GB.Skills.aimAt(mob)
+		end
+		return true
+	end
+
+	function M.shootUntilCredit(name, questName, timeout)
+		timeout = timeout or 22
+		local skill = (GB.Skills and GB.Skills.resolveShootSkill and GB.Skills.resolveShootSkill()) or "Gunshot"
+		if questName and GB.Quest then
+			local qs = GB.Quest.questState(questName)
+			M.lastKillBefore = qs and qs.Objective and {
+				Current = qs.Objective.Current or 0,
+				Amount = qs.Objective.Amount or 1,
+				StageIndex = qs.StageIndex,
+			} or nil
+		end
+		M.stopLock()
+		local mob = M.findTarget(name, questName)
+		if not M.IsEnemyAlive(mob) then
+			return false, "no_enemy"
+		end
+		GB.Log.log("COMBAT", "Shoot " .. skill .. " -> " .. tostring(mob.Name))
+		if GB.World.ToEnemy then
+			GB.World.ToEnemy(mob, GB.Config.ShootRange or 9)
+		end
+		M.shootStance(mob)
+		local t0 = os.clock()
+		while os.clock() - t0 < timeout do
+			if questName and M.questCombatDone(questName) then
+				M.logKillCredit(questName, M.lastKillBefore)
+				return true, "quest_done"
+			end
+			mob = M.findTarget(name, questName) or mob
+			if not M.IsEnemyAlive(mob) then
+				return false, "no_enemy"
+			end
+			M.shootStance(mob)
+			if GB.Skills and GB.Skills.castHold then
+				GB.Skills.castHold(skill, {
+					keepLock = true,
+					target = mob,
+					hold = 0.5,
+					cooldown = 6.1,
+				})
+			end
+			task.wait(0.9)
+			if questName and M.questCombatDone(questName) then
+				M.logKillCredit(questName, M.lastKillBefore)
+				return true, "quest_done"
+			end
+			task.wait(5.2)
+		end
+		if questName and M.questCombatDone(questName) then
+			M.logKillCredit(questName, M.lastKillBefore)
+			return true, "quest_done"
+		end
+		return false, "timeout"
+	end
+
 	function M.attack(name, questName)
 		if questName then
 			local qs = GB.Quest.questState(questName)

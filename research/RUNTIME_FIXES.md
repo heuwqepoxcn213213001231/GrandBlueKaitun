@@ -1,5 +1,22 @@
 # Runtime Fixes
 
+## 1.1.6 — Gearing Up Shoot Dummy is Gunshot HOLD, not melee
+
+1.1.5 closed SkillObtained. Quest advanced to **Shoot Training Dummy (0/1)**. Combat then `Teleport` + `AttackModule.Swing` on `Training Dummy6`. Dummy has no Humanoid (`hp=?`) and never dies. Melee does not credit `Shoot`. Hotbar slot 5 **Gunshot** shows **HOLD**. `Fruit Chest` / Punch stayed selected. `state not found Ragdoll/GettingUp` is AttackModule swinging a dummy.
+
+Verified: `CreateCondition(..., "Shoot", "Training Dummy", 1)`. Archived Aim Training text: "Land Gunshot on a Training Dummy". `Gunshot.ChargeInfo` = hold `Windup` 0.35s, max 15. `BackpackLocal.UseTool(slot, true)` + `ReleaseTool` → `Events.Input` State true/false + HeldDuration. Slot key `PressKey` Five is the fallback.
+
+**Fix:** Shoot ≠ Hit. `Combat.shootUntilCredit` stands at `ShootRange` (9), aims, `Skills.castHold` (UseTool hold or PressKey), waits projectile + 6s cooldown, validates live Shoot count. No Swing. Dummy death is not the completion signal.
+
+```
+[Kaitun][COMBAT] Shoot Gunshot -> Training Dummy6
+[Kaitun][SKILL] hold Gunshot slot=5 0.50s via UseTool
+[Kaitun][SKILL] release Gunshot
+[Kaitun][QUEST] Kill credited 0/1 -> 1/1
+```
+
+---
+
 ## 1.1.5 — ContinueOverlay: real press-anywhere, never hide GUI
 
 1.1.4 hid `SkillObtained` (`Enabled=false`) and fired `PromptSkillEquip` as a fallback. That is not the game flow. The card is a **transient `PassiveDisplay` event**. Continuation is `PassiveObtained.Notify` after `task.wait(3)`:

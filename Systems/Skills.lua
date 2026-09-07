@@ -240,7 +240,238 @@ return function(GB)
 		return false
 	end
 
-	function M.cast(name)
+	local SLOT_KEYS = {
+		Enum.KeyCode.One,
+		Enum.KeyCode.Two,
+		Enum.KeyCode.Three,
+		Enum.KeyCode.Four,
+		Enum.KeyCode.Five,
+		Enum.KeyCode.Six,
+		Enum.KeyCode.Seven,
+		Enum.KeyCode.Eight,
+		Enum.KeyCode.Nine,
+		Enum.KeyCode.Zero,
+	}
+
+	local function skillInfo(name)
+		local ok, SI = pcall(function()
+			return require(game:GetService("ReplicatedStorage").Modules.SkillInformation)
+		end)
+		if not (ok and type(SI) == "table" and SI.GetSkillInfo) then
+			return nil
+		end
+		local ok2, info = pcall(SI.GetSkillInfo, name)
+		if ok2 and type(info) == "table" then
+			return info
+		end
+		return nil
+	end
+
+	local function chargeHoldSec(name)
+		local info = skillInfo(name)
+		if not (info and info.ChargeInfo) then
+			return nil
+		end
+		local base = info.BaseInfo or {}
+		local ok, ci = pcall(info.ChargeInfo, base)
+		if ok and type(ci) == "table" and type(ci.minimumDuration) == "number" then
+			return ci.minimumDuration
+		end
+		return type(base.Windup) == "number" and base.Windup or 0.35
+	end
+
+	function M.isHoldSkill(name)
+		if chargeHoldSec(name) then
+			return true
+		end
+		local tf = select(1, hotbarSlot(name))
+		if not tf then
+			return false
+		end
+		local extra = tf:FindFirstChild("ExtraText", true)
+		if extra and (extra:IsA("TextLabel") or extra:IsA("TextButton")) then
+			return string.upper(tostring(extra.Text or "")) == "HOLD"
+		end
+		return false
+	end
+
+	function M.hotbarIndex(title)
+		local _, child = hotbarSlot(title)
+		if not child then
+			return nil
+		end
+		local n = tonumber(child.Name)
+		if n then
+			return n
+		end
+		if type(child.LayoutOrder) == "number" and child.LayoutOrder > 0 then
+			return child.LayoutOrder
+		end
+		return nil
+	end
+
+	function M.resolveShootSkill()
+		if hotbarSlot("Gunshot") then
+			return "Gunshot"
+		end
+		local bar = hotbar()
+		if bar then
+			for _, child in ipairs(bar:GetChildren()) do
+				local tf = child:FindFirstChild("ToolFrame")
+				local extra = tf and tf:FindFirstChild("ExtraText", true)
+				local lab = tf and tf:FindFirstChild("Title")
+				if extra and (extra:IsA("TextLabel") or extra:IsA("TextButton")) and string.upper(tostring(extra.Text or "")) == "HOLD" then
+					if lab and (lab:IsA("TextLabel") or lab:IsA("TextButton")) and type(lab.Text) == "string" and lab.Text ~= "" then
+						return lab.Text
+					end
+				end
+			end
+		end
+		return "Gunshot"
+	end
+
+	local function backpackEnv()
+		if typeof(getsenv) ~= "function" then
+			return nil
+		end
+		local ui = pg()
+		local bp = ui and ui:FindFirstChild("Backpack")
+		if not bp then
+			return nil
+		end
+		local ls = bp:FindFirstChild("BackpackLocal", true)
+		if not (ls and ls:IsA("LocalScript")) then
+			for _, d in ipairs(bp:GetDescendants()) do
+				if d:IsA("LocalScript") and d.Name == "BackpackLocal" then
+					ls = d
+					break
+				end
+			end
+		end
+		if not ls then
+			return nil
+		end
+		local ok, env = pcall(getsenv, ls)
+		if ok and type(env) == "table" then
+			return env
+		end
+		return nil
+	end
+
+	local function pressSlot(idx, down)
+		local key = SLOT_KEYS[idx]
+		if not key then
+			return false
+		end
+		local ev = game:GetService("ReplicatedStorage"):FindFirstChild("Events")
+		local pk = ev and ev:FindFirstChild("PressKey")
+		if not pk then
+			return false
+		end
+		if down == false then
+			return pcall(function()
+				pk:Fire(key, Enum.UserInputType.Keyboard, false)
+			end)
+		end
+		return pcall(function()
+			pk:Fire(key, Enum.UserInputType.Keyboard)
+		end)
+	end
+
+	function M.aimAt(target)
+		if typeof(target) ~= "Instance" then
+			return false
+		end
+		local part = GB.Resolver and GB.Resolver.part and GB.Resolver.part(target) or target:FindFirstChild("HumanoidRootPart") or target.PrimaryPart
+		local root = GB.World and GB.World.hrp and GB.World.hrp()
+		if not (part and root) then
+			return false
+		end
+		local dest = root.Position
+		root.CFrame = CFrame.new(dest, Vector3.new(part.Position.X, dest.Y, part.Position.Z))
+		local cam = workspace.CurrentCamera
+		if cam then
+			local origin = dest + Vector3.new(0, 1.5, 0)
+			pcall(function()
+				cam.CFrame = CFrame.new(origin, part.Position)
+			end)
+			local sp, on = cam:WorldToViewportPoint(part.Position)
+			if on then
+				local vim = game:GetService("VirtualInputManager")
+				if vim and vim.SendMouseMoveEvent then
+					pcall(function()
+						vim:SendMouseMoveEvent(sp.X, sp.Y, game)
+					end)
+				end
+			end
+		end
+		return true
+	end
+
+	function M.castHold(name, opts)
+		opts = opts or {}
+		if not name then
+			return false
+		end
+		if GB.State.tutorialOverlayVisible() then
+			GB.State.dismissTutorialOverlay()
+			return false
+		end
+		local cd = opts.cooldown or 6.2
+		if os.clock() - (M.lastCast[name] or 0) < cd then
+			return false
+		end
+		if not opts.keepLock and GB.Combat and GB.Combat.stopLock then
+			GB.Combat.stopLock()
+		end
+		if not skillEquipped(name) then
+			M.equip(name)
+			task.wait(0.2)
+		end
+		closeMenus()
+		if opts.target then
+			M.aimAt(opts.target)
+		end
+		local idx = M.hotbarIndex(name) or 5
+		local hold = opts.hold or ((chargeHoldSec(name) or 0.35) + 0.12)
+		local env = backpackEnv()
+		local method = nil
+		if env and type(env.UseTool) == "function" then
+			if pcall(env.UseTool, idx, true) then
+				method = "UseTool"
+			end
+		end
+		if not method then
+			if pressSlot(idx, true) then
+				method = "PressKey"
+			end
+		end
+		if not method then
+			GB.Log.warn("SKILL", "hold press miss " .. name)
+			return false
+		end
+		M.lastCast[name] = os.clock()
+		GB.Log.log("SKILL", string.format("hold %s slot=%s %.2fs via %s", name, tostring(idx), hold, method))
+		task.wait(hold)
+		if opts.target then
+			M.aimAt(opts.target)
+		end
+		if method == "UseTool" and env and type(env.ReleaseTool) == "function" then
+			pcall(env.ReleaseTool, idx)
+		else
+			pressSlot(idx, false)
+		end
+		GB.Log.log("SKILL", "release " .. name)
+		if GB.Recovery and GB.Recovery.markSuccess then
+			GB.Recovery.markSuccess()
+		end
+		return true
+	end
+
+	function M.cast(name, opts)
+		if M.isHoldSkill(name) then
+			return M.castHold(name, opts)
+		end
 		if not name then
 			return false
 		end
@@ -252,7 +483,9 @@ return function(GB)
 			return false
 		end
 		M.lastCast[name] = os.clock()
-		GB.Combat.stopLock()
+		if not (opts and opts.keepLock) and GB.Combat then
+			GB.Combat.stopLock()
+		end
 		if not skillEquipped(name) then
 			M.equip(name)
 			task.wait(0.2)

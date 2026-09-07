@@ -1,6 +1,6 @@
 # Grand Blue (Eternal Pose) — Research Pack
 
-**Turn scope:** Phase 4 RE + Phase 5–9 Kaitun implemented. Entry `kaitun.lua`. Version **1.1.5** (ContinueOverlay via real UIS.InputBegan). Reports: `FINAL_IMPLEMENTATION_REPORT.md`, `FINAL_CHECKLIST.md`, `REMOTE_REGISTRY.md`, `PROGRESSION_FINAL.md`, `RUNTIME_FIXES.md`, `QUEST_EXECUTION_MATRIX.md`, `QUEST_COVERAGE_REPORT.md`, `TUTORIAL_FLOW.md`.
+**Turn scope:** Phase 4 RE + Phase 5–9 Kaitun implemented. Entry `kaitun.lua`. Version **1.1.6** (Shoot Dummy = hold Gunshot, not melee). Reports: `FINAL_IMPLEMENTATION_REPORT.md`, `FINAL_CHECKLIST.md`, `REMOTE_REGISTRY.md`, `PROGRESSION_FINAL.md`, `RUNTIME_FIXES.md`, `QUEST_EXECUTION_MATRIX.md`, `QUEST_COVERAGE_REPORT.md`, `TUTORIAL_FLOW.md`.
 
 **Place (Studio):** `place 118635363908336 Game.rbxl` — connected. `Workspace.Islands` chỉ có 3 đảo.
 
