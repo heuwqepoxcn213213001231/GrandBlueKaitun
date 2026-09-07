@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
 -- Version: 1.1.24
--- Commit: 5135183
--- BuiltAt: 2026-09-08T03:54:45+07:00
+-- Commit: b361350
+-- BuiltAt: 2026-09-08T03:55:56+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -36,8 +36,8 @@ return function(meta)
 	stopPreviousInstance()
 
 	local BUILD_VERSION = "1.1.24"
-	local BUILD_COMMIT = "5135183"
-	local BUILD_AT = "2026-09-08T03:54:45+07:00"
+	local BUILD_COMMIT = "b361350"
+	local BUILD_AT = "2026-09-08T03:55:56+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -5000,6 +5000,8 @@ return function(GB)
 		return false
 	end
 
+	local islandOf
+
 	function M.dummy()
 		if dummyCache and dummyCache.Parent and usable(dummyCache, "enemy") then
 			return dummyCache
@@ -5097,8 +5099,6 @@ return function(GB)
 		add(workspace:FindFirstChild("Islands"))
 		return roots
 	end
-
-	local islandOf
 
 	function M.baseName(s)
 		if type(s) ~= "string" then
@@ -12357,7 +12357,7 @@ return function(GB)
 				DisplayName = target,
 			})
 			if ok then
-				local progressed, sig = waitTalkProgress(questName, before)
+				local progressed = waitTalkProgress(questName, before)
 				if progressed then
 					local after = M.questState(questName)
 					local prev = qs.Objective

@@ -1271,7 +1271,7 @@ return function(GB)
 				DisplayName = target,
 			})
 			if ok then
-				local progressed, sig = waitTalkProgress(questName, before)
+				local progressed = waitTalkProgress(questName, before)
 				if progressed then
 					local after = M.questState(questName)
 					local prev = qs.Objective

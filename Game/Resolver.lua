@@ -417,6 +417,8 @@ return function(GB)
 		return false
 	end
 
+	local islandOf
+
 	function M.dummy()
 		if dummyCache and dummyCache.Parent and usable(dummyCache, "enemy") then
 			return dummyCache
@@ -514,8 +516,6 @@ return function(GB)
 		add(workspace:FindFirstChild("Islands"))
 		return roots
 	end
-
-	local islandOf
 
 	function M.baseName(s)
 		if type(s) ~= "string" then
