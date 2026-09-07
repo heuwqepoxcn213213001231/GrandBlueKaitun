@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
 -- Version: 1.1.24
--- Commit: a6a2a00
--- BuiltAt: 2026-09-08T04:37:39+07:00
+-- Commit: 0f75d57
+-- BuiltAt: 2026-09-08T04:38:08+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -36,8 +36,8 @@ return function(meta)
 	stopPreviousInstance()
 
 	local BUILD_VERSION = "1.1.24"
-	local BUILD_COMMIT = "a6a2a00"
-	local BUILD_AT = "2026-09-08T04:37:39+07:00"
+	local BUILD_COMMIT = "0f75d57"
+	local BUILD_AT = "2026-09-08T04:38:08+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -13306,7 +13306,7 @@ return function(GB)
 			end
 		end
 
-		if qs.IsComplete then
+		if qs.IsComplete and not (qs.Repeatable or isRepeatable(name)) then
 			M.noteOk(name)
 			return resultRow(name, true, true, "complete")
 		end
