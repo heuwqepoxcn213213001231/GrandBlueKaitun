@@ -48,6 +48,7 @@ return function(GB)
 	M.OBJECT_ALIAS = {
 		["Marine Gate"] = { "Marine Metal Gate", "Gate" },
 		["Marine Metal Gate"] = { "Marine Gate", "Gate" },
+		["Muggy Cannon"] = { "MuggyCannon" },
 	}
 
 	local missLog = {}
@@ -947,6 +948,27 @@ return function(GB)
 				end)
 			end
 		end
+		local specs = GB.QuestData and GB.QuestData.OBJECT_TARGETS
+		if type(specs) == "table" then
+			local seenTag = {}
+			for _, spec in pairs(specs) do
+				if type(spec) == "table" and type(spec.Tags) == "table" then
+					for _, tag in ipairs(spec.Tags) do
+						if type(tag) == "string" and tag ~= "" and not seenTag[tag] then
+							seenTag[tag] = true
+							local ok, list = pcall(CS.GetTagged, CS, tag)
+							if ok and type(list) == "table" then
+								for _, inst in ipairs(list) do
+									if inst.Parent and not inRS(inst) then
+										indexAddInstance("object", inst)
+									end
+								end
+							end
+						end
+					end
+				end
+			end
+		end
 		indexes.object.built = true
 		perfCount("ObjectIndexBuild", 1)
 		pdone("Resolver.objectIndexBuild", t0)
@@ -1422,6 +1444,140 @@ return function(GB)
 		for _, inst in ipairs(CS:GetTagged(tag)) do
 			if inst.Parent and not inRS(inst) and not M.isPet(inst) then
 				return inst
+			end
+		end
+		return nil
+	end
+
+	function M.isMarkerTree(inst)
+		local p = inst
+		while p and p ~= workspace do
+			local n = p.Name
+			if n == "Markers" or n == "NPCAreas" or n == "PointsOfInterest" or n == "Spawn Locations" then
+				return true
+			end
+			p = p.Parent
+		end
+		return false
+	end
+
+	function M.objectCombatRoot(inst, name)
+		if not inst then
+			return nil
+		end
+		local spec = GB.QuestData and GB.QuestData.objectSpec and GB.QuestData.objectSpec(name)
+		local tags = { name }
+		if spec and type(spec.Tags) == "table" then
+			for _, t in ipairs(spec.Tags) do
+				if type(t) == "string" and t ~= "" then
+					tags[#tags + 1] = t
+				end
+			end
+		end
+		local function taggedAs(x)
+			if not x then
+				return false
+			end
+			if type(name) == "string" and name ~= "" and x.Name == name then
+				return true
+			end
+			return hasAnyTag(x, tags)
+		end
+		local cur = inst
+		while cur.Parent and cur.Parent ~= workspace do
+			local parent = cur.Parent
+			local pn = parent.Name
+			if pn == "Islands" or pn == "Entities" or pn == "AA IMPORTANT" or pn == "Island" then
+				break
+			end
+			if taggedAs(parent) then
+				cur = parent
+			else
+				break
+			end
+		end
+		return cur
+	end
+
+	function M.findDestroyable(name, opts)
+		opts = opts or {}
+		if type(name) ~= "string" or name == "" then
+			return nil
+		end
+		local spec = GB.QuestData and GB.QuestData.objectSpec and GB.QuestData.objectSpec(name)
+		local island = opts.Island or (spec and spec.Island)
+		local tags = { name }
+		local seen = { [name] = true }
+		local function addTag(t)
+			if type(t) == "string" and t ~= "" and not seen[t] then
+				seen[t] = true
+				tags[#tags + 1] = t
+			end
+		end
+		if spec and type(spec.Tags) == "table" then
+			for _, t in ipairs(spec.Tags) do
+				addTag(t)
+			end
+		end
+		local alias = M.OBJECT_ALIAS[name]
+		if type(alias) == "string" then
+			addTag(alias)
+		elseif type(alias) == "table" then
+			for _, t in ipairs(alias) do
+				addTag(t)
+			end
+		end
+
+		local function consider(inst)
+			if not inst or not inst.Parent or inRS(inst) or M.isPet(inst) then
+				return nil
+			end
+			local root = M.objectCombatRoot(inst, name) or inst
+			if not root or not root.Parent or inRS(root) then
+				return nil
+			end
+			if M.isMarkerTree(root) then
+				local hp, _ = nil, nil
+				if GB.Combat and GB.Combat.readHealth then
+					hp = GB.Combat.readHealth(root)
+				end
+				if type(hp) ~= "number" then
+					return nil
+				end
+			end
+			if island then
+				local got = islandOf(root)
+				if got and got ~= island then
+					return nil
+				end
+			end
+			if not (M.part(root) or M.positionOf(root)) then
+				return nil
+			end
+			if GB.Combat and GB.Combat.isRecentlyDead and GB.Combat.isRecentlyDead(root) then
+				return nil
+			end
+			if GB.Combat and GB.Combat.IsEnemyAlive and not GB.Combat.IsEnemyAlive(root) then
+				return nil
+			end
+			return root
+		end
+
+		if spec and spec.Path then
+			local hit = consider(followPath(spec.Path))
+			if hit then
+				return hit
+			end
+		end
+		for _, tag in ipairs(tags) do
+			local ok, list = pcall(CS.GetTagged, CS, tag)
+			if ok and type(list) == "table" then
+				for _, inst in ipairs(list) do
+					local hit = consider(inst)
+					if hit then
+						return hit
+					end
+				end
 			end
 		end
 		return nil

@@ -79,6 +79,10 @@ return function(GB)
 		local typ = o and o.Type
 		if typ == "Kill" or typ == "Defeat" or typ == "Hit" or typ == "Destroy" or typ == "Shoot" then
 			GB.Cache.invalidatePrefix("res:enemy:")
+			if typ == "Destroy" then
+				GB.Cache.invalidatePrefix("res:object:")
+				GB.Cache.invalidatePrefix("res:marker:")
+			end
 			return
 		end
 		if typ == "Talk" or typ == "Automatic Talk" or typ == "GiveItemTo" or typ == "Deliver" then

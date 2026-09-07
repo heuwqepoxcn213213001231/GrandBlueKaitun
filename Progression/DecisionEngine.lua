@@ -504,10 +504,16 @@ return function(GB)
 				logDoing("farm_direct", target)
 				setOwner("COMBAT", target)
 				local ok = false
+				local plan = {
+					Quest = directJob.Name,
+					Target = target,
+					Island = directJob.qs and directJob.qs.Island or (directJob.Entry and directJob.Entry.island),
+					SkipStream = true,
+				}
 				if GB.Combat.hunt then
-					ok = GB.Combat.hunt(target)
+					ok = GB.Combat.hunt(target, directJob.Name, plan)
 				elseif GB.Combat.attack then
-					ok = GB.Combat.attack(target)
+					ok = GB.Combat.attack(target, directJob.Name)
 				end
 				return {
 					attempted = true,

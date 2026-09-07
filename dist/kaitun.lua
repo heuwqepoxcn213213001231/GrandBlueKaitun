@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
--- Version: 1.1.29
--- Commit: 7a2c601
--- BuiltAt: 2026-09-08T05:47:53+07:00
+-- Version: 1.1.30
+-- Commit: 961eb31
+-- BuiltAt: 2026-09-08T05:54:01+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -35,9 +35,9 @@ return function(meta)
 
 	stopPreviousInstance()
 
-	local BUILD_VERSION = "1.1.29"
-	local BUILD_COMMIT = "7a2c601"
-	local BUILD_AT = "2026-09-08T05:47:53+07:00"
+	local BUILD_VERSION = "1.1.30"
+	local BUILD_COMMIT = "961eb31"
+	local BUILD_AT = "2026-09-08T05:54:01+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -916,6 +916,10 @@ return function(GB)
 		local typ = o and o.Type
 		if typ == "Kill" or typ == "Defeat" or typ == "Hit" or typ == "Destroy" or typ == "Shoot" then
 			GB.Cache.invalidatePrefix("res:enemy:")
+			if typ == "Destroy" then
+				GB.Cache.invalidatePrefix("res:object:")
+				GB.Cache.invalidatePrefix("res:marker:")
+			end
 			return
 		end
 		if typ == "Talk" or typ == "Automatic Talk" or typ == "GiveItemTo" or typ == "Deliver" then
@@ -3678,12 +3682,41 @@ return function(GB)
 	}
 
 	-- Verified semantic world object mapping used by resolver/planner.
+	-- Destroy targets are CollectionService tags / world models, not Entities enemies.
 	M.OBJECT_TARGETS = {
 		["Marine Gate"] = {
 			Island = "Anchor Town",
 			Path = { "Islands", "Anchor Town", "Island", "Gate" },
 			Tags = { "Marine Metal Gate", "Gate" },
 			Prompts = { "Pushable Door" },
+		},
+		["Muggy Cannon"] = {
+			Island = "Clown Town",
+			Tags = { "Muggy Cannon" },
+		},
+		["Air Balloon"] = {
+			Island = "Clown Town",
+			Tags = { "Air Balloon" },
+		},
+		["Explosive Wooden Crate"] = {
+			Island = "Clown Town",
+			Tags = { "Explosive Wooden Crate" },
+		},
+		["Supply Crate"] = {
+			Island = "Maple Village",
+			Tags = { "Supply Crate" },
+		},
+		["North Camp Signal Fire"] = {
+			Island = "Maple Village",
+			Tags = { "North Camp Signal Fire" },
+		},
+		["South Camp Signal Fire"] = {
+			Island = "Maple Village",
+			Tags = { "South Camp Signal Fire" },
+		},
+		["Overlook Signal Fire"] = {
+			Island = "Maple Village",
+			Tags = { "Overlook Signal Fire" },
 		},
 	}
 
@@ -3816,6 +3849,10 @@ return function(GB)
 
 	function M.objectSpec(target)
 		return M.OBJECT_TARGETS[target]
+	end
+
+	function M.isObjectTarget(target)
+		return type(target) == "string" and M.OBJECT_TARGETS[target] ~= nil
 	end
 
 	function M.questRequirement(name)
@@ -4818,6 +4855,7 @@ return function(GB)
 	M.OBJECT_ALIAS = {
 		["Marine Gate"] = { "Marine Metal Gate", "Gate" },
 		["Marine Metal Gate"] = { "Marine Gate", "Gate" },
+		["Muggy Cannon"] = { "MuggyCannon" },
 	}
 
 	local missLog = {}
@@ -5717,6 +5755,27 @@ return function(GB)
 				end)
 			end
 		end
+		local specs = GB.QuestData and GB.QuestData.OBJECT_TARGETS
+		if type(specs) == "table" then
+			local seenTag = {}
+			for _, spec in pairs(specs) do
+				if type(spec) == "table" and type(spec.Tags) == "table" then
+					for _, tag in ipairs(spec.Tags) do
+						if type(tag) == "string" and tag ~= "" and not seenTag[tag] then
+							seenTag[tag] = true
+							local ok, list = pcall(CS.GetTagged, CS, tag)
+							if ok and type(list) == "table" then
+								for _, inst in ipairs(list) do
+									if inst.Parent and not inRS(inst) then
+										indexAddInstance("object", inst)
+									end
+								end
+							end
+						end
+					end
+				end
+			end
+		end
 		indexes.object.built = true
 		perfCount("ObjectIndexBuild", 1)
 		pdone("Resolver.objectIndexBuild", t0)
@@ -6192,6 +6251,140 @@ return function(GB)
 		for _, inst in ipairs(CS:GetTagged(tag)) do
 			if inst.Parent and not inRS(inst) and not M.isPet(inst) then
 				return inst
+			end
+		end
+		return nil
+	end
+
+	function M.isMarkerTree(inst)
+		local p = inst
+		while p and p ~= workspace do
+			local n = p.Name
+			if n == "Markers" or n == "NPCAreas" or n == "PointsOfInterest" or n == "Spawn Locations" then
+				return true
+			end
+			p = p.Parent
+		end
+		return false
+	end
+
+	function M.objectCombatRoot(inst, name)
+		if not inst then
+			return nil
+		end
+		local spec = GB.QuestData and GB.QuestData.objectSpec and GB.QuestData.objectSpec(name)
+		local tags = { name }
+		if spec and type(spec.Tags) == "table" then
+			for _, t in ipairs(spec.Tags) do
+				if type(t) == "string" and t ~= "" then
+					tags[#tags + 1] = t
+				end
+			end
+		end
+		local function taggedAs(x)
+			if not x then
+				return false
+			end
+			if type(name) == "string" and name ~= "" and x.Name == name then
+				return true
+			end
+			return hasAnyTag(x, tags)
+		end
+		local cur = inst
+		while cur.Parent and cur.Parent ~= workspace do
+			local parent = cur.Parent
+			local pn = parent.Name
+			if pn == "Islands" or pn == "Entities" or pn == "AA IMPORTANT" or pn == "Island" then
+				break
+			end
+			if taggedAs(parent) then
+				cur = parent
+			else
+				break
+			end
+		end
+		return cur
+	end
+
+	function M.findDestroyable(name, opts)
+		opts = opts or {}
+		if type(name) ~= "string" or name == "" then
+			return nil
+		end
+		local spec = GB.QuestData and GB.QuestData.objectSpec and GB.QuestData.objectSpec(name)
+		local island = opts.Island or (spec and spec.Island)
+		local tags = { name }
+		local seen = { [name] = true }
+		local function addTag(t)
+			if type(t) == "string" and t ~= "" and not seen[t] then
+				seen[t] = true
+				tags[#tags + 1] = t
+			end
+		end
+		if spec and type(spec.Tags) == "table" then
+			for _, t in ipairs(spec.Tags) do
+				addTag(t)
+			end
+		end
+		local alias = M.OBJECT_ALIAS[name]
+		if type(alias) == "string" then
+			addTag(alias)
+		elseif type(alias) == "table" then
+			for _, t in ipairs(alias) do
+				addTag(t)
+			end
+		end
+
+		local function consider(inst)
+			if not inst or not inst.Parent or inRS(inst) or M.isPet(inst) then
+				return nil
+			end
+			local root = M.objectCombatRoot(inst, name) or inst
+			if not root or not root.Parent or inRS(root) then
+				return nil
+			end
+			if M.isMarkerTree(root) then
+				local hp, _ = nil, nil
+				if GB.Combat and GB.Combat.readHealth then
+					hp = GB.Combat.readHealth(root)
+				end
+				if type(hp) ~= "number" then
+					return nil
+				end
+			end
+			if island then
+				local got = islandOf(root)
+				if got and got ~= island then
+					return nil
+				end
+			end
+			if not (M.part(root) or M.positionOf(root)) then
+				return nil
+			end
+			if GB.Combat and GB.Combat.isRecentlyDead and GB.Combat.isRecentlyDead(root) then
+				return nil
+			end
+			if GB.Combat and GB.Combat.IsEnemyAlive and not GB.Combat.IsEnemyAlive(root) then
+				return nil
+			end
+			return root
+		end
+
+		if spec and spec.Path then
+			local hit = consider(followPath(spec.Path))
+			if hit then
+				return hit
+			end
+		end
+		for _, tag in ipairs(tags) do
+			local ok, list = pcall(CS.GetTagged, CS, tag)
+			if ok and type(list) == "table" then
+				for _, inst in ipairs(list) do
+					local hit = consider(inst)
+					if hit then
+						return hit
+					end
+				end
 			end
 		end
 		return nil
@@ -8301,10 +8494,16 @@ return function(GB)
 				logDoing("farm_direct", target)
 				setOwner("COMBAT", target)
 				local ok = false
+				local plan = {
+					Quest = directJob.Name,
+					Target = target,
+					Island = directJob.qs and directJob.qs.Island or (directJob.Entry and directJob.Entry.island),
+					SkipStream = true,
+				}
 				if GB.Combat.hunt then
-					ok = GB.Combat.hunt(target)
+					ok = GB.Combat.hunt(target, directJob.Name, plan)
 				elseif GB.Combat.attack then
-					ok = GB.Combat.attack(target)
+					ok = GB.Combat.attack(target, directJob.Name)
 				end
 				return {
 					attempted = true,
@@ -10155,6 +10354,30 @@ return function(GB)
 			if GB.Resolver and GB.Resolver.isDummyName and GB.Resolver.isDummyName(want) and isDummy(target.Name) then
 				return true
 			end
+			if context.Object and GB.Resolver then
+				local spec = GB.QuestData and GB.QuestData.objectSpec and GB.QuestData.objectSpec(want)
+				local tags = { want }
+				if spec and type(spec.Tags) == "table" then
+					for _, t in ipairs(spec.Tags) do
+						tags[#tags + 1] = t
+					end
+				end
+				local cur = target
+				while cur and cur ~= workspace do
+					for _, tag in ipairs(tags) do
+						local ok, hit = pcall(function()
+							return cur:HasTag(tag)
+						end)
+						if ok and hit then
+							return true
+						end
+					end
+					if cur.Name == want then
+						return true
+					end
+					cur = cur.Parent
+				end
+			end
 			local names = GB.Resolver and GB.Resolver.namesFor and GB.Resolver.namesFor(want, {})
 			if GB.Resolver and GB.Resolver.nameMatches then
 				if not GB.Resolver.nameMatches(target, names or { want }) then
@@ -10390,18 +10613,52 @@ return function(GB)
 		return byName
 	end
 
-	local function streamToMarker(plan, targetName)
+	local function findWorldTarget(name, plan)
+		if GB.Resolver and GB.Resolver.findDestroyable then
+			local obj = GB.Resolver.findDestroyable(name, { Island = plan and plan.Island })
+			if obj and M.IsValidTarget(obj, { Name = name, Object = true }) then
+				return obj
+			end
+		end
+		if GB.Resolver and GB.Resolver.taggedAny then
+			local tagged = GB.Resolver.taggedAny(name)
+			if tagged and M.IsValidTarget(tagged, { Name = name, Object = true }) then
+				if not (GB.Resolver.isMarkerTree and GB.Resolver.isMarkerTree(tagged)) then
+					return tagged
+				end
+			end
+		end
+		return nil
+	end
+
+	function M.approachMarker(plan, targetName)
 		local marker = markerForPlan(plan)
 		if not marker then
 			return false
 		end
-		GB.Log.warn("COMBAT", "target not streamed " .. tostring(targetName))
-		GB.Log.log("TRAVEL", "marker " .. tostring(plan.Marker))
+		local hrp = GB.World and GB.World.hrp and GB.World.hrp()
+		local pos = GB.Resolver and GB.Resolver.positionOf and GB.Resolver.positionOf(marker)
+		if hrp and pos then
+			local dx = hrp.Position.X - pos.X
+			local dz = hrp.Position.Z - pos.Z
+			if math.sqrt(dx * dx + dz * dz) < 16 then
+				return true
+			end
+		end
+		local key = tostring(plan and plan.Marker or targetName)
+		local now = os.clock()
+		if M._markerAt and M._markerName == key and now - M._markerAt < 6.5 then
+			return true
+		end
+		M._markerAt = now
+		M._markerName = key
+		if not M._markerLog or now - M._markerLog > 4 then
+			M._markerLog = now
+			GB.Log.log("COMBAT", "wait stream " .. tostring(targetName))
+			GB.Log.log("TRAVEL", "marker " .. tostring(plan and plan.Marker or targetName))
+		end
 		if GB.World and GB.World.moveTo then
 			GB.World.moveTo(marker, 10)
-		end
-		if GB.World and GB.World.pullStream and plan and plan.Island then
-			GB.World.pullStream(plan.Island)
 		end
 		return true
 	end
@@ -10434,16 +10691,31 @@ return function(GB)
 		if mob and M.IsValidTarget(mob, { Name = name }) then
 			return mob
 		end
-		if not (type(targetPlan) == "table" and targetPlan.SkipStream == true) then
-			if streamToMarker(targetPlan, name) then
+		local obj = findWorldTarget(name, targetPlan)
+		if obj then
+			return obj
+		end
+		local wantObject = (targetPlan and targetPlan.ObjectiveType == "Destroy")
+			or (GB.QuestData and GB.QuestData.isObjectTarget and GB.QuestData.isObjectTarget(name))
+		local skipBlock = type(targetPlan) == "table" and targetPlan.SkipStream == true
+		if wantObject or not skipBlock then
+			if M.approachMarker(targetPlan, name) then
 				local t0 = os.clock()
-				while os.clock() - t0 < 2.6 do
-					local list = GB.Resolver.enemies and GB.Resolver.enemies(name) or nil
-					if type(list) == "table" then
-						for _, inst in ipairs(list) do
-							if M.IsValidTarget(inst, { Name = name }) then
-								GB.Log.log("COMBAT", tostring(name) .. " loaded")
-								return inst
+				local waitFor = skipBlock and 0.35 or 2.2
+				while os.clock() - t0 < waitFor do
+					local again = findWorldTarget(name, targetPlan)
+					if again then
+						GB.Log.log("COMBAT", tostring(name) .. " loaded")
+						return again
+					end
+					if GB.Resolver.enemies then
+						local list = GB.Resolver.enemies(name)
+						if type(list) == "table" then
+							for _, inst in ipairs(list) do
+								if M.IsValidTarget(inst, { Name = name }) then
+									GB.Log.log("COMBAT", tostring(name) .. " loaded")
+									return inst
+								end
 							end
 						end
 					end
@@ -12621,7 +12893,11 @@ return function(GB)
 		t.NextRetryAt = now + 1.5
 		GB.Log.warn("QUEST", string.format("%s fail #%d %s", name, t.AttemptCount, tostring(err)))
 		local farmMiss = isRepeatable(name) and string.find(tostring(err), "resolve miss", 1, true)
-		if t.AttemptCount == 3 and not farmMiss then
+		local destroyMiss = qs
+			and qs.Objective
+			and qs.Objective.Type == "Destroy"
+			and string.find(tostring(err), "resolve miss", 1, true)
+		if t.AttemptCount == 3 and not farmMiss and not destroyMiss then
 			scopedResolveInvalidate(qs)
 			local target = qs and qs.Objective and qs.Objective.TargetName or (qs and qs.NPC)
 			local lastDetail = M.detailByFingerprint[fp] or 0
@@ -12637,6 +12913,17 @@ return function(GB)
 				end
 			end
 		end
+		if destroyMiss and GB.Combat and GB.Combat.approachMarker then
+			GB.Combat.approachMarker({
+				Marker = GB.QuestData and GB.QuestData.combatMarker and GB.QuestData.combatMarker(
+					name,
+					qs and qs.StageIndex,
+					"Destroy",
+					qs.Objective.TargetName
+				) or qs.Objective.TargetName,
+				Island = qs and qs.Island,
+			}, qs.Objective.TargetName)
+		end
 		if t.AttemptCount >= 2 and not isRepeatable(name) then
 			local live = GB.PlayerData and GB.PlayerData.live and GB.PlayerData.live(name)
 			if not live and GB.PlayerData and GB.PlayerData.markLocalDone then
@@ -12644,7 +12931,7 @@ return function(GB)
 			end
 		end
 		if t.AttemptCount >= 5 then
-			if farmMiss then
+			if farmMiss or destroyMiss then
 				t.AttemptCount = 0
 				t.NextRetryAt = now + 1.1
 				return t
@@ -13276,13 +13563,19 @@ return function(GB)
 				ok = GB.Combat.attack(targetPlan.Target, questName)
 			end
 			if not ok then
-				local pos = GB.Resolver.lastDummyPos and GB.Resolver.lastDummyPos()
-				local misses = GB.Resolver.dummyMissCount and GB.Resolver.dummyMissCount() or 0
-				if misses >= 3 then
-					if pos and GB.World.destOk(pos) then
-						GB.World.setPos(pos + Vector3.new(GB.Config.DummyBeside or 3.2, 0, 0))
-					elseif before.Island then
-						GB.World.pullStream(before.Island)
+				if typ == "Destroy" then
+					if GB.Combat and GB.Combat.approachMarker then
+						GB.Combat.approachMarker(targetPlan, targetPlan.Target)
+					end
+				else
+					local pos = GB.Resolver.lastDummyPos and GB.Resolver.lastDummyPos()
+					local misses = GB.Resolver.dummyMissCount and GB.Resolver.dummyMissCount() or 0
+					if misses >= 3 then
+						if pos and GB.World.destOk(pos) then
+							GB.World.setPos(pos + Vector3.new(GB.Config.DummyBeside or 3.2, 0, 0))
+						elseif before.Island then
+							GB.World.pullStream(before.Island)
+						end
 					end
 				end
 				if why ~= "dead" then

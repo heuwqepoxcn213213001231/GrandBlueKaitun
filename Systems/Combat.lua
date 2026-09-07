@@ -236,6 +236,30 @@ return function(GB)
 			if GB.Resolver and GB.Resolver.isDummyName and GB.Resolver.isDummyName(want) and isDummy(target.Name) then
 				return true
 			end
+			if context.Object and GB.Resolver then
+				local spec = GB.QuestData and GB.QuestData.objectSpec and GB.QuestData.objectSpec(want)
+				local tags = { want }
+				if spec and type(spec.Tags) == "table" then
+					for _, t in ipairs(spec.Tags) do
+						tags[#tags + 1] = t
+					end
+				end
+				local cur = target
+				while cur and cur ~= workspace do
+					for _, tag in ipairs(tags) do
+						local ok, hit = pcall(function()
+							return cur:HasTag(tag)
+						end)
+						if ok and hit then
+							return true
+						end
+					end
+					if cur.Name == want then
+						return true
+					end
+					cur = cur.Parent
+				end
+			end
 			local names = GB.Resolver and GB.Resolver.namesFor and GB.Resolver.namesFor(want, {})
 			if GB.Resolver and GB.Resolver.nameMatches then
 				if not GB.Resolver.nameMatches(target, names or { want }) then
@@ -471,18 +495,52 @@ return function(GB)
 		return byName
 	end
 
-	local function streamToMarker(plan, targetName)
+	local function findWorldTarget(name, plan)
+		if GB.Resolver and GB.Resolver.findDestroyable then
+			local obj = GB.Resolver.findDestroyable(name, { Island = plan and plan.Island })
+			if obj and M.IsValidTarget(obj, { Name = name, Object = true }) then
+				return obj
+			end
+		end
+		if GB.Resolver and GB.Resolver.taggedAny then
+			local tagged = GB.Resolver.taggedAny(name)
+			if tagged and M.IsValidTarget(tagged, { Name = name, Object = true }) then
+				if not (GB.Resolver.isMarkerTree and GB.Resolver.isMarkerTree(tagged)) then
+					return tagged
+				end
+			end
+		end
+		return nil
+	end
+
+	function M.approachMarker(plan, targetName)
 		local marker = markerForPlan(plan)
 		if not marker then
 			return false
 		end
-		GB.Log.warn("COMBAT", "target not streamed " .. tostring(targetName))
-		GB.Log.log("TRAVEL", "marker " .. tostring(plan.Marker))
+		local hrp = GB.World and GB.World.hrp and GB.World.hrp()
+		local pos = GB.Resolver and GB.Resolver.positionOf and GB.Resolver.positionOf(marker)
+		if hrp and pos then
+			local dx = hrp.Position.X - pos.X
+			local dz = hrp.Position.Z - pos.Z
+			if math.sqrt(dx * dx + dz * dz) < 16 then
+				return true
+			end
+		end
+		local key = tostring(plan and plan.Marker or targetName)
+		local now = os.clock()
+		if M._markerAt and M._markerName == key and now - M._markerAt < 6.5 then
+			return true
+		end
+		M._markerAt = now
+		M._markerName = key
+		if not M._markerLog or now - M._markerLog > 4 then
+			M._markerLog = now
+			GB.Log.log("COMBAT", "wait stream " .. tostring(targetName))
+			GB.Log.log("TRAVEL", "marker " .. tostring(plan and plan.Marker or targetName))
+		end
 		if GB.World and GB.World.moveTo then
 			GB.World.moveTo(marker, 10)
-		end
-		if GB.World and GB.World.pullStream and plan and plan.Island then
-			GB.World.pullStream(plan.Island)
 		end
 		return true
 	end
@@ -515,16 +573,31 @@ return function(GB)
 		if mob and M.IsValidTarget(mob, { Name = name }) then
 			return mob
 		end
-		if not (type(targetPlan) == "table" and targetPlan.SkipStream == true) then
-			if streamToMarker(targetPlan, name) then
+		local obj = findWorldTarget(name, targetPlan)
+		if obj then
+			return obj
+		end
+		local wantObject = (targetPlan and targetPlan.ObjectiveType == "Destroy")
+			or (GB.QuestData and GB.QuestData.isObjectTarget and GB.QuestData.isObjectTarget(name))
+		local skipBlock = type(targetPlan) == "table" and targetPlan.SkipStream == true
+		if wantObject or not skipBlock then
+			if M.approachMarker(targetPlan, name) then
 				local t0 = os.clock()
-				while os.clock() - t0 < 2.6 do
-					local list = GB.Resolver.enemies and GB.Resolver.enemies(name) or nil
-					if type(list) == "table" then
-						for _, inst in ipairs(list) do
-							if M.IsValidTarget(inst, { Name = name }) then
-								GB.Log.log("COMBAT", tostring(name) .. " loaded")
-								return inst
+				local waitFor = skipBlock and 0.35 or 2.2
+				while os.clock() - t0 < waitFor do
+					local again = findWorldTarget(name, targetPlan)
+					if again then
+						GB.Log.log("COMBAT", tostring(name) .. " loaded")
+						return again
+					end
+					if GB.Resolver.enemies then
+						local list = GB.Resolver.enemies(name)
+						if type(list) == "table" then
+							for _, inst in ipairs(list) do
+								if M.IsValidTarget(inst, { Name = name }) then
+									GB.Log.log("COMBAT", tostring(name) .. " loaded")
+									return inst
+								end
 							end
 						end
 					end

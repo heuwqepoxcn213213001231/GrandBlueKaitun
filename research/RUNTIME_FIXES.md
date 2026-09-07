@@ -1,5 +1,15 @@
 # Runtime Fixes
 
+## 1.1.30 — Destroy objects (Muggy Cannon): stay at marker, no stream-pull loop
+
+`Sabotage The Cannon` / Destroy Muggy Cannon treated the cannon as an `Entities` enemy. It is a CollectionService tag / world object. `findTarget` missed, `streamToMarker` called `pullStream(Clown Town)`, then `noteFail` deferred after 5 misses. Teleport loop + `Quest.doLive` 3s spikes. Deep scan saw Benny / barrels, never the cannon.
+
+**Fix**
+
+- Resolve Destroy targets via tag / `OBJECT_TARGETS` (`Muggy Cannon`, balloons, crates, signal fires). Not the enemy index.
+- Go to the quest marker and wait for the object to stream in. Do not `pullStream` on miss.
+- Story Destroy miss does not Recovery / 30s defer. Stay on the marker and retry.
+
 ## 1.1.29 — No 16s kill wait; don't tween through dialogue
 
 `A Joke Gone Too Far` kill used `huntUntilDead(16)` so `Quest.doLive` / `Scheduler.step` hung ~16s. Mid-wait Clown dialogue opened; after timeout the bot clicked then immediately Tweened again. Recovery fired `stuck quest`.

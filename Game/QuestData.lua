@@ -378,12 +378,41 @@ return function(GB)
 	}
 
 	-- Verified semantic world object mapping used by resolver/planner.
+	-- Destroy targets are CollectionService tags / world models, not Entities enemies.
 	M.OBJECT_TARGETS = {
 		["Marine Gate"] = {
 			Island = "Anchor Town",
 			Path = { "Islands", "Anchor Town", "Island", "Gate" },
 			Tags = { "Marine Metal Gate", "Gate" },
 			Prompts = { "Pushable Door" },
+		},
+		["Muggy Cannon"] = {
+			Island = "Clown Town",
+			Tags = { "Muggy Cannon" },
+		},
+		["Air Balloon"] = {
+			Island = "Clown Town",
+			Tags = { "Air Balloon" },
+		},
+		["Explosive Wooden Crate"] = {
+			Island = "Clown Town",
+			Tags = { "Explosive Wooden Crate" },
+		},
+		["Supply Crate"] = {
+			Island = "Maple Village",
+			Tags = { "Supply Crate" },
+		},
+		["North Camp Signal Fire"] = {
+			Island = "Maple Village",
+			Tags = { "North Camp Signal Fire" },
+		},
+		["South Camp Signal Fire"] = {
+			Island = "Maple Village",
+			Tags = { "South Camp Signal Fire" },
+		},
+		["Overlook Signal Fire"] = {
+			Island = "Maple Village",
+			Tags = { "Overlook Signal Fire" },
 		},
 	}
 
@@ -516,6 +545,10 @@ return function(GB)
 
 	function M.objectSpec(target)
 		return M.OBJECT_TARGETS[target]
+	end
+
+	function M.isObjectTarget(target)
+		return type(target) == "string" and M.OBJECT_TARGETS[target] ~= nil
 	end
 
 	function M.questRequirement(name)

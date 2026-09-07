@@ -966,7 +966,11 @@ return function(GB)
 		t.NextRetryAt = now + 1.5
 		GB.Log.warn("QUEST", string.format("%s fail #%d %s", name, t.AttemptCount, tostring(err)))
 		local farmMiss = isRepeatable(name) and string.find(tostring(err), "resolve miss", 1, true)
-		if t.AttemptCount == 3 and not farmMiss then
+		local destroyMiss = qs
+			and qs.Objective
+			and qs.Objective.Type == "Destroy"
+			and string.find(tostring(err), "resolve miss", 1, true)
+		if t.AttemptCount == 3 and not farmMiss and not destroyMiss then
 			scopedResolveInvalidate(qs)
 			local target = qs and qs.Objective and qs.Objective.TargetName or (qs and qs.NPC)
 			local lastDetail = M.detailByFingerprint[fp] or 0
@@ -982,6 +986,17 @@ return function(GB)
 				end
 			end
 		end
+		if destroyMiss and GB.Combat and GB.Combat.approachMarker then
+			GB.Combat.approachMarker({
+				Marker = GB.QuestData and GB.QuestData.combatMarker and GB.QuestData.combatMarker(
+					name,
+					qs and qs.StageIndex,
+					"Destroy",
+					qs.Objective.TargetName
+				) or qs.Objective.TargetName,
+				Island = qs and qs.Island,
+			}, qs.Objective.TargetName)
+		end
 		if t.AttemptCount >= 2 and not isRepeatable(name) then
 			local live = GB.PlayerData and GB.PlayerData.live and GB.PlayerData.live(name)
 			if not live and GB.PlayerData and GB.PlayerData.markLocalDone then
@@ -989,7 +1004,7 @@ return function(GB)
 			end
 		end
 		if t.AttemptCount >= 5 then
-			if farmMiss then
+			if farmMiss or destroyMiss then
 				t.AttemptCount = 0
 				t.NextRetryAt = now + 1.1
 				return t
@@ -1621,13 +1636,19 @@ return function(GB)
 				ok = GB.Combat.attack(targetPlan.Target, questName)
 			end
 			if not ok then
-				local pos = GB.Resolver.lastDummyPos and GB.Resolver.lastDummyPos()
-				local misses = GB.Resolver.dummyMissCount and GB.Resolver.dummyMissCount() or 0
-				if misses >= 3 then
-					if pos and GB.World.destOk(pos) then
-						GB.World.setPos(pos + Vector3.new(GB.Config.DummyBeside or 3.2, 0, 0))
-					elseif before.Island then
-						GB.World.pullStream(before.Island)
+				if typ == "Destroy" then
+					if GB.Combat and GB.Combat.approachMarker then
+						GB.Combat.approachMarker(targetPlan, targetPlan.Target)
+					end
+				else
+					local pos = GB.Resolver.lastDummyPos and GB.Resolver.lastDummyPos()
+					local misses = GB.Resolver.dummyMissCount and GB.Resolver.dummyMissCount() or 0
+					if misses >= 3 then
+						if pos and GB.World.destOk(pos) then
+							GB.World.setPos(pos + Vector3.new(GB.Config.DummyBeside or 3.2, 0, 0))
+						elseif before.Island then
+							GB.World.pullStream(before.Island)
+						end
 					end
 				end
 				if why ~= "dead" then
