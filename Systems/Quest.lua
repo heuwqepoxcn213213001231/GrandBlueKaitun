@@ -256,45 +256,53 @@ return function(GB)
 		return false
 	end
 
-	local function dialogueOpen()
-		local pg = GB.lp and GB.lp.PlayerGui
-		local ui = pg and pg:FindFirstChild("DialogueUI")
-		if not ui then
+	local function guiShown(inst, stopAt)
+		if not inst then
 			return false
 		end
-		if ui:IsA("LayerCollector") and ui.Enabled ~= true then
-			return false
-		end
-		local main = ui:FindFirstChild("Main")
-		if main then
-			for _, frame in ipairs(main:GetChildren()) do
-				if frame:IsA("Frame") and frame:FindFirstChildWhichIsA("GuiButton", true) then
-					return true
+		local cur = inst
+		local hops = 0
+		while cur and hops < 20 do
+			hops = hops + 1
+			if cur:IsA("LayerCollector") and cur.Enabled ~= true then
+				return false
+			end
+			if cur:IsA("GuiObject") then
+				if cur.Visible ~= true then
+					return false
+				end
+				if cur.AbsoluteSize.X <= 1 or cur.AbsoluteSize.Y <= 1 then
+					return false
 				end
 			end
+			if cur == stopAt then
+				break
+			end
+			cur = cur.Parent
 		end
-		return ui:IsA("LayerCollector") and ui.Enabled == true
+		return true
 	end
 
-	-- Choices live in DialogueUI.Main as cloned NodeFrames. ImageButton has no .Text;
-	-- label is sibling TextLabel. Template under DialogueHandler.NodeFrame is not clickable.
-	local function clickAccept(opts)
+	local function dialogueCandidates(opts)
 		opts = opts or {}
 		local expectQuest = type(opts.QuestName) == "string" and string.lower(opts.QuestName) or nil
 		local pg = GB.lp and GB.lp.PlayerGui
 		local ui = pg and pg:FindFirstChild("DialogueUI")
 		if not ui then
-			return false
+			return {}, nil, nil
+		end
+		if ui:IsA("LayerCollector") and ui.Enabled ~= true then
+			return {}, ui, nil
 		end
 		local main = ui:FindFirstChild("Main")
-		if not main then
-			return false
+		if not main or not guiShown(main, ui) then
+			return {}, ui, main
 		end
 		local candidates = {}
 		for _, frame in ipairs(main:GetChildren()) do
-			if frame:IsA("Frame") then
+			if frame:IsA("Frame") and guiShown(frame, ui) then
 				local btn = frame:FindFirstChild("ImageButton")
-				if btn and btn:IsA("GuiButton") then
+				if btn and btn:IsA("GuiButton") and guiShown(btn, ui) then
 					local t = guiText(frame) or guiText(btn) or ""
 					local tn, tp = normalizeChoiceText(t)
 					local num = frame:FindFirstChild("Number")
@@ -327,6 +335,19 @@ return function(GB)
 				end
 			end
 		end
+		return candidates, ui, main
+	end
+
+	local function dialogueOpen()
+		local rows = dialogueCandidates({})
+		return #rows > 0
+	end
+
+	-- Choices live in DialogueUI.Main as cloned NodeFrames. ImageButton has no .Text;
+	-- label is sibling TextLabel. Template under DialogueHandler.NodeFrame is not clickable.
+	local function clickAccept(opts)
+		opts = opts or {}
+		local candidates = dialogueCandidates(opts)
 		local function scoreChoice(c)
 			if not c then
 				return -1
@@ -1103,23 +1124,60 @@ return function(GB)
 		end
 		GB.World.waitUnpause()
 		task.wait(0.2)
-
-		GB.Log.log("QUEST", "Talking " .. tostring(shown))
-		if automatic then
-			GB.Remotes.autoTalk(shown)
-		else
-			GB.Remotes.talk(shown)
+		local names = {}
+		local seen = {}
+		local function pushName(v)
+			if type(v) ~= "string" then
+				return
+			end
+			v = string.gsub(v, "^%s+", "")
+			v = string.gsub(v, "%s+$", "")
+			if v == "" then
+				return
+			end
+			if not seen[v] then
+				seen[v] = true
+				names[#names + 1] = v
+			end
 		end
+		pushName(shown)
+		pushName(request)
+		pushName(pack.DisplayName)
+		pushName(pack.InternalName)
+		if GB.Resolver and GB.Resolver.baseName then
+			pushName(GB.Resolver.baseName(shown))
+			pushName(GB.Resolver.baseName(request))
+			pushName(GB.Resolver.baseName(pack.DisplayName))
+			pushName(GB.Resolver.baseName(pack.InternalName))
+		end
+		local spoken
 		local cfg = GB.Resolver.dialogueConfig(pack.Instance)
-		if cfg then
-			GB.Remotes.dialogueConfig(cfg)
+		for _, who in ipairs(names) do
+			GB.Log.log("QUEST", "Talking " .. tostring(who))
+			if automatic then
+				GB.Remotes.autoTalk(who)
+			else
+				GB.Remotes.talk(who)
+			end
+			if cfg then
+				GB.Remotes.dialogueConfig(cfg)
+			end
+			task.wait(0.22)
+			if dialogueOpen() then
+				spoken = who
+				break
+			end
+		end
+		if not spoken then
+			M.lastTalk[key] = os.clock()
+			return false, "talk_no_dialogue"
 		end
 		task.wait(0.35)
 		if clickAccept(opts) then
 			M.lastClick = os.clock()
 		end
 		M.lastTalk[key] = os.clock()
-		return true, shown
+		return true, spoken
 	end
 
 	local function questAcceptedNow(name)
