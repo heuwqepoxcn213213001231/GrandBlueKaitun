@@ -79,10 +79,26 @@ Nếu owner khác: `getgenv().GB_REPO = "owner/GrandBlueKaitun"` rồi HttpGet �
 
 Production import: `loader.lua` → `fetchRemote` → `HttpGet(BASE + path + ?v=ver)`. Không còn `readfile` sibling trên đường REMOTE. Persist/cache chỉ chạy nếu executor có FS.
 
-## Sau auth + push — điền
+## Local commit (đã xong)
 
-- Repository URL:
 - Branch: `main`
 - Version: `1.0.0`
-- Commit hash:
-- Raw loader URL:
+- Commit: `50d1add8de95930f5f851fe0cc268c0142dd5c93`
+- Message: `feat: add portable GitHub remote loader`
+- Working tree: clean
+- Remote: chưa có (auth fail)
+
+## Sau auth + push
+
+```bash
+gh auth refresh -h github.com
+cd "/Users/lenguyenkhachuy/Downloads/Tool/NiaUISilent/Hub/Grand Blue"
+gh repo create GrandBlueKaitun --public --source=. --remote=origin --push
+```
+
+Sau push:
+
+- Repository URL: `https://github.com/shuys1230sxmcsweiqpxcv/GrandBlueKaitun`
+- Raw loader URL: `https://raw.githubusercontent.com/shuys1230sxmcsweiqpxcv/GrandBlueKaitun/main/loader.lua`
+
+Hai URL trên **chưa live** cho đến khi `gh repo create --push` thành công. Không dùng trước khi push.
