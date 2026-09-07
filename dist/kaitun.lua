@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
 -- Version: 1.1.24
--- Commit: 9c3ee5a
--- BuiltAt: 2026-09-08T04:15:12+07:00
+-- Commit: b64b6b6
+-- BuiltAt: 2026-09-08T04:21:49+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -36,8 +36,8 @@ return function(meta)
 	stopPreviousInstance()
 
 	local BUILD_VERSION = "1.1.24"
-	local BUILD_COMMIT = "9c3ee5a"
-	local BUILD_AT = "2026-09-08T04:15:12+07:00"
+	local BUILD_COMMIT = "b64b6b6"
+	local BUILD_AT = "2026-09-08T04:21:49+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -12154,6 +12154,60 @@ return function(GB)
 			return false, "rate"
 		end
 
+		local function pushUnique(out, seen, v)
+			if type(v) ~= "string" then
+				return
+			end
+			v = string.gsub(v, "^%s+", "")
+			v = string.gsub(v, "%s+$", "")
+			if v == "" or seen[v] then
+				return
+			end
+			seen[v] = true
+			out[#out + 1] = v
+		end
+
+		local function talkNameList(base, pack)
+			local out, seen = {}, {}
+			pushUnique(out, seen, base)
+			if pack then
+				pushUnique(out, seen, pack.DisplayName)
+				pushUnique(out, seen, pack.InternalName)
+			end
+			if GB.Resolver and GB.Resolver.baseName then
+				pushUnique(out, seen, GB.Resolver.baseName(base))
+				if pack then
+					pushUnique(out, seen, GB.Resolver.baseName(pack.DisplayName))
+					pushUnique(out, seen, GB.Resolver.baseName(pack.InternalName))
+				end
+			end
+			if GB.Resolver and GB.Resolver.namesFor then
+				for _, alt in ipairs(GB.Resolver.namesFor(base, opts) or {}) do
+					pushUnique(out, seen, alt)
+				end
+			end
+			return out
+		end
+
+		local function fireTalkVariants(names, cfg)
+			for _, who in ipairs(names or {}) do
+				GB.Log.log("QUEST", "Talking " .. tostring(who))
+				if automatic then
+					GB.Remotes.autoTalk(who)
+				else
+					GB.Remotes.talk(who)
+				end
+				if cfg then
+					GB.Remotes.dialogueConfig(cfg)
+				end
+				task.wait(0.22)
+				if dialogueOpen() then
+					return who
+				end
+			end
+			return nil
+		end
+
 		local pack = GB.Resolver.resolveNPC(request, {
 			DisplayName = opts.DisplayName or request,
 			InternalName = opts.InternalName,
@@ -12193,6 +12247,16 @@ return function(GB)
 				end
 			end
 		end
+		if not pack then
+			-- Island tags can be inconsistent for dialogue roots; retry without island filter.
+			pack = GB.Resolver.resolveNPC(request, {
+				DisplayName = opts.DisplayName or request,
+				InternalName = opts.InternalName,
+				QuestName = qsName,
+				ExpectedRole = "npc",
+				deep = false,
+			})
+		end
 		if not pack and island and GB.Resolver and GB.World then
 			local markerName = GB.QuestData and GB.QuestData.markerOf and GB.QuestData.markerOf("Talk", request) or request
 			local marker = GB.Resolver.marker and GB.Resolver.marker(markerName, { Island = island }) or nil
@@ -12213,6 +12277,15 @@ return function(GB)
 			end
 		end
 		if not pack then
+			local spoken = fireTalkVariants(talkNameList(request), nil)
+			if spoken then
+				task.wait(0.2)
+				if clickAccept(opts) then
+					M.lastClick = os.clock()
+				end
+				M.lastTalk[key] = os.clock()
+				return true, spoken
+			end
 			if qsName then
 				M.noteFail(qsName, "NPC miss " .. tostring(request))
 			else
@@ -12232,49 +12305,12 @@ return function(GB)
 		end
 		GB.World.waitUnpause()
 		task.wait(0.2)
-		local names = {}
-		local seen = {}
-		local function pushName(v)
-			if type(v) ~= "string" then
-				return
-			end
-			v = string.gsub(v, "^%s+", "")
-			v = string.gsub(v, "%s+$", "")
-			if v == "" then
-				return
-			end
-			if not seen[v] then
-				seen[v] = true
-				names[#names + 1] = v
-			end
-		end
-		pushName(shown)
-		pushName(request)
-		pushName(pack.DisplayName)
-		pushName(pack.InternalName)
-		if GB.Resolver and GB.Resolver.baseName then
-			pushName(GB.Resolver.baseName(shown))
-			pushName(GB.Resolver.baseName(request))
-			pushName(GB.Resolver.baseName(pack.DisplayName))
-			pushName(GB.Resolver.baseName(pack.InternalName))
-		end
-		local spoken
 		local cfg = GB.Resolver.dialogueConfig(pack.Instance)
-		for _, who in ipairs(names) do
-			GB.Log.log("QUEST", "Talking " .. tostring(who))
-			if automatic then
-				GB.Remotes.autoTalk(who)
-			else
-				GB.Remotes.talk(who)
-			end
-			if cfg then
-				GB.Remotes.dialogueConfig(cfg)
-			end
-			task.wait(0.22)
-			if dialogueOpen() then
-				spoken = who
-				break
-			end
+		local spoken = fireTalkVariants(talkNameList(shown, pack), cfg)
+		if not spoken and GB.World and GB.World.interact then
+			GB.World.interact(pack.Instance, GB.Config.TalkRange or 14)
+			task.wait(0.3)
+			spoken = fireTalkVariants(talkNameList(shown, pack), cfg)
 		end
 		if not spoken then
 			M.lastTalk[key] = os.clock()
@@ -13115,7 +13151,7 @@ return function(GB)
 					M.noteFail(name, "accept_not_active " .. tostring(reason))
 					return resultRow(name, true, false, "accept_not_active")
 				end
-				if talkReason == "resolve" or talkReason == "travel" then
+				if talkReason == "resolve" or talkReason == "travel" or talkReason == "talk_no_dialogue" then
 					M.noteFail(name, "accept_" .. tostring(talkReason))
 				end
 				return resultRow(name, true, false, "accept_" .. tostring(talkReason or "pending"))
