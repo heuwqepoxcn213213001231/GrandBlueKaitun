@@ -89,9 +89,9 @@ return function(GB)
 			return
 		end
 		local g = GB.Resolver.npc("Officer Graves") or GB.Resolver.npc("Officer Graves [2]")
-		local p = g and GB.Resolver.part(g)
-		if p then
-			M.anchorSafe = CFrame.new(p.Position + Vector3.new(0, 0, 6))
+		local pos = g and GB.Resolver.positionOf(g)
+		if pos then
+			M.anchorSafe = CFrame.new(pos + Vector3.new(0, 0, 6))
 		end
 	end
 
@@ -171,8 +171,7 @@ return function(GB)
 		elseif typeof(instOrPos) == "CFrame" then
 			pos = instOrPos.Position
 		else
-			local p = GB.Resolver.part(instOrPos)
-			pos = p and p.Position
+			pos = GB.Resolver.positionOf(instOrPos)
 		end
 		if not pos then
 			return false
@@ -839,7 +838,66 @@ return function(GB)
 	end
 
 	function M.ToInteractable(inst, range)
-		return M.moveTo(inst, range or 8)
+		range = range or 6
+		local pos = GB.Resolver.positionOf(inst)
+		if not pos then
+			return M.moveTo(inst, range)
+		end
+		local dest = pos + Vector3.new(0, 0, math.clamp(range, 4, 6))
+		if not M.destOk(dest) then
+			dest = M.groundAt(pos) or pos
+		end
+		GB.Log.log("TRAVEL", "Teleport -> " .. (GB.Resolver.displayName(inst) or inst.Name))
+		return M.setPos(dest)
+	end
+
+	function M.firePrompt(pr, hold)
+		if not pr then
+			return false
+		end
+		local dur = hold
+		if dur == nil then
+			local ok, hd = pcall(function()
+				return pr.HoldDuration
+			end)
+			dur = (ok and type(hd) == "number" and hd) or 0
+		end
+		if type(dur) ~= "number" or dur < 0 then
+			dur = 0
+		end
+		local ok = pcall(function()
+			if dur > 0 then
+				fireproximityprompt(pr, dur)
+			else
+				fireproximityprompt(pr)
+			end
+		end)
+		task.wait(dur > 0 and (dur + 0.12) or 0.12)
+		return ok
+	end
+
+	function M.interact(inst, range, hold)
+		if not inst then
+			return false
+		end
+		M.ToInteractable(inst, range or 6)
+		task.wait(0.15)
+		local pr = GB.Resolver.prompt(inst)
+		if not pr then
+			return false
+		end
+		local dur = hold
+		if dur == nil then
+			local ok, hd = pcall(function()
+				return pr.HoldDuration
+			end)
+			dur = (ok and type(hd) == "number" and hd) or 0
+			if dur <= 0 and (pr.Name == "Locked Door" or inst:GetAttribute("Interaction") == "Locked Door") then
+				dur = 0.8
+			end
+		end
+		GB.Log.log("UI", (dur and dur > 0 and "hold prompt " or "prompt ") .. (inst.Name or pr.Name))
+		return M.firePrompt(pr, dur)
 	end
 
 	function M.sameIsland(a, b)

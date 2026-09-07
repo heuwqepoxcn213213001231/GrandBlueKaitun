@@ -442,7 +442,7 @@ return function(GB)
 		end
 		local root = GB.World.hrp()
 		local part = GB.Resolver.part(mob)
-		if not (root and part) then
+		if not (root and part and part:IsA("BasePart")) then
 			return false
 		end
 		local dest
@@ -469,7 +469,7 @@ return function(GB)
 		end
 		local root = GB.World.hrp()
 		local part = GB.Resolver.part(mob)
-		if not (root and part) then
+		if not (root and part and part:IsA("BasePart")) then
 			return false
 		end
 		local name = mob.Name
@@ -657,7 +657,7 @@ return function(GB)
 		end
 		local root = GB.World.hrp()
 		local part = GB.Resolver.part(mob)
-		if not (root and part) then
+		if not (root and part and part:IsA("BasePart")) then
 			return false
 		end
 		local range = GB.Config.ShootRange or 9

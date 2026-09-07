@@ -155,30 +155,35 @@ return function(GB)
 		if inst:IsA("BasePart") then
 			return inst
 		end
+		if inst:IsA("Attachment") then
+			local host = inst.Parent
+			if host and host:IsA("BasePart") then
+				return host
+			end
+			return host and host:FindFirstChildWhichIsA("BasePart", true)
+		end
 		if inst:IsA("Model") then
-			if inst.PrimaryPart then
+			if inst.PrimaryPart and inst.PrimaryPart:IsA("BasePart") then
 				return inst.PrimaryPart
 			end
 			local hrp = inst:FindFirstChild("HumanoidRootPart")
 			if hrp and hrp:IsA("BasePart") then
 				return hrp
 			end
-			local p = inst:FindFirstChildWhichIsA("BasePart")
-			if p then
-				return p
-			end
-			local ok, cf = pcall(inst.GetPivot, inst)
-			if ok and typeof(cf) == "CFrame" then
-				return inst
-			end
-			return nil
+			return inst:FindFirstChildWhichIsA("BasePart", true)
 		end
 		if inst:IsA("ProximityPrompt") then
 			local p = inst.Parent
 			if p and p:IsA("BasePart") then
 				return p
 			end
-			return p and p:FindFirstChildWhichIsA("BasePart")
+			if p and p:IsA("Attachment") then
+				local host = p.Parent
+				if host and host:IsA("BasePart") then
+					return host
+				end
+			end
+			return p and p:FindFirstChildWhichIsA("BasePart", true)
 		end
 		if inst:IsA("Folder") or inst:IsA("Configuration") then
 			return inst:FindFirstChildWhichIsA("BasePart", true)
@@ -191,15 +196,21 @@ return function(GB)
 	end
 
 	function M.positionOf(inst)
-		local p = partOf(inst)
-		if not p then
+		if not inst then
 			return nil
 		end
-		if p:IsA("BasePart") then
+		if inst:IsA("BasePart") then
+			return inst.Position
+		end
+		if inst:IsA("Attachment") then
+			return inst.WorldPosition
+		end
+		local p = partOf(inst)
+		if p and p:IsA("BasePart") then
 			return p.Position
 		end
-		if p:IsA("Model") then
-			local ok, cf = pcall(p.GetPivot, p)
+		if inst:IsA("Model") then
+			local ok, cf = pcall(inst.GetPivot, inst)
 			if ok and typeof(cf) == "CFrame" then
 				return cf.Position
 			end
@@ -876,17 +887,59 @@ return function(GB)
 			or M.byName("Lead Ore", "ore")
 	end
 
-	function M.chest()
-		local tagged
-		pcall(function()
-			tagged = CS:GetTagged("Afuaru's Chests")
-		end)
-		if tagged then
-			for _, t in ipairs(tagged) do
-				if t.Parent and not inRS(t) then
-					return t
+	local function chestOpened(inst)
+		return inst and inst:GetAttribute("Opened") == true
+	end
+
+	function M.chests()
+		local out = {}
+		local seen = {}
+		local function add(inst)
+			if not inst or seen[inst] or inRS(inst) or not inst.Parent then
+				return
+			end
+			if chestOpened(inst) then
+				return
+			end
+			seen[inst] = true
+			out[#out + 1] = inst
+		end
+		for i = 1, 8 do
+			local tagged
+			pcall(function()
+				tagged = CS:GetTagged("Afuaru's Chest " .. i)
+			end)
+			if tagged then
+				for _, t in ipairs(tagged) do
+					add(t)
 				end
 			end
+		end
+		local folder = workspace:FindFirstChild("Afuaru's Chests")
+		if folder then
+			for _, c in ipairs(folder:GetChildren()) do
+				add(c)
+			end
+		end
+		local interact
+		pcall(function()
+			interact = CS:GetTagged("ClientInteractable")
+		end)
+		if interact then
+			for _, t in ipairs(interact) do
+				local n = t.Name
+				if string.find(n, "Afuaru", 1, true) and string.find(n, "Chest", 1, true) then
+					add(t)
+				end
+			end
+		end
+		return out
+	end
+
+	function M.chest()
+		local list = M.chests()
+		if list[1] then
+			return list[1]
 		end
 		return M.byName("Afuaru's Chests", "chest")
 	end

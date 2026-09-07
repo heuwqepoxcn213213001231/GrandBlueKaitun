@@ -130,6 +130,9 @@ return function(GB)
 		if plan.Goal == "Equip" and plan.Target then
 			return GB.Quest.handleCondition(qs.Name, qs.Objective.Raw, qs.Stage)
 		end
+		if plan.Type == "Unlock" or plan.Type == "Loot" or plan.Type == "Smelt" or plan.Type == "Upgrade" then
+			return GB.Quest.handleCondition(qs.Name, qs.Objective.Raw, qs.Stage)
+		end
 		if plan.Goal == "AcquireItem" and plan.Target then
 			if plan.Subgoals and qs.Name == "First Upgrade" then
 				local o = objOf(qs)

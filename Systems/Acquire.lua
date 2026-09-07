@@ -175,10 +175,14 @@ return function(GB)
 		if M.picked[inst] and os.clock() - M.picked[inst] < 1.2 then
 			return false
 		end
-		GB.World.ToInteractable(inst, 8)
-		local pr = GB.Resolver.prompt(inst)
-		if pr then
-			fireproximityprompt(pr)
+		if GB.World.interact then
+			GB.World.interact(inst, 8)
+		else
+			GB.World.ToInteractable(inst, 8)
+			local pr = GB.Resolver.prompt(inst)
+			if pr then
+				GB.World.firePrompt(pr)
+			end
 		end
 		M.picked[inst] = os.clock()
 		GB.Log.log("PICKUP", tostring(item or inst.Name))
@@ -225,10 +229,16 @@ return function(GB)
 	end
 
 	function M.Crafting(item)
+		if GB.LifeSkills.smeltToward then
+			return GB.LifeSkills.smeltToward(item)
+		end
 		return GB.LifeSkills.mineToward(item)
 	end
 
-	function M.Chest(item)
+	function M.Chest(item, amount, ctx)
+		if GB.Chest.lootUntil then
+			return GB.Chest.lootUntil(ctx and ctx.Quest, amount or 5)
+		end
 		return GB.Chest.openNearby()
 	end
 
@@ -477,7 +487,7 @@ return function(GB)
 					return M.AlreadyOwned(item, amount)
 				end
 			elseif step == "Chest" then
-				if M.Chest(item) then
+				if M.Chest(item, amount, ctx) then
 					return true
 				end
 			elseif step == "Fishing" then

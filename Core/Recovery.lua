@@ -76,6 +76,14 @@ return function(GB)
 		if M.level > 1 then
 			strat = M.advanceStrategy()
 		end
+		local cur = GB.PlayerData and GB.PlayerData.current and GB.PlayerData.current()
+		local qs = cur and GB.Quest and GB.Quest.questState and GB.Quest.questState(cur)
+		local o = qs and qs.Objective
+		if o and (o.Type == "Unlock" or o.Type == "Loot" or o.Type == "Open" or o.Type == "Interact") then
+			if strat == "enemy" then
+				strat = M.advanceStrategy()
+			end
+		end
 		GB.Log.warn("RECOVERY", string.format("level=%d strategy=%s %s", M.level, tostring(strat), tostring(why)))
 		GB.Cache.invalidate()
 

@@ -252,10 +252,14 @@ return function(GB)
 			GB.Log.warn("QUEST", "marker miss " .. tostring(tag))
 			return false
 		end
-		GB.World.ToInteractable(inst, dist or 10)
-		local pr = GB.Resolver.prompt(inst)
-		if pr then
-			fireproximityprompt(pr)
+		if GB.World.interact then
+			GB.World.interact(inst, dist or 10)
+		else
+			GB.World.ToInteractable(inst, dist or 10)
+			local pr = GB.Resolver.prompt(inst)
+			if pr then
+				GB.World.firePrompt(pr)
+			end
 		end
 		GB.Remotes.enterZone(tag)
 		return true
@@ -786,7 +790,25 @@ return function(GB)
 			return ok
 		end
 		if typ == "Upgrade" then
-			return GB.Equipment.upgradeNamed(target)
+			GB.Combat.stopLock()
+			local qs = M.questState(questName)
+			local before = M.signature(qs)
+			local anvil = GB.Resolver.taggedAny("Anvil") or GB.Resolver.byName("Anvil")
+			if anvil and GB.World.interact then
+				GB.World.interact(anvil, 8)
+			end
+			clickPlayerGuiPath("Blacksmith.Blacksmith.ScrollingFrame.FlintlockHolder.Flintlock")
+			task.wait(0.15)
+			clickPlayerGuiPath("Blacksmith.Blacksmith.Upgrade.UpgradeButton")
+			local ok = GB.Equipment.upgradeNamed(target)
+			if ok then
+				local progressed = M.waitProgress(questName, before, 2.4)
+				if progressed then
+					M.noteOk(questName)
+					return true
+				end
+			end
+			return ok
 		end
 		if typ == "EquipSkill" then
 			GB.Combat.stopLock()
@@ -840,7 +862,29 @@ return function(GB)
 		if typ == "Required" and target == "Level" then
 			return false
 		end
-		if typ == "Collect" or typ == "CollectLocal" or typ == "CollectLocalItem" or typ == "Loot" then
+		if typ == "Loot" then
+			GB.Combat.stopLock()
+			local qs = M.questState(questName)
+			local before = M.signature(qs)
+			local need = GB.QuestData.conditionAmount(cond) or 5
+			GB.Log.log("QUEST", "Loot " .. tostring(target))
+			local ok = GB.Chest and GB.Chest.lootUntil and GB.Chest.lootUntil(questName, need)
+			if ok then
+				M.waitProgress(questName, before, 1.2)
+				local after = M.questState(questName)
+				if after.IsComplete or after.StageIndex ~= qs.StageIndex then
+					M.noteOk(questName)
+					return true
+				end
+				if after.Objective and (after.Objective.Current or 0) > ((qs.Objective and qs.Objective.Current) or 0) then
+					M.noteOk(questName)
+					return true
+				end
+			end
+			M.noteFail(questName, "loot miss " .. tostring(target))
+			return false
+		end
+		if typ == "Collect" or typ == "CollectLocal" or typ == "CollectLocalItem" then
 			if GB.Planner and GB.Planner.execute then
 				local qs = M.questState(questName)
 				local plan = GB.Planner.build(qs)
@@ -857,11 +901,28 @@ return function(GB)
 			GB.Log.warn("QUEST", "collect miss " .. tostring(target))
 			return false
 		end
-		if typ == "Mine" or typ == "Smelt" then
+		if typ == "Mine" then
 			if not GB.PlayerData.hasItem("Rusty Pickaxe") then
 				M.ensureItem("Rusty Pickaxe")
 			end
 			return GB.LifeSkills.mineToward(target)
+		end
+		if typ == "Smelt" then
+			GB.Combat.stopLock()
+			local qs = M.questState(questName)
+			local before = M.signature(qs)
+			local ok = GB.LifeSkills.smeltToward and GB.LifeSkills.smeltToward(target)
+			if ok then
+				clickPlayerGuiPath("Crafting.Frame.Recipes.Inventory.Scroll.Copper Bar")
+				task.wait(0.15)
+				clickPlayerGuiPath("Crafting.Frame.Ingredients.Craft")
+				local progressed = M.waitProgress(questName, before, 2.4)
+				if progressed then
+					M.noteOk(questName)
+					return true
+				end
+			end
+			return ok
 		end
 		if typ == "Fish" then
 			return GB.LifeSkills.fishToward(target)
@@ -895,7 +956,62 @@ return function(GB)
 		end
 		if typ == "Unlock" then
 			GB.Combat.stopLock()
-			return goTagged(GB.QuestData.markerOf(typ, target) or target, 8)
+			local tag = GB.QuestData.markerOf(typ, target) or target
+			local qs = M.questState(questName)
+			local before = M.signature(qs)
+			local beforeCur = (qs.Objective and qs.Objective.Current) or 0
+			local inst = GB.Resolver.taggedAny and GB.Resolver.taggedAny(tag)
+			if not inst then
+				inst = GB.Resolver.waitTagged and GB.Resolver.waitTagged(tag, 0.8)
+			end
+			if not inst then
+				inst = GB.Resolver.byName(tag)
+			end
+			if not inst then
+				M.noteFail(questName, "unlock miss " .. tostring(tag))
+				return false
+			end
+			local keyName = inst:GetAttribute("Key")
+			if keyName and not GB.PlayerData.hasItem(keyName) then
+				M.noteFail(questName, "need key " .. tostring(keyName))
+				return false
+			end
+			GB.Log.log("QUEST", "Unlock " .. tostring(target))
+			local fired = GB.World.interact and GB.World.interact(inst, 6)
+			if not fired then
+				GB.World.ToInteractable(inst, 6)
+				local pr = GB.Resolver.prompt(inst)
+				if pr then
+					GB.World.firePrompt(pr, (pr.HoldDuration and pr.HoldDuration > 0) and pr.HoldDuration or 0.8)
+					fired = true
+				end
+			end
+			local progressed = M.waitProgress(questName, before, 2.8)
+			if not progressed then
+				local pr = GB.Resolver.prompt(inst)
+				local ev = game.ReplicatedStorage:FindFirstChild("Events")
+				local r = ev and ev:FindFirstChild("ProximityPrompt")
+				if pr and r then
+					pcall(function()
+						r:FireServer(pr, pr.Name)
+					end)
+					progressed = M.waitProgress(questName, before, 1.6)
+				end
+			end
+			if progressed then
+				local after = M.questState(questName)
+				local nextCur = beforeCur
+				if after.IsComplete or after.StageIndex ~= qs.StageIndex then
+					nextCur = (qs.Objective and qs.Objective.Amount) or 1
+				elseif after.Objective then
+					nextCur = after.Objective.Current or nextCur
+				end
+				GB.Log.log("QUEST", string.format("Unlock credited %s/1 -> %s/1", tostring(beforeCur), tostring(nextCur)))
+				M.noteOk(questName)
+				return true
+			end
+			M.noteFail(questName, "unlock not credited " .. tostring(target))
+			return false
 		end
 		if typ == "Deliver Object" then
 			GB.Combat.stopLock()
@@ -933,10 +1049,14 @@ return function(GB)
 		if typ == "Open" or typ == "Interact" or typ == "Investigate" or typ == "Wake" or typ == "Check On" or typ == "Free" then
 			local obj = GB.Resolver.byName(target)
 			if obj then
-				GB.World.ToInteractable(obj, 8)
-				local pr = GB.Resolver.prompt(obj)
-				if pr then
-					fireproximityprompt(pr)
+				if GB.World.interact then
+					GB.World.interact(obj, 8)
+				else
+					GB.World.ToInteractable(obj, 8)
+					local pr = GB.Resolver.prompt(obj)
+					if pr then
+						GB.World.firePrompt(pr)
+					end
 				end
 				return true
 			end

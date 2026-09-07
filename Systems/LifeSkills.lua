@@ -35,6 +35,21 @@ return function(GB)
 		return true
 	end
 
+	function M.smeltToward(target)
+		local station = (GB.Resolver.taggedAny and GB.Resolver.taggedAny("Furnace")) or GB.Resolver.byName("Furnace")
+		if not station then
+			GB.Log.warn("SMELT", "furnace miss " .. tostring(target))
+			return false
+		end
+		if GB.World.interact then
+			GB.World.interact(station, 8)
+		else
+			GB.World.moveTo(station, 8)
+		end
+		GB.Log.log("SMELT", tostring(target) .. " at Furnace")
+		return true
+	end
+
 	function M.fishToward(target)
 		if not GB.Config.AutoFishing then
 			return false
@@ -60,9 +75,7 @@ return function(GB)
 			GB.World.moveTo(obj, 8)
 			local pr = GB.Resolver.prompt(obj)
 			if pr then
-				pcall(function()
-					fireproximityprompt(pr)
-				end)
+				GB.World.firePrompt(pr)
 			end
 			return true
 		end

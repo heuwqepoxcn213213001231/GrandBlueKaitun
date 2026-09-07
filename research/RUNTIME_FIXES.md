@@ -1,5 +1,34 @@
 # Runtime Fixes
 
+## 1.1.7 — Model.Position crash class + Unlock Afuaru's Gate + loot chests
+
+Live **The Hoarder** stage 4: `Unlock Afuaru's Gate (0/1)`. Engine loop:
+
+```
+Position is not a valid member of Model "Workspace.Islands.Anchor Town.Island.Model.Model.Afuaru's Gate"
+```
+
+Gate is a Model. Direct children = two door Models + `HumanoidRootPart` **Attachment**. No PrimaryPart. `Resolver.partOf` took `FindFirstChildWhichIsA("BasePart")` (non-recursive) → nil → returned the Model because `GetPivot` works. `World.moveTo` then did `part.Position`. Same class hits any Model without a direct BasePart: chests, Marine Gate, future interactables.
+
+Unlock is not walk-to-marker. Prompt `Locked Door` on `HumanoidRootPart.PromptAttachment`. Key attribute `Afuaru's Key`, `ConsumeKey=false`. Server `Inventory.Has` + `ProgressQuestBindable(Unlock)`. `Close Afuaru's Gate` only flips Open→Closed. Stage 5 clones `Afuaru's Chests` tagged `Afuaru's Chest N` + `ClientInteractable`; loot is client prompt → `AfuaruChest`.
+
+**Fix (class, not one site):**
+- `partOf` never returns Model. Recursive BasePart. `positionOf` uses pivot when there is no part.
+- `moveTo` / `ToInteractable` / `Chest` / Combat / Skills use `positionOf` or `IsA("BasePart")`.
+- Unlock: teleport to pivot, hold `Locked Door`, validate live 0/1 → 1/1. FireServer fallback.
+- Loot: `Chest.lootUntil` on real chest tags, not AcquireItem `"Afuaru's Chests"`.
+- First Upgrade Smelt goes to Furnace (not mine `Copper Bar`). Upgrade stands at Anvil then remote + Blacksmith GUI.
+- Recovery skips `enemy` on Unlock/Loot/Open/Interact.
+
+```
+[Kaitun][QUEST] Unlock Afuaru's Gate
+[Kaitun][TRAVEL] Teleport -> Afuaru's Gate
+[Kaitun][UI] hold prompt Afuaru's Gate
+[Kaitun][QUEST] Unlock credited 0/1 -> 1/1
+```
+
+---
+
 ## 1.1.6 — Gearing Up Shoot Dummy is Gunshot HOLD, not melee
 
 1.1.5 closed SkillObtained. Quest advanced to **Shoot Training Dummy (0/1)**. Combat then `Teleport` + `AttackModule.Swing` on `Training Dummy6`. Dummy has no Humanoid (`hp=?`) and never dies. Melee does not credit `Shoot`. Hotbar slot 5 **Gunshot** shows **HOLD**. `Fruit Chest` / Punch stayed selected. `state not found Ragdoll/GettingUp` is AttackModule swinging a dummy.

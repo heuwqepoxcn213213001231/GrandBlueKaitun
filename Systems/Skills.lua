@@ -382,9 +382,13 @@ return function(GB)
 		if typeof(target) ~= "Instance" then
 			return false
 		end
-		local part = GB.Resolver and GB.Resolver.part and GB.Resolver.part(target) or target:FindFirstChild("HumanoidRootPart") or target.PrimaryPart
+		local part = GB.Resolver and GB.Resolver.part and GB.Resolver.part(target)
+		if not (part and part:IsA("BasePart")) then
+			local hrp = target:FindFirstChild("HumanoidRootPart")
+			part = (hrp and hrp:IsA("BasePart") and hrp) or (target.PrimaryPart and target.PrimaryPart:IsA("BasePart") and target.PrimaryPart)
+		end
 		local root = GB.World and GB.World.hrp and GB.World.hrp()
-		if not (part and root) then
+		if not (part and part:IsA("BasePart") and root) then
 			return false
 		end
 		local dest = root.Position

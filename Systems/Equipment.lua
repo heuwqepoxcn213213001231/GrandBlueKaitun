@@ -164,6 +164,14 @@ return function(GB)
 
 	function M.upgradeNamed(name)
 		local key = findInvKey(name or "Flintlock")
+		local anvil = GB.Resolver.taggedAny and GB.Resolver.taggedAny("Anvil") or GB.Resolver.byName("Anvil")
+		if anvil and GB.World.ToInteractable then
+			GB.World.ToInteractable(anvil, 8)
+			local pr = GB.Resolver.prompt(anvil)
+			if pr then
+				GB.World.firePrompt(pr)
+			end
+		end
 		GB.Log.log("EQUIP", "Upgrade " .. tostring(key))
 		local ok = GB.Remotes.upgrade(key)
 		task.wait(0.3)

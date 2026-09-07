@@ -41,7 +41,7 @@ Talk remote: `ClientQuest:FireServer("Talk", DisplayName)` + `DialogueBindable:F
 | First Upgrade | 2 | Anchor Town | Collect | AcquireItem | Rusty Pickaxe | ShopPurchase | Rusty Pickaxe | Anchor Town | The Hoarder | Shop.buy | inventory/quest Rusty Pickaxe 1 | STATIC_VERIFIED | IMPLEMENTED |
 | First Upgrade | 3 | Anchor Town | Collect | AcquireItem | Copper Ore | Mining | Copper Ore | Anchor Town | The Hoarder | LifeSkills.mineToward | inventory/quest Copper Ore 2 | STATIC_VERIFIED | IMPLEMENTED |
 | First Upgrade | 4 | Anchor Town | Talk | Talk | Blacksmith Shinozaki | — | Blacksmith Shinozaki | Anchor Town | The Hoarder | Quest.talk | live Talk Blacksmith Shinozaki count 1 | STATIC_VERIFIED | IMPLEMENTED |
-| First Upgrade | 5 | Anchor Town | Smelt | AcquireItem | Copper Bar | Crafting | Furnace | Anchor Town | The Hoarder | LifeSkills.mineToward | inventory/quest Copper Bar 2 | STATIC_VERIFIED | IMPLEMENTED |
+| First Upgrade | 5 | Anchor Town | Smelt | AcquireItem | Copper Bar | Crafting | Furnace | Anchor Town | The Hoarder | LifeSkills.smeltToward | inventory/quest Copper Bar 2 | STATIC_VERIFIED | IMPLEMENTED |
 | First Upgrade | 6 | Anchor Town | Upgrade | Upgrade | Flintlock | — | Flintlock | Anchor Town | The Hoarder | Equipment.upgradeNamed | live Upgrade Flintlock count 1 | STATIC_VERIFIED | IMPLEMENTED |
 | Gate of Authority | 1 | Anchor Town | Open | Interact | Marine Gate | — | Marine Metal Gate | Anchor Town | Feral Dog | Quest.goTagged | live Open Marine Gate count 1 | STATIC_VERIFIED | IMPLEMENTED |
 | Gearing Up | 1 | Anchor Town | Sell | Sell | Stolen Watch | — | Stolen Watch | Anchor Town | Pirate Fan Letter | Shop.sellNamed | live Sell Stolen Watch count 1 | STATIC_VERIFIED | IMPLEMENTED |
@@ -73,8 +73,8 @@ Talk remote: `ClientQuest:FireServer("Talk", DisplayName)` + `DialogueBindable:F
 | The Hoarder | 2 | Anchor Town | Talk | Talk | Troubled Civilian | — | Troubled Civilian | Anchor Town | Gearing Up | Quest.talk | live Talk Troubled Civilian count 1 | STATIC_VERIFIED | IMPLEMENTED |
 | The Hoarder | 3 | Anchor Town | Kill | Kill | Afuaru, The Hoarder | — | Afuaru, The Hoarder | Anchor Town | Gearing Up | Combat.attack | live Kill Afuaru, The Hoarder count 1 | STATIC_VERIFIED | IMPLEMENTED |
 | The Hoarder | 3 | Anchor Town | Collect | AcquireItem | Afuaru's Key | BossDrop | Afuaru, The Hoarder | Anchor Town | Gearing Up | Acquire.AcquireFromEnemyDrop | inventory/quest Afuaru's Key 1 | STATIC_VERIFIED | IMPLEMENTED |
-| The Hoarder | 4 | Anchor Town | Unlock | Interact | Afuaru's Gate | — | Afuaru's Gate | Anchor Town | Gearing Up | Quest.goTagged | live Unlock Afuaru's Gate count 1 | STATIC_VERIFIED | IMPLEMENTED |
-| The Hoarder | 5 | Anchor Town | Loot | AcquireItem | Afuaru's Chests | Chest | Afuaru's Chests | Anchor Town | Gearing Up | Chest.openNearby | inventory/quest Afuaru's Chests 5 | STATIC_VERIFIED | IMPLEMENTED |
+| The Hoarder | 4 | Anchor Town | Unlock | Interact | Afuaru's Gate | — | Afuaru's Gate | Anchor Town | Gearing Up | Quest.unlock (Locked Door HOLD + key) | live Unlock Afuaru's Gate count 1 | STATIC_VERIFIED | IMPLEMENTED |
+| The Hoarder | 5 | Anchor Town | Loot | Interact | Afuaru's Chests | Chest | Afuaru's Chests | Anchor Town | Gearing Up | Chest.lootUntil | live Loot Afuaru's Chests count 5 | STATIC_VERIFIED | IMPLEMENTED |
 | The Hoarder | 6 | Anchor Town | Talk | Talk | Troubled Civilian | — | Troubled Civilian | Anchor Town | Gearing Up | Quest.talk | live Talk Troubled Civilian count 1 | STATIC_VERIFIED | IMPLEMENTED |
 | A Joke Gone Too Far | 1 | Clown Town | Talk | Talk | Clowny D. Clown | — | Clowny D. Clown | Clown Town | — | Quest.talk | live Talk Clowny D. Clown count 1 | STATIC_VERIFIED | IMPLEMENTED |
 | A Joke Gone Too Far | 2 | Clown Town | Kill | Kill | Clown | — | Clown | Clown Town | — | Combat.attack | live Kill Clown count 7 | STATIC_VERIFIED | IMPLEMENTED |
