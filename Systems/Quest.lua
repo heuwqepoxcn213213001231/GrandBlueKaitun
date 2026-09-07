@@ -1031,15 +1031,25 @@ return function(GB)
 		local island = opts.Island or (qsName and GB.QuestData.islandOf(qsName))
 		local key = tostring(request)
 
-		if dialogueOpen() then
-			if os.clock() - (M.lastClick or 0) < 0.7 then
+		local openRows = dialogueCandidates(opts)
+		if #openRows > 0 then
+			if os.clock() - (M.lastClick or 0) < 0.45 then
 				return false, "rate"
 			end
 			local clicked = clickAccept(opts)
 			if clicked then
 				M.lastClick = os.clock()
+				return true, "advance"
 			end
-			return clicked, clicked and "advance" or "waiting"
+			if not qsName then
+				return false, "waiting"
+			end
+			local staleKey = tostring(qsName) .. "|" .. tostring(request)
+			if M._dialogueStaleKey ~= staleKey or os.clock() - (M._dialogueStaleAt or 0) > 2.2 then
+				M._dialogueStaleKey = staleKey
+				M._dialogueStaleAt = os.clock()
+				GB.Log.warn("QUEST", string.format("%s dialogue stale; re-open talk", tostring(qsName)))
+			end
 		end
 
 		if os.clock() - (M.lastTalk[key] or 0) < 1.8 then
@@ -1095,6 +1105,62 @@ return function(GB)
 				task.wait(0.22)
 				if dialogueOpen() then
 					return who
+				end
+			end
+			return nil
+		end
+
+		local function findDialogueNpcPack(name, islandHint)
+			if not (GB.Resolver and GB.Resolver.namesFor and GB.Resolver.pack and GB.Resolver.nameMatches) then
+				return nil
+			end
+			local aa = workspace:FindFirstChild("AA IMPORTANT")
+			local dlg = (aa and aa:FindFirstChild("DialogueNPCs")) or workspace:FindFirstChild("DialogueNPCs")
+			if not dlg then
+				return nil
+			end
+			local names = GB.Resolver.namesFor(name, opts) or { name }
+			local roots = {}
+			if type(islandHint) == "string" and islandHint ~= "" then
+				local folder = dlg:FindFirstChild(islandHint)
+				if folder then
+					roots[#roots + 1] = folder
+				end
+			end
+			roots[#roots + 1] = dlg
+			local visited = {}
+			local function walk(root, maxDepth)
+				local queue = { { inst = root, depth = 0 } }
+				local head = 1
+				while head <= #queue do
+					local row = queue[head]
+					head = head + 1
+					local inst = row.inst
+					local depth = row.depth
+					if inst ~= root and not visited[inst] then
+						visited[inst] = true
+						local shapeOk = inst:IsA("Model") or inst:IsA("Folder") or inst:IsA("BasePart")
+						if shapeOk then
+							local dialogLike = inst:GetAttribute("Interaction") == "Dialogue"
+								or inst:FindFirstChild("Dialogue") ~= nil
+								or inst:FindFirstChildOfClass("Humanoid") ~= nil
+							if dialogLike and GB.Resolver.nameMatches(inst, names) then
+								return GB.Resolver.pack(inst, name)
+							end
+						end
+					end
+					if depth < maxDepth then
+						for _, ch in ipairs(inst:GetChildren()) do
+							queue[#queue + 1] = { inst = ch, depth = depth + 1 }
+						end
+					end
+				end
+				return nil
+			end
+			for _, root in ipairs(roots) do
+				local hit = walk(root, 6)
+				if hit then
+					return hit
 				end
 			end
 			return nil
@@ -1167,6 +1233,9 @@ return function(GB)
 					deep = false,
 				})
 			end
+		end
+		if not pack then
+			pack = findDialogueNpcPack(request, island)
 		end
 		if not pack then
 			local spoken = fireTalkVariants(talkNameList(request), nil)
