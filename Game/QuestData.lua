@@ -211,16 +211,51 @@ return function(GB)
 		return GB.PlayerData.finished(prereq)
 	end
 
+	-- Studio QuestInfoUtilities.CreateCondition Target = { Amount, Name, RequiredAmount }
+	M.MARKER_TAG = {
+		["Reach Maple Village"] = "Maple Village Marker",
+		["Investigate The Footsteps (1)"] = "Campsite Footsteps Marker",
+		["Investigate The Footsteps (2)"] = "Campsite Footsteps Marker",
+		["Investigate The Wreckage"] = "Beast Wreckage Marker",
+		["Investigate The Beast's Den"] = "Beast Den Marker",
+		["Investigate The Garden"] = "Mansion Garden Marker",
+		["Investigate The Fountain"] = "Mansion Fountain Marker",
+		["Unlock"] = "Afuaru's Gate",
+	}
+
+	M.DELIVER = {
+		["Stolen Goods"] = { object = "StolenGoods", location = "Esopo Delivery" },
+	}
+
 	function M.currentStage(q)
 		if type(q) ~= "table" or type(q.Stages) ~= "table" then
 			return nil, nil
 		end
 		for i, st in ipairs(q.Stages) do
-			if not st.Complete then
+			if type(st) == "table" and not M.stageComplete(st) then
 				return i, st
 			end
 		end
 		return #q.Stages, q.Stages[#q.Stages]
+	end
+
+	function M.stageComplete(st)
+		if type(st) ~= "table" then
+			return true
+		end
+		if st.Complete then
+			return true
+		end
+		local conds = st.Conditions or st.conditions
+		if type(conds) ~= "table" or #conds == 0 then
+			return st.Complete == true
+		end
+		for _, cond in ipairs(conds) do
+			if type(cond) == "table" and not M.conditionComplete(cond) then
+				return false
+			end
+		end
+		return true
 	end
 
 	function M.conditionTarget(cond)
@@ -229,9 +264,12 @@ return function(GB)
 		end
 		local t = cond.Target
 		if type(t) == "table" then
-			return t.Name or t.name
+			local n = t.Name or t.name
+			if type(n) == "string" and n ~= "" then
+				return n
+			end
 		end
-		if type(t) == "string" then
+		if type(t) == "string" and t ~= "" then
 			return t
 		end
 		return cond.target or cond.Name
@@ -240,6 +278,10 @@ return function(GB)
 	function M.conditionAmount(cond)
 		if type(cond) ~= "table" then
 			return 1
+		end
+		local t = cond.Target
+		if type(t) == "table" then
+			return tonumber(t.RequiredAmount) or tonumber(t.requiredAmount) or 1
 		end
 		return tonumber(cond.Amount) or tonumber(cond.amount) or 1
 	end
@@ -251,11 +293,36 @@ return function(GB)
 		if cond.Complete then
 			return M.conditionAmount(cond)
 		end
+		local t = cond.Target
+		if type(t) == "table" then
+			return tonumber(t.Amount) or tonumber(t.Current) or 0
+		end
 		return tonumber(cond.Current)
 			or tonumber(cond.Count)
 			or tonumber(cond.Progress)
 			or tonumber(cond.Value)
 			or 0
+	end
+
+	function M.conditionComplete(cond)
+		if type(cond) ~= "table" then
+			return true
+		end
+		if cond.Complete then
+			return true
+		end
+		return M.conditionCurrent(cond) >= M.conditionAmount(cond)
+	end
+
+	function M.markerOf(typ, target)
+		if typ == "Unlock" then
+			return target or M.MARKER_TAG.Unlock
+		end
+		return M.MARKER_TAG[typ] or target
+	end
+
+	function M.deliverSpec(target)
+		return M.DELIVER[target]
 	end
 
 	function M.islandOf(name)

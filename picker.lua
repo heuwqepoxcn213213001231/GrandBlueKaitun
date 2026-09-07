@@ -665,19 +665,55 @@ function P.completedSet()
 end
 
 function P.finished(name)
+	local GB = rawget(getgenv(), "GBKaitun")
+	if GB and GB.PlayerData then
+		return GB.PlayerData.finished(name)
+	end
 	return name and P.completedSet()[name] == true
 end
 
 function P.live(name)
+	local GB = rawget(getgenv(), "GBKaitun")
+	if GB and GB.PlayerData then
+		return GB.PlayerData.live(name)
+	end
+	local ev = RS:FindFirstChild("Events")
+	local gd = ev and ev:FindFirstChild("GetData")
+	local list = gd and gd:InvokeServer("Quests")
+	if type(list) == "table" then
+		if list[1] ~= nil then
+			for _, v in ipairs(list) do
+				if type(v) == "table" and v.Name == name then
+					if P.finished(name) then
+						return
+					end
+					return v
+				end
+			end
+			return
+		end
+		if list[name] then
+			if P.finished(name) then
+				return
+			end
+			return list[name]
+		end
+	end
 	local q = Cache.Data and Cache.Data.Quests
 	if type(q) ~= "table" then
 		return
 	end
 	if q[name] then
+		if P.finished(name) then
+			return
+		end
 		return q[name]
 	end
 	for k, v in pairs(q) do
 		if type(v) == "table" and (v.Name == name or k == name) then
+			if P.finished(name) then
+				return
+			end
 			return v
 		end
 	end

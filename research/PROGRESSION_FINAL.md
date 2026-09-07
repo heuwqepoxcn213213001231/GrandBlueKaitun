@@ -11,7 +11,7 @@ Hard level cap: **UNKNOWN**. Soft visual `LEVEL_SOFT_CAP=125` (radar only). Cont
 ## Fresh (1–7) Anchor
 
 1. **Introduction** — Talk Officer Graves (world instance `Officer Graves [2]`, DisplayName `Officer Graves`) → Dummy×4, Dash, Block → Talk Graves; Strong Punch drop → `PromptSkillEquip` if popup.
-2. **Basics** — Equip/cast Strong Punch; `StatPoints Invest` ≥1; Open Logbook.
+2. **Basics** — EquipStrongPunch scroll (`ConsumeSkillScroll` + `Skill("Equip","Strong Punch")`); Cast hotbar; `StatPoints Invest` ≥1; ForceOpenLogbook + `OpenLogbookHelp`.
 3. **Pirate Fan Letter** — Koro / letter; Stolen Watch.
 4. Repeat **Bullies in Suits** (band 5–12) if need EXP.
 5. **Gearing Up** — Sell watch (`SellItem`); buy **Flintlock 150G**; HeldItem Equip; shoot dummy.

@@ -1,28 +1,46 @@
--- ClientCache + GetData + StatSystem. Live wins over persist.
+-- Live quest truth: GetData("Quests","Completed Quests") + PlayerGui.Quests tracker.
+-- ClientCache.Quests is a boot snapshot. QuestBegan/QuestDeleted/QuestStageUpdated are empty.
 
 return function(GB)
 	local RS = game:GetService("ReplicatedStorage")
 	local M = {
 		_cache = nil,
 		_stat = nil,
+		_live = {},
+		_order = {},
+		_done = {},
+		_at = 0,
+		_tracker = nil,
+		_current = nil,
+		_hooked = false,
+	}
+
+	local LIVE_TTL = 0.85
+
+	local STAGE_HINT = {
+		["Equip your new skill"] = "Basics",
+		["Equip Skill: Strong Punch"] = "Basics",
+		["Cast the skill"] = "Basics",
+		["Use Skill: Strong Punch"] = "Basics",
+		["Invest your stat"] = "Basics",
+		["Invest Stat Points"] = "Basics",
+		["Open the logbook"] = "Basics",
+		["Open your logbook"] = "Basics",
+		["Select the 'Strong Punch'"] = "Basics",
+		["Select the \"Strong Punch\""] = "Basics",
+		["Walk up to a dummy"] = "Introduction",
+		["Press Q to perform a dash"] = "Introduction",
+		["Hold F to perform a block"] = "Introduction",
+		["Talk to Officer Graves to get started"] = "Introduction",
 	}
 
 	local function loadMods()
 		if not M._cache then
-			pcall(function()
-				M._cache = require(RS.Modules.ClientCache)
-			end)
+			M._cache = require(RS.Modules.ClientCache)
 		end
 		if not M._stat then
-			pcall(function()
-				M._stat = require(RS.Modules.StatSystem)
-			end)
+			M._stat = require(RS.Modules.StatSystem)
 		end
-	end
-
-	function M.raw()
-		loadMods()
-		return M._cache and M._cache.Data or {}
 	end
 
 	local function completedSet(done)
@@ -53,8 +71,301 @@ return function(GB)
 		return set
 	end
 
+	local function questActive(q)
+		if type(q) ~= "table" then
+			return false
+		end
+		if q.Complete == true or q.State == "Complete" then
+			return false
+		end
+		local stages = q.Stages
+		if type(stages) ~= "table" then
+			return true
+		end
+		for _, st in ipairs(stages) do
+			if type(st) == "table" and not st.Complete then
+				local conds = st.Conditions or st.conditions
+				if type(conds) ~= "table" or #conds == 0 then
+					return true
+				end
+				for _, cond in ipairs(conds) do
+					if type(cond) == "table" then
+						if not GB.QuestData then
+							return true
+						end
+						if not GB.QuestData.conditionComplete(cond) then
+							return true
+						end
+					end
+				end
+			end
+		end
+		return false
+	end
+
+	local function hintQuest(text)
+		if type(text) ~= "string" or text == "" then
+			return nil
+		end
+		for needle, name in pairs(STAGE_HINT) do
+			if string.find(text, needle, 1, true) then
+				return name
+			end
+		end
+		if GB.QuestData then
+			for _, ch in ipairs(GB.QuestData.CHAINS) do
+				for _, name in ipairs(ch.order) do
+					if text == name or string.find(text, name, 1, true) then
+						return name
+					end
+				end
+			end
+			for _, e in ipairs(GB.QuestData.REPEATS) do
+				if text == e.name then
+					return e.name
+				end
+			end
+		end
+		return nil
+	end
+
+	local function readTracker()
+		local lp = GB.lp
+		local pg = lp and lp.PlayerGui
+		if not pg then
+			return nil
+		end
+		local gui = pg:FindFirstChild("Quests")
+		if not gui then
+			return nil
+		end
+		local det = gui:FindFirstChild("QuestDetails")
+		if det then
+			local attr = det:GetAttribute("QuestName")
+			if type(attr) == "string" and attr ~= "" then
+				return attr
+			end
+			local qn = det:FindFirstChild("QuestName")
+			local t = qn and GB.State and GB.State.guiText(qn)
+			local hinted = hintQuest(t)
+			if hinted then
+				return hinted
+			end
+		end
+		local qf = gui:FindFirstChild("Quest")
+		local sf = qf and qf:FindFirstChild("ScrollingFrame")
+		if not sf then
+			return nil
+		end
+		for _, d in ipairs(sf:GetDescendants()) do
+			local attr = d:GetAttribute("QuestName") or d:GetAttribute("QuestId")
+			if type(attr) == "string" and attr ~= "" and hintQuest(attr) then
+				return hintQuest(attr) or attr
+			end
+			if d:IsA("TextLabel") or d:IsA("TextButton") then
+				local hinted = hintQuest(d.Text)
+				if hinted then
+					return hinted
+				end
+			end
+		end
+		local overlay = pg:FindFirstChild("ScreenShadow") or pg:FindFirstChild("Tutorial")
+		if overlay then
+			for _, d in ipairs(overlay:GetDescendants()) do
+				if d:IsA("TextLabel") or d:IsA("TextButton") then
+					local hinted = hintQuest(d.Text)
+					if hinted then
+						return hinted
+					end
+				end
+			end
+		end
+		return nil
+	end
+
+	local function ingestList(list)
+		local live, order = {}, {}
+		if type(list) ~= "table" then
+			return live, order
+		end
+		local function add(name, q)
+			if type(name) ~= "string" or name == "" then
+				return
+			end
+			if M._done[name] then
+				return
+			end
+			if not questActive(q) then
+				return
+			end
+			if not live[name] then
+				live[name] = q
+				order[#order + 1] = name
+			end
+		end
+		if list[1] ~= nil then
+			for _, q in ipairs(list) do
+				if type(q) == "table" then
+					add(q.Name or q.name, q)
+				end
+			end
+			return live, order
+		end
+		for k, q in pairs(list) do
+			if type(q) == "table" then
+				add(q.Name or k, q)
+			end
+		end
+		return live, order
+	end
+
+	local function pickCurrent()
+		local tr = M._tracker
+		if tr and M._live[tr] then
+			return tr
+		end
+		if tr and not M._done[tr] then
+			return tr
+		end
+		if GB.QuestData then
+			for _, ch in ipairs(GB.QuestData.CHAINS) do
+				for _, name in ipairs(ch.order) do
+					if M._live[name] then
+						return name
+					end
+				end
+			end
+			local best, bestExp
+			for _, e in ipairs(GB.QuestData.REPEATS) do
+				if M._live[e.name] and (not best or e.exp > bestExp) then
+					best, bestExp = e.name, e.exp
+				end
+			end
+			if best then
+				return best
+			end
+		end
+		local ck = GB.Persist and GB.Persist.data and GB.Persist.data.checkpoint
+		if ck and type(ck.quest) == "string" and M._live[ck.quest] then
+			return ck.quest
+		end
+		return M._order[1]
+	end
+
+	function M.invalidateLive()
+		M._at = 0
+	end
+
+	function M.refreshLive(force)
+		loadMods()
+		M._tracker = readTracker()
+		if not force and os.clock() - M._at < LIVE_TTL and (next(M._live) or M._tracker) then
+			M._current = pickCurrent()
+			return M._live
+		end
+		local quests, done = GB.Remotes.getQuests()
+		if quests == nil and done == nil then
+			local snap = M._cache and M._cache.Data
+			if snap then
+				quests = snap.Quests
+				done = snap["Completed Quests"] or snap.CompletedQuests
+			end
+		end
+		M._done = completedSet(done)
+		M._live, M._order = ingestList(quests)
+		M._at = os.clock()
+		M._tracker = readTracker() or M._tracker
+		local prev = M._current
+		M._current = pickCurrent()
+		if M._current and M._current ~= prev then
+			GB.Log.log("STATE", "live quest " .. M._current)
+			if GB.Combat and GB.Combat.stopLock then
+				GB.Combat.stopLock()
+			end
+			if GB.Persist and GB.Persist.checkpoint then
+				GB.Persist.checkpoint("quest", M._current)
+			end
+		end
+		return M._live
+	end
+
+	function M.hookQuestEvents()
+		if M._hooked then
+			return
+		end
+		M._hooked = true
+		local ev = RS:FindFirstChild("Events")
+		if not ev then
+			return
+		end
+		local function bump(why)
+			M._at = 0
+			if why then
+				GB.Log.log("STATE", tostring(why))
+			end
+		end
+		local beginQ = ev:FindFirstChild("BeginQuest")
+		if beginQ then
+			GB.conns[#GB.conns + 1] = beginQ.OnClientEvent:Connect(function(q)
+				local name = type(q) == "table" and q.Name or q
+				bump("BeginQuest " .. tostring(name))
+				if type(q) == "table" and q.Name then
+					M._done[q.Name] = nil
+					M._live[q.Name] = q
+					M._order[#M._order + 1] = q.Name
+					M._current = q.Name
+				end
+			end)
+		end
+		local clearQ = ev:FindFirstChild("ClearQuest")
+		if clearQ then
+			GB.conns[#GB.conns + 1] = clearQ.OnClientEvent:Connect(function(name)
+				bump("ClearQuest " .. tostring(name))
+				if type(name) == "string" then
+					M._live[name] = nil
+					M._done[name] = true
+					if M._current == name then
+						M._current = nil
+					end
+				end
+			end)
+		end
+		local prog = ev:FindFirstChild("QuestProgress")
+		if prog then
+			GB.conns[#GB.conns + 1] = prog.OnClientEvent:Connect(function()
+				M._at = 0
+			end)
+		end
+		local upd = ev:FindFirstChild("UpdateQuestState")
+		if upd then
+			GB.conns[#GB.conns + 1] = upd.OnClientEvent:Connect(function(name, state)
+				if state == "Complete" and type(name) == "string" then
+					M._live[name] = nil
+					M._done[name] = true
+					if M._current == name then
+						M._current = nil
+					end
+				end
+				M._at = 0
+			end)
+		end
+		local cc = RS:FindFirstChild("Modules") and RS.Modules:FindFirstChild("ClientCache")
+		local ch = cc and cc:FindFirstChild("QuestsChanged")
+		if ch then
+			GB.conns[#GB.conns + 1] = ch.Event:Connect(function()
+				M._at = 0
+			end)
+		end
+	end
+
+	function M.raw()
+		loadMods()
+		return M._cache and M._cache.Data or {}
+	end
+
 	function M.cache()
 		loadMods()
+		M.refreshLive()
 		local d = M._cache and M._cache.Data or {}
 		local out = {}
 		for k, v in pairs(d) do
@@ -68,9 +379,9 @@ return function(GB)
 		local char = lp and lp.Character
 		if out.Level <= 0 and char then
 			out.Level = tonumber(char:GetAttribute("Level")) or 0
-			if out.Level <= 0 and M._stat then
-				local ok, n = pcall(M._stat.GetValue, char, "Level")
-				if ok and type(n) == "number" then
+			if out.Level <= 0 and M._stat and M._stat.GetValue then
+				local n = M._stat.GetValue(char, "Level")
+				if type(n) == "number" then
 					out.Level = n
 				end
 			end
@@ -79,50 +390,53 @@ return function(GB)
 		out.Gold = tonumber(d.Gold) or 0
 		out.StatPoints = tonumber(d.StatPoints) or tonumber(d["Stat Points"]) or tonumber(d.UnusedStatPoints) or 0
 		out.Stats = {}
-		if char and M._stat then
+		if char and M._stat and M._stat.GetBaseValue then
 			for _, n in ipairs({ "Health", "Strength", "Agility", "Precision", "Energy", "Willpower" }) do
-				local ok, v = pcall(M._stat.GetBaseValue, char, n)
-				out.Stats[n] = (ok and type(v) == "number") and v or 0
+				local v = M._stat.GetBaseValue(char, n)
+				out.Stats[n] = type(v) == "number" and v or 0
 			end
 		end
-		out.CompletedSet = completedSet(d["Completed Quests"] or d.CompletedQuests)
-		out.Quests = d.Quests or {}
+		out.CompletedSet = M._done
+		out.Quests = M._live
 		out.Inventory = d.Inventory or {}
+		out.Skills = d.Skills or {}
 		out.Fruit = d.Fruit
 		out["Fruit Storage"] = d["Fruit Storage"]
 		out["Permanent Fruits"] = d["Permanent Fruits"]
-		out.CurrentQuest = nil
-		local liveBest
-		for k, q in pairs(out.Quests) do
-			if type(q) == "table" then
-				local name = q.Name or k
-				if not liveBest then
-					liveBest = name
-				end
-			end
-		end
-		out.CurrentQuest = liveBest
+		out.CurrentQuest = M._current
 		return out
 	end
 
 	function M.finished(name)
-		return M.cache().CompletedSet[name] == true
+		M.refreshLive()
+		return name and M._done[name] == true
 	end
 
 	function M.live(name)
-		local q = M.cache().Quests
-		if type(q) ~= "table" then
+		if not name then
 			return nil
 		end
-		if q[name] then
-			return q[name]
+		M.refreshLive()
+		if M._done[name] then
+			return nil
 		end
-		for k, v in pairs(q) do
-			if type(v) == "table" and (v.Name == name or k == name) then
-				return v
+		return M._live[name]
+	end
+
+	function M.current()
+		M.refreshLive()
+		return M._current
+	end
+
+	function M.activeNames()
+		M.refreshLive()
+		local out = {}
+		for _, n in ipairs(M._order) do
+			if M._live[n] then
+				out[#out + 1] = n
 			end
 		end
-		return nil
+		return out
 	end
 
 	function M.hasItem(name)
@@ -138,17 +452,28 @@ return function(GB)
 			return true, 1
 		end
 		for _, v in pairs(inv) do
-			if type(v) == "table" and (v.Name == name or v.Key == name) then
+			if type(v) == "table" and (v.Name == name or v.Key == name or v.Value == name) then
 				return true, tonumber(v.Amount) or 1
 			end
 		end
 		return false, 0
 	end
 
+	function M.skillOwned(name)
+		local skills = M.cache().Skills
+		if type(skills) ~= "table" or not name then
+			return false, false
+		end
+		local row = skills[name]
+		if type(row) == "table" then
+			return row.Owned == true or row.Equipped == true, row.Equipped == true
+		end
+		return false, false
+	end
+
 	function M.refreshStats()
 		GB.Remotes.statReplicate()
-		local st = GB.Remotes.getStats()
-		return st
+		return GB.Remotes.getStats()
 	end
 
 	return M

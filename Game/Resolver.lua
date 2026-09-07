@@ -645,6 +645,18 @@ return function(GB)
 		return pack and pack.Instance
 	end
 
+	function M.taggedAny(tag)
+		if type(tag) ~= "string" or tag == "" then
+			return nil
+		end
+		for _, inst in ipairs(CS:GetTagged(tag)) do
+			if inst.Parent and not inRS(inst) then
+				return inst
+			end
+		end
+		return nil
+	end
+
 	function M.waitTagged(tag, timeout)
 		timeout = timeout or 4
 		local hit = firstWorldTagged(tag)

@@ -9,6 +9,14 @@ return function(GB)
 
 	GB.Persist.load()
 	GB.Remotes.statReplicate()
+	if GB.PlayerData.hookQuestEvents then
+		GB.PlayerData.hookQuestEvents()
+	end
+	GB.PlayerData.refreshLive(true)
+	local ck = GB.Persist.data and GB.Persist.data.checkpoint
+	if ck and ck.quest then
+		GB.Log.log("BOOT", "checkpoint quest=" .. tostring(ck.quest) .. " stage=" .. tostring(ck.stage or "-"))
+	end
 
 	function GB.unload()
 		getgenv()._GBKaitunGen = (GB.gen or 0) + 1

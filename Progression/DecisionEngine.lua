@@ -80,12 +80,20 @@ return function(GB)
 			return
 		end
 
-		-- Tutorial / live forced
-		if GB.Config.AutoTutorial then
-			for _, n in ipairs({ "Introduction", "Basics", "[TUTORIAL] Fruit/Style Storage" }) do
-				if GB.PlayerData.live(n) then
-					setTask("quest:" .. n)
-					GB.Quest.doLive(n)
+		-- Live quest from GetData + tracker. Never prefer stale ClientCache Introduction.
+		-- Required Level: keep the quest accepted but farm repeats until the gate.
+		if GB.Config.AutoTutorial or GB.Config.AutoQuest then
+			local cur = GB.PlayerData.current()
+			if cur and not GB.Config.SkipQuests[cur] then
+				local qs = GB.Quest.questState(cur)
+				local obj = qs and qs.Objective
+				local gated = obj and obj.Type == "Required" and obj.TargetName == "Level"
+				local need = gated and (obj.Amount or GB.QuestData.needLevel(cur)) or 0
+				if gated and (snap.Level or 0) < need then
+					setTask("wait_level:" .. cur)
+				else
+					setTask("quest:" .. cur)
+					GB.Quest.doLive(cur)
 					return
 				end
 			end
@@ -115,46 +123,8 @@ return function(GB)
 		GB.Travel.tick()
 		GB.Boat.tick()
 
-		-- Live quest first (prefer current-island story, then highest-exp repeat)
-		local liveName
-		local d = GB.PlayerData.cache()
-		if type(d.Quests) == "table" then
-			local lives = {}
-			for k, q in pairs(d.Quests) do
-				local name = type(q) == "table" and (q.Name or k) or k
-				if not GB.Config.SkipQuests[name] then
-					table.insert(lives, name)
-				end
-			end
-			for _, ch in ipairs(GB.QuestData.CHAINS) do
-				if ch.island == snap.CurrentIsland then
-					for _, n in ipairs(ch.order) do
-						for _, L in ipairs(lives) do
-							if L == n then
-								liveName = n
-								break
-							end
-						end
-						if liveName then
-							break
-						end
-					end
-				end
-			end
-			if not liveName then
-				local bestExp = -1
-				for _, n in ipairs(lives) do
-					for _, e in ipairs(GB.QuestData.REPEATS) do
-						if e.name == n and e.exp > bestExp then
-							bestExp = e.exp
-							liveName = n
-						end
-					end
-				end
-				liveName = liveName or lives[1]
-			end
-		end
-		if liveName then
+		local liveName = GB.PlayerData.current()
+		if liveName and not GB.Config.SkipQuests[liveName] then
 			setTask("quest:" .. liveName)
 			GB.Quest.doLive(liveName)
 			GB.Chest.tick()

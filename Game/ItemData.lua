@@ -29,6 +29,8 @@ return function(GB)
 		["Muggy Ball"] = "KEEP",
 		["Slingshot"] = "KEEP",
 		["Strong Punch"] = "KEEP",
+		["Skill: Strong Punch"] = "KEEP",
+		["Skill Scroll"] = "KEEP",
 		["King's Punch"] = "KEEP",
 		["[50%] Smuggler's Coupon"] = "KEEP",
 		["Calvin's Treasure"] = "KEEP",

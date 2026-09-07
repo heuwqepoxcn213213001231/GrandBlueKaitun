@@ -34,6 +34,9 @@ Rule: args only from Studio call sites / data.rules / StatSystem. FireServer ≠
 | Delete stored | `Events.PermanentFruit` RE | `("Delete Fruit", name)` | ClosetHandler | — | VERIFIED (not auto) |
 | Change style | `Events.ChangeFightingStyle` RE | `(styleName)` | ClosetHandler | Attribute Style | VERIFIED |
 | Prompt skill | `Events.PromptSkillEquip` RE | `(skillName)` | PassiveObtained Tool type | skill equipped | VERIFIED |
+| Skill equip/unequip | `Events.Skill` RE | `("Equip"\|"Unequip", skillName)` | SkillHandler ToggleEquip | Skills[name].Equipped / hotbar | VERIFIED |
+| Consume skill scroll | `Events.ConsumeSkillScroll` RE | `(nil)` | ScrollFrameSlide; server HeldItem.Name==Skill Scroll | Skills.Storage[name] | VERIFIED |
+| Open logbook help | `Events.QuestEvents.OpenLogbookHelp` RE | no-arg | ForceOpenLogbook | Open Logbook cond | VERIFIED |
 | Codes | `Events.Codes` RE | `(code)` | Codes LocalScript | OnClient text,ok | VERIFIED |
 | CodeProg | `Events.CodeProg` RE | `()` or `(code, index)` | Codes LocalScript | pending list | VERIFIED |
 | Trait reroll | `Events.Reroll` RE | `("Trait", slot)` | TraitHandler | trait change | VERIFIED |
@@ -43,7 +46,7 @@ Rule: args only from Studio call sites / data.rules / StatSystem. FireServer ≠
 | Equip RF | `Events.Equip` RF | UNKNOWN | no InvokeServer site | — | UNRESOLVED |
 | EquipSkill RF | `Events.EquipSkill` RF | UNKNOWN | no InvokeServer site | — | UNRESOLVED |
 | Race reroll | `Events.Reroll` | `("Race", …)` not found | Trait only | — | UNRESOLVED |
-| GetData | `Events.GetData` RF | `("Completed Quests")` INFERRED; `"Achievements"` LifeskillsHandler | Cache | PARTIAL |
+| GetData | `Events.GetData` RF | `("Quests", "Completed Quests")` QuestInfo client; also single keys | QuestLocal LoadQuests | VERIFIED |
 | Fishing | `Events.Fishing` | UNKNOWN | no safe args | — | UNRESOLVED |
 | Plant/Water | `PlantSeed` etc. | UNKNOWN | — | UNRESOLVED |
 | ClaimAchievement | RF | UNKNOWN | — | UNRESOLVED |

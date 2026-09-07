@@ -199,6 +199,14 @@ return function(GB)
 	end
 
 	function M.attack(name, questName)
+		if questName then
+			local qs = GB.Quest.questState(questName)
+			local typ = qs and qs.Objective and qs.Objective.Type
+			if typ and typ ~= "Kill" and typ ~= "Defeat" and typ ~= "Hit" and typ ~= "Destroy" and typ ~= "Shoot" then
+				M.stopLock()
+				return false
+			end
+		end
 		local mob = M.findTarget(name, questName)
 		if not mob then
 			return false

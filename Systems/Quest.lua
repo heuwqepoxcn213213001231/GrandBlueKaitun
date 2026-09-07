@@ -64,6 +64,16 @@ return function(GB)
 		Block = true,
 		Travel = true,
 		Boss = true,
+		Unlock = true,
+		["Deliver Object"] = true,
+		["Reach Maple Village"] = true,
+		["Investigate The Footsteps (1)"] = true,
+		["Investigate The Footsteps (2)"] = true,
+		["Investigate The Wreckage"] = true,
+		["Investigate The Beast's Den"] = true,
+		["Investigate The Garden"] = true,
+		["Investigate The Fountain"] = true,
+		Defend = true,
 	}
 
 	local function guiText(inst)
@@ -183,29 +193,116 @@ return function(GB)
 		return GB.State.clickGui(pick.btn)
 	end
 
-	local function openLogbook()
+	local function clickPlayerGuiPath(path)
 		local pg = GB.lp and GB.lp.PlayerGui
-		if not pg then
+		if not (pg and type(path) == "string") then
 			return false
 		end
-		local lb = pg:FindFirstChild("Logbook")
-		if lb and lb:IsA("LayerCollector") then
-			lb.Enabled = true
-			return true
-		end
-		local menu = pg:FindFirstChild("Menu")
-		if menu then
-			for _, d in ipairs(menu:GetDescendants()) do
-				if d:IsA("GuiButton") and (d.Name == "Logbook" or d.Name == "Log Book" or d.Name == "LogbookButton") then
-					return GB.State.clickGui(d)
-				end
+		local cur = pg
+		for part in string.gmatch(path, "[^%.]+") do
+			cur = cur:FindFirstChild(part)
+			if not cur then
+				return false
 			end
 		end
-		return false
+		if cur:IsA("GuiButton") then
+			return GB.State.clickGui(cur)
+		end
+		local btn = cur:FindFirstChildWhichIsA("GuiButton", true)
+		return btn and GB.State.clickGui(btn)
+	end
+
+	local function layerOn(name)
+		local pg = GB.lp and GB.lp.PlayerGui
+		local ui = pg and pg:FindFirstChild(name)
+		return ui and ui:IsA("LayerCollector") and ui.Enabled == true
+	end
+
+	-- ForceOpenLogbook sequence + OpenLogbookHelp:FireServer
+	local function openLogbook()
+		if not layerOn("Menu") then
+			clickPlayerGuiPath("TopbarStandard.Holders.Left.Menu")
+			task.wait(0.2)
+		end
+		if not layerOn("Logbook") then
+			clickPlayerGuiPath("Menu.ContainerFrame.Icons.Logbook")
+			task.wait(0.25)
+		end
+		clickPlayerGuiPath("Logbook.Frame.IndexContainer.ScrollingFrame.Tutorial")
+		task.wait(0.2)
+		clickPlayerGuiPath("Logbook.Frame.Left.Tutorial.Controls")
+		task.wait(0.15)
+		local ok = GB.Remotes.openLogbookHelp()
+		GB.Log.log("QUEST", "Open Logbook")
+		return ok or layerOn("Logbook")
+	end
+
+	local function goTagged(tag, dist)
+		if not tag or tag == "" then
+			return false
+		end
+		local inst = GB.Resolver.taggedAny and GB.Resolver.taggedAny(tag)
+		if not inst then
+			inst = GB.Resolver.waitTagged(tag, 0.8)
+		end
+		if not inst then
+			inst = GB.Resolver.byName(tag)
+		end
+		if not inst then
+			GB.Log.warn("QUEST", "marker miss " .. tostring(tag))
+			return false
+		end
+		GB.World.ToInteractable(inst, dist or 10)
+		local pr = GB.Resolver.prompt(inst)
+		if pr then
+			fireproximityprompt(pr)
+		end
+		GB.Remotes.enterZone(tag)
+		return true
 	end
 
 	function M.condProgress(cond)
 		return GB.QuestData.conditionCurrent(cond), GB.QuestData.conditionAmount(cond)
+	end
+
+	local function inferObjective(name)
+		local pg = GB.lp and GB.lp.PlayerGui
+		if not pg then
+			return nil
+		end
+		local blob = {}
+		for _, d in ipairs(pg:GetDescendants()) do
+			if (d:IsA("TextLabel") or d:IsA("TextButton")) and type(d.Text) == "string" and d.Text ~= "" then
+				blob[#blob + 1] = d.Text
+			end
+		end
+		local text = table.concat(blob, "\n")
+		if name == "Basics" then
+			if string.find(text, "skill scroll", 1, true) or string.find(text, "Equip Skill", 1, true) or string.find(text, "Equip your new skill", 1, true) or string.find(text, "Equip the skill", 1, true) then
+				return { Type = "EquipSkill", TargetName = "Strong Punch", Current = 0, Amount = 1, Complete = false, Raw = { Type = "EquipSkill", Target = { Name = "Strong Punch", Amount = 0, RequiredAmount = 1 } } }
+			end
+			if string.find(text, "Use Skill", 1, true) or string.find(text, "Cast the skill", 1, true) or string.find(text, "Use your Strong Punch", 1, true) then
+				return { Type = "Cast", TargetName = "Strong Punch", Current = 0, Amount = 1, Complete = false, Raw = { Type = "Cast", Target = { Name = "Strong Punch", Amount = 0, RequiredAmount = 1 } } }
+			end
+			if string.find(text, "Invest", 1, true) and string.find(text, "stat", 1, true) then
+				return { Type = "Required", TargetName = "TotalStatPoints", Current = 0, Amount = 1, Complete = false, Raw = { Type = "Required", Target = { Name = "TotalStatPoints", Amount = 0, RequiredAmount = 1 } } }
+			end
+			if string.find(text, "logbook", 1, true) or string.find(text, "Logbook", 1, true) then
+				return { Type = "Open", TargetName = "Logbook", Current = 0, Amount = 1, Complete = false, Raw = { Type = "Open", Target = { Name = "Logbook", Amount = 0, RequiredAmount = 1 } } }
+			end
+		end
+		if name == "Introduction" then
+			if string.find(text, "Press Q", 1, true) then
+				return { Type = "Dash", TargetName = "", Current = 0, Amount = 2, Complete = false, Raw = { Type = "Dash", Target = { Name = "", Amount = 0, RequiredAmount = 2 } } }
+			end
+			if string.find(text, "Hold F", 1, true) then
+				return { Type = "Block", TargetName = "", Current = 0, Amount = 1, Complete = false, Raw = { Type = "Block", Target = { Name = "", Amount = 0, RequiredAmount = 1 } } }
+			end
+			if string.find(text, "dummy", 1, true) or string.find(text, "Dummy", 1, true) then
+				return { Type = "Hit", TargetName = "Training Dummy", Current = 0, Amount = 4, Complete = false, Raw = { Type = "Hit", Target = { Name = "Training Dummy", Amount = 0, RequiredAmount = 4 } } }
+			end
+		end
+		return nil
 	end
 
 	function M.questState(name)
@@ -213,6 +310,20 @@ return function(GB)
 		local island = GB.QuestData.islandOf(name)
 		local npc = GB.QuestData.talkNpc(name)
 		if not live then
+			local inferred = GB.PlayerData.current() == name and inferObjective(name)
+			if inferred then
+				return {
+					Name = name,
+					IsAccepted = true,
+					IsComplete = false,
+					CanTurnIn = false,
+					Automatic = GB.QuestData.AUTOMATIC[name] == true,
+					NPC = npc,
+					Island = island,
+					StageIndex = inferred.Type,
+					Objective = inferred,
+				}
+			end
 			return {
 				Name = name,
 				IsAccepted = false,
@@ -573,8 +684,35 @@ return function(GB)
 		if typ == "Upgrade" then
 			return GB.Equipment.upgradeNamed(target)
 		end
-		if typ == "EquipSkill" or typ == "Cast" then
-			return GB.Skills.ensure(target)
+		if typ == "EquipSkill" then
+			GB.Combat.stopLock()
+			local qs = M.questState(questName)
+			local before = M.signature(qs)
+			local ok = GB.Skills.equip(target)
+			if ok then
+				local progressed = M.waitProgress(questName, before, 2.4)
+				if progressed then
+					M.noteOk(questName)
+					return true
+				end
+				M.noteFail(questName, "equipskill not credited " .. tostring(target))
+			end
+			return ok
+		end
+		if typ == "Cast" then
+			GB.Combat.stopLock()
+			local qs = M.questState(questName)
+			local before = M.signature(qs)
+			local ok = GB.Skills.cast(target)
+			if ok then
+				local progressed = M.waitProgress(questName, before, 2.4)
+				if progressed then
+					M.noteOk(questName)
+					return true
+				end
+				M.noteFail(questName, "cast not credited " .. tostring(target))
+			end
+			return ok
 		end
 		if typ == "Required" and target == "TotalStatPoints" then
 			return GB.Stats.investMinimum(1)
@@ -623,8 +761,41 @@ return function(GB)
 			end
 			return GB.Boat.spawnRowboat()
 		end
-		if typ == "Reach" or typ == "Travel" then
-			return GB.Travel.goIsland(target or "Maple Village")
+		if typ == "Reach" or typ == "Travel" or (type(typ) == "string" and string.sub(typ, 1, 6) == "Reach ") then
+			local island = target
+			if typ == "Reach Maple Village" or island == "" or not island then
+				island = "Maple Village"
+			end
+			local tag = GB.QuestData.markerOf(typ, target)
+			if tag and tag ~= island then
+				goTagged(tag, 16)
+			end
+			return GB.Travel.goIsland(island)
+		end
+		if typ == "Unlock" then
+			GB.Combat.stopLock()
+			return goTagged(GB.QuestData.markerOf(typ, target) or target, 8)
+		end
+		if typ == "Deliver Object" then
+			GB.Combat.stopLock()
+			local spec = GB.QuestData.deliverSpec(target)
+			if spec then
+				goTagged(spec.object, 12)
+				task.wait(0.3)
+				return goTagged(spec.location, 12)
+			end
+			return goTagged(target, 12)
+		end
+		if type(typ) == "string" and string.sub(typ, 1, 11) == "Investigate" then
+			GB.Combat.stopLock()
+			return goTagged(GB.QuestData.markerOf(typ, target) or target, 10)
+		end
+		if typ == "Defend" then
+			if not M.unknown[questName .. "Defend"] then
+				M.unknown[questName .. "Defend"] = true
+				GB.Log.err("QUEST", "UNKNOWN_OBJECTIVE Defend " .. tostring(target) .. " — skip")
+			end
+			return false
 		end
 		if typ == "Visit" and target == "Closet" then
 			local c = GB.Resolver.byName("Closet")
@@ -767,13 +938,18 @@ return function(GB)
 		local sig = M.signature(qs)
 		if M.lastSig[name] ~= sig then
 			M.lastSig[name] = sig
+			if GB.Persist and GB.Persist.checkpoint then
+				GB.Persist.checkpoint("quest", name)
+				GB.Persist.checkpoint("stage", qs.StageIndex)
+			end
 			GB.Log.log("QUEST", string.format("%s stage=%s", name, tostring(qs.StageIndex or "-")))
 			if qs.Objective then
 				GB.Log.log(
 					"QUEST",
 					string.format("Objective %s %s", string.upper(tostring(qs.Objective.Type or "?")), tostring(qs.Objective.TargetName or ""))
 				)
-				if qs.Objective.Type == "Dash" or qs.Objective.Type == "Block" then
+				local ot = qs.Objective.Type
+				if ot == "Dash" or ot == "Block" or ot == "EquipSkill" or ot == "Cast" or ot == "Required" or ot == "Open" then
 					GB.Combat.stopLock()
 				end
 			end

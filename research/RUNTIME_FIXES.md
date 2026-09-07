@@ -1,5 +1,54 @@
 # Runtime Fixes
 
+## 1.0.6 — Live quest stuck on Introduction while UI is Basics EquipSkill
+
+### Issue
+
+UI: **Basics** — "Equip your new skill" / Equip Skill: Strong Punch. Overlay: **Select the 'Strong Punch' skill scroll**. Skill bar already shows Strong Punch. Graves nearby.
+
+Logs still:
+
+```
+[Kaitun][RECOVERY] stuck quest:Introduction
+[Kaitun][ERROR] resolve miss Training Dummy
+```
+
+### Root Cause (Studio place `118635363908336`)
+
+1. **ClientCache.Quests is a boot snapshot.** `ClientCache` loads once via `GetData("Quests")`. `QuestBegan` / `QuestDeleted` / `QuestStageUpdated` are **empty**. Incremental updates go to QuestLocal (`BeginQuest`, `QuestProgress`, `ClearQuest`), not `Cache.Data.Quests`.
+2. **DecisionEngine tutorial** iterated `{ Introduction, Basics, … }` and called `PlayerData.live(n)`. `live()` treated any leftover Introduction row as active → always executed Introduction Hit Dummy.
+3. **Condition fields wrong.** Live conds are `Target = { Amount, Name, RequiredAmount }` (QuestInfoUtilities.CreateCondition). Executor read `cond.Current` / `cond.Amount` → Dummy always looked incomplete.
+4. **EquipSkill path wrong.** Overlay is `EquipStrongPunch` (hotbar `Skill: Strong Punch` → `SkillScroll.Frame.ImageButton` → `ConsumeSkillScroll(nil)` → `Events.Skill("Equip", name)`). `PromptSkillEquip` is only the Tool-type obtain popup. `EquipSkill` RF has no client InvokeServer.
+
+### Fix
+
+- Refresh live set from `GetData("Quests","Completed Quests")` (TTL 0.85s) + tracker GUI / stage-title hints. Hook BeginQuest / ClearQuest / QuestProgress / UpdateQuestState.
+- `live()` = GetData row, not completed, incomplete `Target.Amount`. `current()` prefers tracker then chain order then persist checkpoint.
+- Tutorial/engine follows `current()` — never Introduction-first.
+- Combat refuses Dummy unless objective is Hit/Kill/Shoot/Destroy.
+- EquipSkill/Cast/Open Logbook/Unlock/Investigate/Deliver Object/Reach Maple Village handlers from Studio functions.
+- Combat Heartbeat 0.42 + CanSwing from 1.0.5 kept. Resolve-miss still 8s.
+
+### Files
+
+- `Game/PlayerData.lua`, `Game/QuestData.lua`, `Game/Remotes.lua`, `Systems/Quest.lua`, `Systems/Skills.lua`, `Systems/Combat.lua`, `Progression/DecisionEngine.lua`, `picker.lua`, `Core/State.lua`, `kaitun.lua`
+- `VERSION` / `manifest.json` / `loader.lua` → **1.0.6**
+
+### Expected next log (current runtime = Basics EquipSkill)
+
+```
+[Kaitun][STATE] live quest Basics
+[Kaitun][STATE] task quest:Basics
+[Kaitun][QUEST] Basics stage=2
+[Kaitun][QUEST] Objective EQUIPSKILL Strong Punch
+[Kaitun][SKILL] scroll flow Strong Punch
+[Kaitun][SKILL] Skill Equip Strong Punch
+```
+
+Then Cast → Talk Graves → Invest → Talk → Open Logbook.
+
+---
+
 ## 1.0.5 — Combat Heartbeat lag + Introduction Dash stuck
 
 ### Issue

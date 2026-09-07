@@ -215,7 +215,7 @@ return function(GB)
 		s.Flags = d.Flags or {}
 		s.Quests = d.Quests or {}
 		s.Completed = d.CompletedSet or {}
-		s.CurrentQuest = d.CurrentQuest
+		s.CurrentQuest = (GB.PlayerData and GB.PlayerData.current()) or d.CurrentQuest
 		s.CurrentIsland = (GB.World and GB.World.islandFromProgress(s)) or "Anchor Town"
 		s.PhysicalIsland = nil
 		if GB.World and s.Position then

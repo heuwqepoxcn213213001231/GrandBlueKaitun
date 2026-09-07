@@ -1,6 +1,6 @@
 # FINAL Implementation Report — Grand Blue Kaitun
 
-**Version:** `1.0.5`  
+**Version:** `1.0.6`  
 **Place:** `118635363908336` (Studio connected).  
 **Entry:** `NiaUISilent/Hub/Grand Blue/kaitun.lua`  
 **Ngôn ngữ log:** `[Kaitun][CAT]`.  
@@ -51,7 +51,12 @@ Load: `readfile` từ `GB_ROOT` / `NiaUISilent/Hub/Grand Blue/` / `Grand Blue/`.
 | Fruit pickup | `PickupDF` | `(FruitId)` |
 | Fruit store/equip | `PermanentFruit` | `("Store Fruit"[, name, force])` / `("Equip Permanent Fruit", name[, force])` |
 | Style swap | `ChangeFightingStyle` | `(styleName)` |
-| Tool skill popup | `PromptSkillEquip` | `(skillName)` |
+| Tool skill popup | `PromptSkillEquip` | `(skillName)` — Tool obtain only, not Basics scroll |
+| Skill equip | `Events.Skill` | `("Equip"\|"Unequip", skillName)` — SkillHandler |
+| Consume scroll | `ConsumeSkillScroll` | `(nil)` — server reads HeldItem.Value |
+| Open logbook help | `QuestEvents.OpenLogbookHelp` | `FireServer()` after Tutorial/Controls |
+| Live quests | `GetData` | `("Quests", "Completed Quests")` — QuestInfo + QuestLocal |
+| Enter zone | `ClientQuest` | `(zoneName, "Enter Zone")` |
 | Codes | `Codes` | `(code)` ; OnClient `(text, ok)` |
 | Code list/claim | `CodeProg` | `()` ; `(code, index)` |
 | Trait reroll | `Reroll` | `("Trait", slotNumber)` |

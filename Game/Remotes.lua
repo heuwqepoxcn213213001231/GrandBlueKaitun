@@ -158,6 +158,59 @@ return function(GB)
 		return M.fire("PromptSkillEquip", 0.6, name)
 	end
 
+	-- SkillHandler ToggleEquip: Events.Skill:FireServer("Equip"|"Unequip", skillName)
+	function M.skillEquip(name)
+		return M.fire("Skill", 0.55, "Equip", name)
+	end
+
+	function M.skillUnequip(name)
+		return M.fire("Skill", 0.55, "Unequip", name)
+	end
+
+	-- ScrollFrameSlide ButtonPressed: ConsumeSkillScroll:FireServer(nil). Server reads HeldItem.
+	function M.consumeSkillScroll()
+		return M.fire("ConsumeSkillScroll", 0.7, nil)
+	end
+
+	-- ForceOpenLogbook after Tutorial/Controls sequence
+	function M.openLogbookHelp()
+		local ev = RS:FindFirstChild("Events")
+		local folder = ev and ev:FindFirstChild("QuestEvents")
+		local r = folder and folder:FindFirstChild("OpenLogbookHelp")
+		if not r then
+			GB.Log.warn("ERROR", "remote missing OpenLogbookHelp")
+			return false, "missing"
+		end
+		if not GB.Retry.rateOk("re:OpenLogbookHelp", 1.0) then
+			return false, "rate"
+		end
+		r:FireServer()
+		return true
+	end
+
+	-- StarterPlayer Zones: ClientQuest(zoneName, "Enter Zone")
+	function M.enterZone(zoneName)
+		return M.fire("ClientQuest", 0.8, zoneName, "Enter Zone")
+	end
+
+	-- QuestInfo client + QuestLocal LoadQuests
+	function M.getQuests()
+		local r = ev("GetData")
+		if not r then
+			GB.Log.warn("ERROR", "remote missing GetData")
+			return nil, nil
+		end
+		if not GB.Retry.rateOk("rf:GetDataQuests", 0.35) then
+			return nil, nil
+		end
+		local ok, a, b = pcall(r.InvokeServer, r, "Quests", "Completed Quests")
+		if not ok then
+			GB.Log.err("ERROR", "GetData Quests " .. tostring(a))
+			return nil, nil
+		end
+		return a, b
+	end
+
 	function M.code(str)
 		return M.fire("Codes", 0.55, str)
 	end

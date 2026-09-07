@@ -12,12 +12,12 @@ Talk remote: `ClientQuest:FireServer("Talk", DisplayName)` + `DialogueBindable:F
 | Introduction | 4 | Block | Hold F to perform a block. | Combat.block PressKey F | — | live Block count 1 | VERIFIED |
 | Introduction | 5 | Talk | Officer Graves | Talk | ResolveNPC DisplayName + alias Officer Graves [2] DialogueNPCs | live Talk Officer Graves count 1 | VERIFIED |
 | Basics | 1 | Talk | Officer Graves | Talk | ResolveNPC DisplayName + alias Officer Graves [2] DialogueNPCs | live Talk Officer Graves count 1 | VERIFIED |
-| Basics | 2 | EquipSkill | Strong Punch | Equip | ResolveShop/Item | live EquipSkill Strong Punch count 1 | VERIFIED |
-| Basics | 3 | Cast | Strong Punch | Equip | ResolveShop/Item | live Cast Strong Punch count 1 | VERIFIED |
+| Basics | 2 | EquipSkill | Strong Punch | Skills.equip: hotbar "Skill: Strong Punch" + SkillScroll ImageButton + ConsumeSkillScroll(nil) + Skill("Equip", name) + Skills.Storage click + Equip Button. Overlay ScreenShadow "Select the 'Strong Punch' skill scroll". PromptSkillEquip only Tool obtain popup | PlayerGui.Skills.Storage / hotbar Title Strong Punch / Skills[name].Equipped | live EquipSkill Strong Punch count 1 | VERIFIED |
+| Basics | 3 | Cast | Strong Punch | Skills.cast: close Skills/Menu, click hotbar ToolFrame Title "Strong Punch" (CastStrongPunch path) | live Cast count / hotbar | live Cast Strong Punch count 1 | VERIFIED |
 | Basics | 4 | Talk | Officer Graves | Talk | ResolveNPC DisplayName + alias Officer Graves [2] DialogueNPCs | live Talk Officer Graves count 1 | VERIFIED |
 | Basics | 5 | Required | TotalStatPoints | Equip | ResolveShop/Item | live Required TotalStatPoints count 1 | VERIFIED |
 | Basics | 6 | Talk | Officer Graves | Talk | ResolveNPC DisplayName + alias Officer Graves [2] DialogueNPCs | live Talk Officer Graves count 1 | VERIFIED |
-| Basics | 7 | Open | Logbook | Interact | ResolveShop/Item | live Open Logbook count 1 | VERIFIED |
+| Basics | 7 | Open | Logbook | ForceOpenLogbook: Menu → Icons.Logbook → Tutorial → Controls, then QuestEvents.OpenLogbookHelp:FireServer() | PlayerGui.Logbook.Enabled | live Open Logbook count 1 | VERIFIED |
 | Pirate Fan Letter | 1 | Talk | Officer Graves | Talk | ResolveNPC DisplayName + alias Officer Graves [2] DialogueNPCs | live Talk Officer Graves count 1 | VERIFIED |
 | Pirate Fan Letter | 2 | Talk | Koro | Talk | ResolveNPC | live Talk Koro count 1 | VERIFIED |
 | Pirate Fan Letter | 3 | Collect | Pirate Fan Letter | Collect | ResolveShop/Item | live Collect Pirate Fan Letter count 1 | VERIFIED |
@@ -30,7 +30,7 @@ Talk remote: `ClientQuest:FireServer("Talk", DisplayName)` + `DialogueBindable:F
 | The Hoarder | 2 | Talk | Troubled Civilian | Talk | ResolveNPC | live Talk Troubled Civilian count 1 | VERIFIED |
 | The Hoarder | 3 | Kill | Afuaru, The Hoarder | Kill | ResolveEnemy | live Kill Afuaru, The Hoarder count 1 | VERIFIED |
 | The Hoarder | 3 | Collect | Afuaru's Key | Collect | ResolveShop/Item | live Collect Afuaru's Key count 1 | VERIFIED |
-| The Hoarder | 4 | Unlock | Afuaru's Gate | UNKNOWN | — | live Unlock Afuaru's Gate count 1 | UNVERIFIED_HANDLER |
+| The Hoarder | 4 | Unlock | Afuaru's Gate | goTagged Afuaru's Gate + proximity + ClientQuest(tag, "Enter Zone"). Client Close Afuaru's Gate only sets Attribute State Closed if already Open | live Unlock count | live Unlock Afuaru's Gate count 1 | VERIFIED |
 | The Hoarder | 5 | Loot | Afuaru's Chests | Collect | ResolveShop/Item | live Loot Afuaru's Chests count 5 | VERIFIED |
 | The Hoarder | 6 | Talk | Troubled Civilian | Talk | ResolveNPC | live Talk Troubled Civilian count 1 | VERIFIED |
 | First Upgrade | 1 | Talk | Blacksmith Shinozaki | Talk | ResolveNPC | live Talk Blacksmith Shinozaki count 1 | VERIFIED |
@@ -116,19 +116,19 @@ Talk remote: `ClientQuest:FireServer("Talk", DisplayName)` + `DialogueBindable:F
 | The Ringmaster | 4 | Talk | Mayor Kiyoshi [2] | Talk | ResolveNPC | live Talk Mayor Kiyoshi [2] count 1 | VERIFIED |
 | Journey to Maple Village | 1 | Talk | Mayor Kiyoshi | Talk | ResolveNPC | live Talk Mayor Kiyoshi count 1 | VERIFIED |
 | Journey to Maple Village | 2 | Required | Level | Equip | ResolveShop/Item | live Required Level count 70 | VERIFIED |
-| Journey to Maple Village | 3 | Reach Maple Village | Set sail for Maple Village. | UNKNOWN | — | live Reach Maple Village  count 1 | UNVERIFIED_HANDLER |
+| Journey to Maple Village | 3 | Reach Maple Village | Set sail for Maple Village. | Travel.goIsland Maple Village + marker Maple Village Marker + ClientQuest(tag, "Enter Zone") | PhysicalIsland Maple Village | live Reach Maple Village count 1 | VERIFIED |
 | The Island's Protector | 1 | Kill | Captain Esopo | Kill | ResolveEnemy | live Kill Captain Esopo count 1 | VERIFIED |
 | The Island's Protector | 2 | Talk | Captain Esopo | Talk | ResolveNPC | live Talk Captain Esopo count 1 | VERIFIED |
 | Proof of Pirates | 1 | Kill | Black Noir Pirate | Kill | ResolveEnemy | live Kill Black Noir Pirate count 7 | VERIFIED |
-| Proof of Pirates | 2 | Deliver Object | Stolen Goods | UNKNOWN | — | live Deliver Object Stolen Goods count 2 | UNVERIFIED_HANDLER |
+| Proof of Pirates | 2 | Deliver Object | Stolen Goods | goTagged StolenGoods then Esopo Delivery (ExtraInfo Object/Location). Server function Deliver Object — no client remote invented | live count | live Deliver Object Stolen Goods count 2 | VERIFIED |
 | Proof of Pirates | 3 | Talk | Captain Esopo | Talk | ResolveNPC | live Talk Captain Esopo count 1 | VERIFIED |
 | Something Isn't Right | 1 | Talk | Farmer Joe | Talk | ResolveNPC | live Talk Farmer Joe count 1 | VERIFIED |
 | Something Isn't Right | 1 | Talk | Tara | Talk | ResolveNPC | live Talk Tara count 1 | VERIFIED |
 | Something Isn't Right | 1 | Talk | Martha | Talk | ResolveNPC | live Talk Martha count 1 | VERIFIED |
-| Something Isn't Right | 2 | Investigate The Footsteps (1) | Follow the trail of footsteps back to their origin. | UNKNOWN | — | live Investigate The Footsteps (1)  count 1 | UNVERIFIED_HANDLER |
+| Something Isn't Right | 2 | Investigate The Footsteps (1) | Follow the trail of footsteps back to their origin. | goTagged Campsite Footsteps Marker + Enter Zone. Client Unhide Footsteps 1 is visual only | live count | live Investigate The Footsteps (1) count 1 | VERIFIED |
 | Something Isn't Right | 3 | Destroy | Supply Crate | Kill | ResolveEnemy | live Destroy Supply Crate count 2 | VERIFIED |
 | Something Isn't Right | 3 | Kill | Black Noir Pirate | Kill | ResolveEnemy | live Kill Black Noir Pirate count 2 | VERIFIED |
-| Something Isn't Right | 4 | Investigate The Footsteps (2) | Follow the second trail of footsteps back to their origin. | UNKNOWN | — | live Investigate The Footsteps (2)  count 1 | UNVERIFIED_HANDLER |
+| Something Isn't Right | 4 | Investigate The Footsteps (2) | Follow the second trail of footsteps back to their origin. | goTagged Campsite Footsteps Marker + Enter Zone. Client Unhide Footsteps 2 visual | live count | live Investigate The Footsteps (2) count 1 | VERIFIED |
 | Something Isn't Right | 5 | Destroy | Supply Crate | Kill | ResolveEnemy | live Destroy Supply Crate count 2 | VERIFIED |
 | Something Isn't Right | 5 | Kill | Black Noir Pirate | Kill | ResolveEnemy | live Kill Black Noir Pirate count 2 | VERIFIED |
 | Something Isn't Right | 6 | Talk | Captain Esopo | Talk | ResolveNPC | live Talk Captain Esopo count 1 | VERIFIED |
@@ -140,17 +140,17 @@ Talk remote: `ClientQuest:FireServer("Talk", DisplayName)` + `DialogueBindable:F
 | The Wandering Hypnotist | 1 | Wake | Sleeping Villager | Interact | ResolveShop/Item | live Wake Sleeping Villager count 1 | VERIFIED |
 | The Wandering Hypnotist | 2 | Kill | \ | Kill | ResolveEnemy | live Kill \ count 1 | VERIFIED |
 | The Wandering Hypnotist | 3 | Talk | Captain Esopo | Talk | ResolveNPC | live Talk Captain Esopo count 1 | VERIFIED |
-| The Beast of Maple Village | 1 | Investigate The Wreckage | Investigate the wreckage the beast left behind. | UNKNOWN | — | live Investigate The Wreckage  count 1 | UNVERIFIED_HANDLER |
-| The Beast of Maple Village | 2 | Investigate The Beast's Den | Follow the beast's tracks back to its den. | UNKNOWN | — | live Investigate The Beast's Den  count 1 | UNVERIFIED_HANDLER |
+| The Beast of Maple Village | 1 | Investigate The Wreckage | Investigate the wreckage the beast left behind. | goTagged Beast Wreckage Marker + Enter Zone | live count | live Investigate The Wreckage count 1 | VERIFIED |
+| The Beast of Maple Village | 2 | Investigate The Beast's Den | Follow the beast's tracks back to its den. | goTagged Beast Den Marker + Enter Zone | live count | live Investigate The Beast's Den count 1 | VERIFIED |
 | The Beast of Maple Village | 3 | Kill | The Beast? | Kill | ResolveEnemy | live Kill The Beast? count 1 | VERIFIED |
 | The Beast of Maple Village | 3 | Talk | Barry | Talk | ResolveNPC | live Talk Barry count 1 | VERIFIED |
 | The Beast of Maple Village | 4 | Talk | Captain Esopo | Talk | ResolveNPC | live Talk Captain Esopo count 1 | VERIFIED |
 | Missing Servants | 1 | Talk | Kuro | Talk | ResolveNPC | live Talk Kuro count 1 | VERIFIED |
-| Missing Servants | 2 | Investigate The Garden | The butler claims he dismissed the entire staff. Search the mansion grounds for any trace of the missing servants. | UNKNOWN | — | live Investigate The Garden  count 1 | UNVERIFIED_HANDLER |
-| Missing Servants | 2 | Investigate The Fountain | The butler claims he dismissed the entire staff. Search the mansion grounds for any trace of the missing servants. | UNKNOWN | — | live Investigate The Fountain  count 1 | UNVERIFIED_HANDLER |
+| Missing Servants | 2 | Investigate The Garden | The butler claims he dismissed the entire staff. Search the mansion grounds for any trace of the missing servants. | goTagged Mansion Garden Marker + Enter Zone | live count | live Investigate The Garden count 1 | VERIFIED |
+| Missing Servants | 2 | Investigate The Fountain | The butler claims he dismissed the entire staff. Search the mansion grounds for any trace of the missing servants. | goTagged Mansion Fountain Marker + Enter Zone | live count | live Investigate The Fountain count 1 | VERIFIED |
 | Missing Servants | 3 | CollectLocalItem | Servant's Journal | Collect | ResolveShop/Item | live CollectLocalItem Servant's Journal count 1 | VERIFIED |
 | Missing Servants | 4 | Talk | Captain Esopo | Talk | ResolveNPC | live Talk Captain Esopo count 1 | VERIFIED |
-| Expose the Butler | 1 | Investigate The Garden | The journal was dumped in the garden hedges — whoever dropped it may still be hiding on the grounds. Search the mansion garden. | UNKNOWN | — | live Investigate The Garden  count 1 | UNVERIFIED_HANDLER |
+| Expose the Butler | 1 | Investigate The Garden | The journal was dumped in the garden hedges — whoever dropped it may still be hiding on the grounds. Search the mansion garden. | goTagged Mansion Garden Marker + Enter Zone | live count | live Investigate The Garden count 1 | VERIFIED |
 | Expose the Butler | 2 | Talk | Frightened Servant | Talk | ResolveNPC | live Talk Frightened Servant count 1 | VERIFIED |
 | Expose the Butler | 2 | Kill | Scratch | Kill | ResolveEnemy | live Kill Scratch count 1 | VERIFIED |
 | Expose the Butler | 2 | Kill | Grab | Kill | ResolveEnemy | live Kill Grab count 1 | VERIFIED |
@@ -168,7 +168,7 @@ Talk remote: `ClientQuest:FireServer("Talk", DisplayName)` + `DialogueBindable:F
 | Destroy the Signalers | 1 | Destroy | South Camp Signal Fire | Kill | ResolveEnemy | live Destroy South Camp Signal Fire count 1 | VERIFIED |
 | Destroy the Signalers | 1 | Destroy | Overlook Signal Fire | Kill | ResolveEnemy | live Destroy Overlook Signal Fire count 1 | VERIFIED |
 | Destroy the Signalers | 2 | Talk | Captain Esopo | Talk | ResolveNPC | live Talk Captain Esopo count 1 | VERIFIED |
-| The Black Noir Raid | 1 | Defend | Black Noir Raid | UNKNOWN | — | live Defend Black Noir Raid count 1 | UNVERIFIED_HANDLER |
+| The Black Noir Raid | 1 | Defend | Black Noir Raid | UNKNOWN | — | live Defend Black Noir Raid count 1 | UNRESOLVED — skip, no client remote |
 | The Black Noir Raid | 2 | Talk | Lady Maia | Talk | ResolveNPC | live Talk Lady Maia count 1 | VERIFIED |
 | Bullies in Suits | 1 | Kill | Corrupt Marine | Kill | ResolveEnemy | live Kill Corrupt Marine count 6 | VERIFIED |
 | Bullies in Suits | 2 | Talk | Koro | Talk | ResolveNPC | live Talk Koro count 1 | VERIFIED |
@@ -201,5 +201,7 @@ Talk remote: `ClientQuest:FireServer("Talk", DisplayName)` + `DialogueBindable:F
 - **The Wandering Hypnotist**: `NeverSkip`. Kill target verified `"Hypnotist" Mango`.
 - **Stephon's Tormentor**: Kill target verified `"Barrel Clown" Binki`.
 - Resume from any live quest / completed set. Do not assume lv0.
-- Open Logbook: no verified remote; enable PlayerGui.Logbook / menu button.
-- Craft / unverified types: `UNKNOWN_OBJECTIVE` + stop that loop.
+- **Live truth (1.0.6):** `GetData("Quests","Completed Quests")` + `BeginQuest`/`ClearQuest`/`QuestProgress` + PlayerGui.Quests tracker. `ClientCache.Quests` is boot-only (`QuestBegan`/`QuestDeleted`/`QuestStageUpdated` empty). Condition progress is `Target.Amount` / `Target.RequiredAmount`.
+- Open Logbook: ForceOpenLogbook GUI sequence + `QuestEvents.OpenLogbookHelp:FireServer()`.
+- EquipSkill Strong Punch: scroll overlay is EquipStrongPunch, not PromptSkillEquip (that is Tool obtain popup only). Equip remote is `Events.Skill("Equip", name)` — EquipSkill RF still no InvokeServer site.
+- Craft / Defend / Emote / Convince / Dig / Steal / Cash Out / Unlock Skill: `UNKNOWN_OBJECTIVE` + skip, no infinite loop.
