@@ -17,6 +17,7 @@ return function(GB)
 	def("Enabled", true)
 	def("Tick", 0.4)
 	def("LogLevel", "INFO") -- DEBUG INFO WARN ERROR
+	def("Debug", false)
 	def("Persist", true)
 
 	-- Auto flags

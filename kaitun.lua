@@ -66,7 +66,8 @@ return function(GB)
 		local plan = GB.Planner and GB.Planner.last
 		local obj = qs and qs.Objective
 		local dump = {
-			Version = tostring(getgenv().GB_VERSION or "1.1.4"),
+			Version = tostring(getgenv().GB_VERSION or "1.1.5"),
+			TutorialDump = GB.DumpTutorialState and GB.DumpTutorialState() or nil,
 			PlaceId = game.PlaceId,
 			Level = snap.Level,
 			Island = snap.CurrentIsland,
@@ -181,6 +182,13 @@ return function(GB)
 	end, 0)
 
 	GB.Scheduler.start()
+
+	function GB.DumpTutorialState()
+		if GB.Tutorial and GB.Tutorial.DumpTutorialState then
+			return GB.Tutorial.DumpTutorialState()
+		end
+		return nil
+	end
 
 	getgenv().GBKaitun = GB
 	getgenv().GBConfig = GB.Config

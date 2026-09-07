@@ -55,6 +55,20 @@ return function(GB)
 		if os.clock() - M.last < (GB.Config.RecoveryCooldown or 8) then
 			return
 		end
+		local gate = GB.Tutorial and GB.Tutorial.GetCurrentGate and GB.Tutorial.GetCurrentGate()
+		if gate and GB.Tutorial.GateTypes and gate.Type == GB.Tutorial.GateTypes.ContinueOverlay then
+			GB.Log.warn("RECOVERY", "skip ContinueOverlay " .. tostring(gate.Id))
+			return
+		end
+		if M.outcome == "BLOCKING_GATE_UNRESOLVED" then
+			GB.Log.warn("RECOVERY", "BLOCKING_GATE_UNRESOLVED keep")
+			return
+		end
+		local gkey = gate and (tostring(gate.Type) .. "|" .. tostring(gate.Id) .. "|" .. tostring(gate.Payload))
+		if gkey and M.lastGateKey == gkey and M.outcome == "BLOCKING_UI" then
+			return
+		end
+		M.lastGateKey = gkey
 		M.last = os.clock()
 		M.level = M.level + 1
 		M.reason = why
@@ -74,7 +88,20 @@ return function(GB)
 			GB.Combat.stopLock()
 		end
 
+		if M.outcome == "BLOCKING_GATE_UNRESOLVED" then
+			GB.Log.warn("RECOVERY", "BLOCKING_GATE_UNRESOLVED keep")
+			return
+		end
+
 		if strat == "diagnostic" then
+			if GB.Tutorial and GB.Tutorial.unresolved then
+				M.outcome = "BLOCKING_GATE_UNRESOLVED"
+				GB.Log.warn("RECOVERY", "BLOCKING_GATE_UNRESOLVED")
+				if GB.Tutorial.DumpTutorialState then
+					GB.Tutorial.DumpTutorialState()
+				end
+				return
+			end
 			if GB.Tutorial and GB.Tutorial.IsBlocking and select(1, GB.Tutorial.IsBlocking()) then
 				M.outcome = "BLOCKING_UI"
 				local step = GB.Tutorial.GetActiveStep and GB.Tutorial.GetActiveStep()

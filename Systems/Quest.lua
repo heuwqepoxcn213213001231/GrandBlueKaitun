@@ -1090,5 +1090,13 @@ return function(GB)
 		return false
 	end
 
+	function M.Refresh()
+		if GB.PlayerData and GB.PlayerData.refreshLive then
+			GB.PlayerData.refreshLive(true)
+		end
+		local cur = GB.PlayerData and GB.PlayerData.current and GB.PlayerData.current()
+		return cur and M.questState(cur) or nil
+	end
+
 	return M
 end

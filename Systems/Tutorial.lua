@@ -8,6 +8,37 @@ return function(GB)
 		lastAction = nil,
 		attempts = 0,
 		owner = nil,
+		lastGate = nil,
+		lastMethod = nil,
+		lastTransition = nil,
+		continueAttempts = 0,
+		unresolved = nil,
+		dumpedTree = nil,
+	}
+
+	M.GateTypes = {
+		ContinueOverlay = "ContinueOverlay",
+		ActionRequired = "ActionRequired",
+		Dialogue = "Dialogue",
+		UISelection = "UISelection",
+		EquipRequired = "EquipRequired",
+		InputRequired = "InputRequired",
+	}
+
+	-- Studio-verified fullscreen continue overlays (no GuiButton).
+	M.CONTINUE_OVERLAYS = {
+		SkillObtained = {
+			script = "PassiveObtained",
+			continuation = "UIS.InputBegan",
+			listenDelay = 3.15,
+			event = true,
+		},
+		TutorialScreen = {
+			script = "TutorialLocal",
+			continuation = "UIS.InputBegan",
+			listenDelay = 0.75,
+			event = false,
+		},
 	}
 
 	-- Verified TutorialFolder modules (Studio place 118635363908336)
@@ -233,15 +264,18 @@ return function(GB)
 			blocking = true
 			if modalName == "SkillObtained" then
 				row = { id = "SkillObtained" }
-				if (not text or text == "") and overlayUi then
-					local frame = overlayUi:FindFirstChild("Frame")
-					local sn = frame and frame:FindFirstChild("SkillName")
-					text = (GB.State.guiText and GB.State.guiText(sn)) or "PRESS ANYWHERE TO CONTINUE"
+				if overlayUi and GB.State.skillNameOf then
+					text = GB.State.skillNameOf(overlayUi) or text
 					src = "SkillObtained"
 				end
 			elseif modalName == "TutorialScreen" then
 				row = row or { id = "UnlockSkill" }
 			end
+		elseif M.lastStep and string.find(tostring(M.lastStep), "SkillObtained", 1, true) then
+			if M.lastTransition ~= "cleared" then
+				GB.Log.log("GATE", "SkillObtained cleared")
+			end
+			M.releaseTutorial("cleared")
 		end
 		return {
 			Blocking = blocking,
@@ -250,6 +284,7 @@ return function(GB)
 			TutorialStep = (row and row.id) or needle,
 			TutorialSource = src,
 			Modal = modalName,
+			GateType = overlayVis and M.GateTypes.ContinueOverlay or (blocking and M.GateTypes.ActionRequired or nil),
 			DialogueActive = dialogue,
 			BackpackOpen = backpackOpen == true,
 			InventoryOpen = backpackOpen == true,
@@ -267,6 +302,213 @@ return function(GB)
 	function M.IsBlocking()
 		local s = M.snapshot()
 		return s.Blocking == true, s
+	end
+
+	function M.GetCurrentGate()
+		local vis, ui = false, nil
+		if GB.State and GB.State.tutorialOverlayVisible then
+			vis, ui = GB.State.tutorialOverlayVisible()
+		end
+		if vis and ui then
+			local payload = nil
+			if ui.Name == "SkillObtained" and GB.State.skillNameOf then
+				payload = GB.State.skillNameOf(ui)
+			elseif ui.Name == "TutorialScreen" then
+				local title = ui:FindFirstChild("Title")
+				payload = GB.State.guiText and GB.State.guiText(title) or nil
+			end
+			local spec = M.CONTINUE_OVERLAYS[ui.Name]
+			return {
+				Type = M.GateTypes.ContinueOverlay,
+				Id = ui.Name,
+				Payload = payload,
+				Instance = ui,
+				ContinuationMethod = spec and spec.continuation or "UIS.InputBegan",
+				ListenDelay = spec and spec.listenDelay,
+				EventOnly = spec and spec.event == true,
+			}
+		end
+		local s = M.snapshot()
+		if s.Blocking then
+			local typ = M.GateTypes.ActionRequired
+			if s.Objective == "Equip" then
+				typ = M.GateTypes.EquipRequired
+			elseif s.DialogueActive then
+				typ = M.GateTypes.Dialogue
+			end
+			return {
+				Type = typ,
+				Id = s.TutorialStep,
+				Payload = s.Target or s.TutorialText,
+				Instance = nil,
+				ContinuationMethod = "action",
+			}
+		end
+		return nil
+	end
+
+	function M.ValidateGateCompleted(gate)
+		if not gate then
+			return true
+		end
+		if gate.Type == M.GateTypes.ContinueOverlay then
+			if gate.Instance and GB.State.overlayStillOn and GB.State.overlayStillOn(gate.Instance) then
+				return false
+			end
+			local vis = GB.State.tutorialOverlayVisible and select(1, GB.State.tutorialOverlayVisible())
+			return vis ~= true
+		end
+		local after = M.snapshot()
+		return after.Blocking ~= true or after.TutorialStep ~= gate.Id
+	end
+
+	function M.DumpTutorialState()
+		local gate = M.GetCurrentGate()
+		local vis, ui = false, nil
+		if GB.State and GB.State.tutorialOverlayVisible then
+			vis, ui = GB.State.tutorialOverlayVisible()
+		end
+		local dump = {
+			DetectedGate = gate and gate.Id or nil,
+			GateType = gate and gate.Type or nil,
+			Payload = gate and gate.Payload or nil,
+			GuiPath = ui and ui:GetFullName() or nil,
+			ContinuationMethod = gate and gate.ContinuationMethod or M.lastMethod,
+			Attempt = M.continueAttempts,
+			LastTransition = M.lastTransition,
+			LastAction = M.lastAction,
+			CachedState = M.lastStep,
+			ActualVisibleState = vis == true,
+			Owner = M.owner,
+			Unresolved = M.unresolved,
+			Tree = (ui and GB.State.dumpOverlayTree and GB.State.dumpOverlayTree(ui)) or nil,
+		}
+		GB.Log.warn("GATE", string.format("DumpTutorialState id=%s type=%s payload=%s visible=%s", tostring(dump.DetectedGate), tostring(dump.GateType), tostring(dump.Payload), tostring(dump.ActualVisibleState)))
+		return dump
+	end
+
+	local STRATS = { "owner", "consts", "getgc", "synth" }
+
+	function M.releaseTutorial(why)
+		M.owner = nil
+		M.lastStep = nil
+		M.continueAttempts = 0
+		M.unresolved = nil
+		M.lastTransition = why or "cleared"
+		if GB.Recovery and GB.Recovery.outcome == "BLOCKING_UI" then
+			GB.Recovery.outcome = nil
+		end
+	end
+
+	function M.refreshAfterGate()
+		if GB.PlayerData and GB.PlayerData.refreshLive then
+			GB.PlayerData.refreshLive(true)
+		end
+		if GB.State and GB.State.refresh then
+			GB.State.refresh()
+		end
+		if GB.Quest and GB.PlayerData and GB.PlayerData.current then
+			local cur = GB.PlayerData.current()
+			if cur and GB.Quest.questState then
+				GB.Quest.questState(cur)
+			end
+		end
+		if GB.Planner and GB.Planner.Replan then
+			GB.Planner.Replan()
+		end
+		if GB.Recovery and GB.Recovery.markSuccess then
+			GB.Recovery.markSuccess()
+		end
+	end
+
+	function M.HandleContinuationOverlay(gate)
+		gate = gate or M.GetCurrentGate()
+		if not (gate and gate.Type == M.GateTypes.ContinueOverlay) then
+			return false
+		end
+		local key = gate.Id .. "|" .. tostring(gate.Payload)
+		if M.unresolved == key then
+			return false
+		end
+		if GB.Combat and GB.Combat.stopLock then
+			GB.Combat.stopLock()
+		end
+		M.owner = "Tutorial"
+		M.lastGate = gate
+		if M.lastStep ~= key then
+			M.lastStep = key
+			M.continueAttempts = 0
+			M.dumpedTree = nil
+			GB.Log.log("GATE", string.format("detected ContinueOverlay %s payload=%s", tostring(gate.Id), tostring(gate.Payload)))
+			GB.Log.log("GATE", "continuation=" .. tostring(gate.ContinuationMethod))
+			if GB.Config and GB.Config.Debug == true and GB.State.dumpOverlayTree then
+				GB.State.dumpOverlayTree(gate.Instance)
+			end
+		end
+		GB.State._continueStrategy = STRATS[(M.continueAttempts % #STRATS) + 1]
+		local _, _, method = GB.State.dismissTutorialOverlay()
+		if method == "wait_listener" or method == "rate" then
+			return false
+		end
+		if method == "gone" then
+			M.releaseTutorial("cleared")
+			GB.Log.log("GATE", tostring(gate.Id) .. " cleared")
+			GB.Log.log("STATE", "tutorial complete")
+			M.refreshAfterGate()
+			return true
+		end
+		M.lastMethod = method
+		M.lastAction = "ContinueOverlay"
+		M.continueAttempts = M.continueAttempts + 1
+		GB.Log.log("UI", string.format("continue %s %s via %s", tostring(gate.Id), tostring(gate.Payload or ""), tostring(method)))
+		local t0 = os.clock()
+		while os.clock() - t0 < 0.85 do
+			if M.ValidateGateCompleted(gate) then
+				M.releaseTutorial("cleared")
+				GB.Log.log("GATE", tostring(gate.Id) .. " cleared")
+				GB.Log.log("STATE", "tutorial complete")
+				M.refreshAfterGate()
+				return true
+			end
+			task.wait(0.08)
+		end
+		if M.continueAttempts >= 2 and M.dumpedTree ~= key then
+			M.dumpedTree = key
+			M.DumpTutorialState()
+		end
+		if M.continueAttempts >= 8 then
+			M.unresolved = key
+			if GB.Recovery then
+				GB.Recovery.outcome = "BLOCKING_GATE_UNRESOLVED"
+			end
+			GB.Log.warn("GATE", "BLOCKING_GATE_UNRESOLVED " .. key)
+			GB.Log.warn(
+				"GATE",
+				string.format(
+					"id=%s payload=%s method=%s before=Enabled after=still",
+					tostring(gate.Id),
+					tostring(gate.Payload),
+					tostring(method)
+				)
+			)
+			M.DumpTutorialState()
+			if GB.DumpRuntimeIssue then
+				GB.DumpRuntimeIssue()
+			end
+		end
+		return false
+	end
+
+	function M.ExecuteGate(gate)
+		gate = gate or M.GetCurrentGate()
+		if not gate then
+			M.owner = nil
+			return false
+		end
+		if gate.Type == M.GateTypes.ContinueOverlay then
+			return M.HandleContinuationOverlay(gate)
+		end
+		return M.ExecuteCurrentStep()
 	end
 
 	function M.needsGearEquip(name)
@@ -321,6 +563,10 @@ return function(GB)
 	end
 
 	function M.ExecuteCurrentStep()
+		local gate = M.GetCurrentGate()
+		if gate and gate.Type == M.GateTypes.ContinueOverlay then
+			return M.HandleContinuationOverlay(gate)
+		end
 		local blocking, s = M.IsBlocking()
 		if not blocking then
 			M.owner = nil
@@ -334,16 +580,6 @@ return function(GB)
 		local text = s.TutorialText or ""
 		local low = string.lower(text)
 		local before = s
-
-		-- SkillObtained / TutorialScreen always win over backpack coach text.
-		if s.Modal == "SkillObtained" or s.Modal == "TutorialScreen" or s.TutorialStep == "SkillObtained" then
-			M.lastAction = "DismissOverlay"
-			if GB.State.dismissTutorialOverlay then
-				GB.State.dismissTutorialOverlay()
-				task.wait(0.2)
-				return select(1, M.ValidateTransition(before))
-			end
-		end
 
 		if string.find(low, "open the backpack", 1, true) or string.find(low, "open your backpack", 1, true) or (s.TutorialStep == "EquipFlintlock" and not s.BackpackOpen) then
 			M.lastAction = "OpenBackpack"

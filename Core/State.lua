@@ -248,6 +248,83 @@ return function(GB)
 		return false, nil
 	end
 
+	local OWNER_SCRIPTS = {
+		SkillObtained = { PassiveObtained = true },
+		TutorialScreen = { TutorialLocal = true },
+	}
+
+	local function makeInput(kind)
+		local t = {
+			UserInputType = kind == "x" and Enum.UserInputType.Gamepad1 or Enum.UserInputType.MouseButton1,
+			UserInputState = Enum.UserInputState.Begin,
+			KeyCode = kind == "x" and Enum.KeyCode.ButtonX or Enum.KeyCode.Unknown,
+			Position = Vector3.new(400, 300, 0),
+			Delta = Vector3.new(0, 0, 0),
+		}
+		function t:IsModifierKeyDown()
+			return false
+		end
+		return t
+	end
+
+	local function connScript(c)
+		local s
+		pcall(function()
+			s = c.Script
+		end)
+		if typeof(s) == "Instance" then
+			return s
+		end
+		local fn
+		pcall(function()
+			fn = c.Function
+		end)
+		if typeof(fn) == "function" and typeof(getfenv) == "function" then
+			pcall(function()
+				local env = getfenv(fn)
+				s = env and env.script
+			end)
+		end
+		if typeof(s) ~= "Instance" and typeof(fn) == "function" and debug and debug.info then
+			pcall(function()
+				local src = debug.info(fn, "s")
+				if type(src) == "string" and #src > 0 then
+					s = { Name = src:match("([^%.]+)$") or src, _src = src }
+				end
+			end)
+		end
+		return s
+	end
+
+	local function ownerMatch(ui, scr)
+		if not scr then
+			return false
+		end
+		local allow = OWNER_SCRIPTS[ui and ui.Name] or OWNER_SCRIPTS.SkillObtained
+		local name = typeof(scr) == "Instance" and scr.Name or scr.Name
+		if allow[name] then
+			return true
+		end
+		if typeof(scr) == "Instance" and ui and scr:IsDescendantOf(ui) then
+			return true
+		end
+		if type(scr._src) == "string" then
+			for n in pairs(allow) do
+				if string.find(scr._src, n, 1, true) then
+					return true
+				end
+			end
+		end
+		return false
+	end
+
+	local function invokeFn(fn, fake, processed)
+		if typeof(fn) ~= "function" then
+			return false
+		end
+		return pcall(fn, fake, processed)
+	end
+
 	local function invokeConn(c, fake, processed)
 		if c == nil then
 			return false
@@ -275,67 +352,228 @@ return function(GB)
 		pcall(function()
 			fn = c.Function
 		end)
-		if typeof(fn) == "function" and pcall(fn, fake, processed) then
+		return invokeFn(fn, fake, processed)
+	end
+
+	-- PassiveObtained + TutorialLocal both test ButtonX AND MouseButton1/Touch.
+	local function overlayInputFn(fn)
+		if typeof(fn) ~= "function" or typeof(getconstants) ~= "function" then
+			return nil
+		end
+		local ok, cs = pcall(getconstants, fn)
+		if not (ok and type(cs) == "table") then
+			return nil
+		end
+		local hasX, hasClick = false, false
+		for _, c in ipairs(cs) do
+			if c == Enum.KeyCode.ButtonX or c == "ButtonX" then
+				hasX = true
+			end
+			if c == Enum.UserInputType.MouseButton1
+				or c == Enum.UserInputType.Touch
+				or c == "MouseButton1"
+				or c == "Touch"
+			then
+				hasClick = true
+			end
+		end
+		if hasX and hasClick then
 			return true
 		end
 		return false
 	end
 
-	local function fireInputObject(fake, processed)
+	local function nparamsOf(fn)
+		if not (debug and debug.info) then
+			return nil
+		end
+		local n
+		pcall(function()
+			n = debug.info(fn, "a")
+		end)
+		return n
+	end
+
+	-- Invoke PassiveObtained / TutorialLocal InputBegan. Never hide GUI.
+	-- Mouse on the card sets gameProcessed=true and the handler no-ops unless ButtonX.
+	function M.invokeContinueInput(ui, strategy)
+		strategy = strategy or "owner"
+		local fakeMb = makeInput("mb1")
+		local fakeX = makeInput("x")
+		local method, invoked = nil, 0
 		local UIS = game:GetService("UserInputService")
 		local sig = rbxSignal(UIS, "InputBegan")
-		if typeof(sig) ~= "RBXScriptSignal" then
+
+		local function takeConn(c)
+			local fn
+			pcall(function()
+				fn = c.Function
+			end)
+			return ownerMatch(ui, connScript(c)) or overlayInputFn(fn) == true
+		end
+
+		local function fireOverlay(c)
+			if invokeConn(c, fakeX, false) or invokeConn(c, fakeX, true) or invokeConn(c, fakeMb, false) then
+				invoked = invoked + 1
+				return true
+			end
 			return false
 		end
-		-- Do not trust firesignal success — it often does not reach PassiveObtained.
-		pcall(function()
-			if typeof(firesignal) == "function" then
-				firesignal(sig, fake, processed)
-			end
-		end)
-		local any = false
-		if typeof(getconnections) == "function" then
+
+		if strategy ~= "synth" and typeof(getconnections) == "function" and typeof(sig) == "RBXScriptSignal" then
 			local ok, conns = pcall(getconnections, sig)
 			if ok and type(conns) == "table" then
 				for _, c in pairs(conns) do
-					if invokeConn(c, fake, processed) then
-						any = true
+					if invoked >= 8 then
+						break
+					end
+					if takeConn(c) and fireOverlay(c) then
+						method = method or "InputBegan:connection"
 					end
 				end
 			end
 		end
-		return any
-	end
 
-	local function firePressAnywhere()
-		-- gameProcessed must be false. ButtonX is accepted even when processed.
-		local mb1 = {
-			UserInputType = Enum.UserInputType.MouseButton1,
-			KeyCode = Enum.KeyCode.Unknown,
-			UserInputState = Enum.UserInputState.Begin,
-		}
-		local btnX = {
-			UserInputType = Enum.UserInputType.Gamepad1,
-			KeyCode = Enum.KeyCode.ButtonX,
-			UserInputState = Enum.UserInputState.Begin,
-		}
-		local ok = fireInputObject(mb1, false)
-		ok = fireInputObject(btnX, false) or ok
-		if typeof(mouse1click) == "function" then
-			pcall(mouse1click)
-			ok = true
-		end
-		if typeof(mouse1press) == "function" then
-			pcall(mouse1press)
-			if typeof(mouse1release) == "function" then
-				pcall(mouse1release)
+		if invoked == 0 and (strategy == "getgc" or strategy == "consts" or strategy == "auto") then
+			if typeof(getgc) == "function" then
+				local ok, gc = pcall(getgc, false)
+				if not ok then
+					ok, gc = pcall(getgc)
+				end
+				if ok and type(gc) == "table" then
+					for _, fn in ipairs(gc) do
+						if invoked >= 6 then
+							break
+						end
+						if typeof(fn) == "function" and overlayInputFn(fn) == true then
+							local n = nparamsOf(fn)
+							if n == 2 or n == nil then
+								if invokeFn(fn, fakeX, false) or invokeFn(fn, fakeX, true) or invokeFn(fn, fakeMb, false) then
+									invoked = invoked + 1
+									method = method or "InputBegan:getgc"
+								end
+							end
+						end
+					end
+				end
 			end
-			ok = true
 		end
-		return ok
+
+		-- ButtonX is the only key PassiveObtained accepts when gameProcessed=true.
+		local vim = game:GetService("VirtualInputManager")
+		if vim and vim.SendKeyEvent then
+			pcall(function()
+				vim:SendKeyEvent(true, Enum.KeyCode.ButtonX, false, game)
+				task.wait(0.03)
+				vim:SendKeyEvent(false, Enum.KeyCode.ButtonX, false, game)
+			end)
+			method = method or "VirtualInput:ButtonX"
+		end
+
+		if strategy == "synth" then
+			if typeof(firesignal) == "function" and typeof(sig) == "RBXScriptSignal" then
+				pcall(firesignal, sig, fakeX, false)
+				pcall(firesignal, sig, fakeX, true)
+				pcall(firesignal, sig, fakeMb, false)
+				method = method or "InputBegan:firesignal"
+			end
+			if typeof(mouse1click) == "function" then
+				pcall(mouse1click)
+				method = method or "mouse1click"
+			end
+		end
+
+		return invoked > 0 or method ~= nil, method or "none", invoked
 	end
 
-	local function skillNameOf(ui)
+	function M.overlayStillOn(ui)
+		return layerOn(ui)
+	end
+
+	function M.dumpOverlayTree(ui)
+		local rows = {}
+		if not ui then
+			return rows
+		end
+		local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize
+		local area = (vp and vp.X > 0 and vp.Y > 0) and (vp.X * vp.Y) or 0
+		local function add(inst, depth)
+			if #rows >= 24 then
+				return
+			end
+			local row = {
+				Name = inst.Name,
+				Class = inst.ClassName,
+				Depth = depth,
+			}
+			pcall(function()
+				local attrs = inst:GetAttributes()
+				if type(attrs) == "table" and next(attrs) then
+					row.Attrs = attrs
+				end
+			end)
+			if inst:IsA("LayerCollector") then
+				row.Enabled = inst.Enabled
+				row.AttrEnabled = inst:GetAttribute("Enabled")
+			elseif inst:IsA("GuiObject") then
+				row.Visible = inst.Visible
+				row.Active = inst.Active
+				row.Selectable = inst.Selectable
+				row.ZIndex = inst.ZIndex
+				local sz = inst.AbsoluteSize
+				row.Abs = { math.floor(sz.X + 0.5), math.floor(sz.Y + 0.5) }
+				if area > 0 then
+					row.Cover = math.floor((sz.X * sz.Y) / area * 1000) / 10
+				end
+			end
+			if inst:IsA("GuiButton") then
+				row.Button = true
+				row.Activated = rbxSignal(inst, "Activated") ~= nil
+			end
+			if inst:IsA("TextLabel") or inst:IsA("TextButton") then
+				local t = inst.Text
+				if type(t) == "string" and #t > 0 and #t < 80 then
+					row.Text = t
+				end
+			end
+			rows[#rows + 1] = row
+			for _, ch in ipairs(inst:GetChildren()) do
+				add(ch, depth + 1)
+			end
+		end
+		add(ui, 0)
+		local ranked = {}
+		for _, r in ipairs(rows) do
+			if type(r.Cover) == "number" then
+				ranked[#ranked + 1] = r
+			end
+		end
+		table.sort(ranked, function(a, b)
+			return (a.Cover or 0) > (b.Cover or 0)
+		end)
+		if GB.Log then
+			GB.Log.warn("GATE", string.format("overlay tree %s nodes=%d path=%s", tostring(ui.Name), #rows, ui:GetFullName()))
+			for i = 1, math.min(#ranked, 8) do
+				local r = ranked[i]
+				GB.Log.warn(
+					"GATE",
+					string.format(
+						"cover=%.1f%% %s %s vis=%s active=%s btn=%s text=%s",
+						r.Cover or 0,
+						tostring(r.Class),
+						tostring(r.Name),
+						tostring(r.Visible),
+						tostring(r.Active),
+						tostring(r.Button),
+						tostring(r.Text or "")
+					)
+				)
+			end
+		end
+		return rows
+	end
+
+	function M.skillNameOf(ui)
 		if not ui then
 			return nil
 		end
@@ -344,128 +582,36 @@ return function(GB)
 		return sn and guiText(sn)
 	end
 
-	-- Same side-effects as PassiveObtained InputBegan after the 3s connect.
-	local function completeSkillObtained(ui)
-		if not ui then
-			return false
-		end
-		local name = skillNameOf(ui) or "Gunshot"
-		local ev = ui:FindFirstChild("Event")
-		if ev and ev.Fire then
-			pcall(function()
-				ev:Fire(true)
-			end)
-		end
-		pcall(function()
-			local RS = game:GetService("ReplicatedStorage")
-			local SI = require(RS.Modules.SkillInformation)
-			local info = SI.GetSkillInfo and SI.GetSkillInfo(name)
-			if not info or info.ModuleType == "Tool" then
-				local rem = RS:FindFirstChild("Events") and RS.Events:FindFirstChild("PromptSkillEquip")
-				if rem then
-					rem:FireServer(name)
-				end
-			end
-		end)
-		pcall(function()
-			local SS = require(game:GetService("ReplicatedStorage").Modules.StateService)
-			local char = GB.World and GB.World.char and GB.World.char()
-			if char and SS.CheckForState then
-				local _, tag = SS.CheckForState(char, "CantAttack")
-				if tag then
-					if tag.Debris then
-						tag:Debris(0.2)
-					elseif tag.Destroy then
-						tag:Destroy()
-					end
-				end
-			end
-		end)
-		pcall(function()
-			local UIU = require(game:GetService("ReplicatedStorage").Modules.UI_Utilities)
-			if typeof(debug) == "table" and typeof(debug.getupvalue) == "function" then
-				local rows = debug.getupvalue(UIU.Unhide, 1)
-				if type(rows) == "table" then
-					for _, row in pairs(rows) do
-						if type(row) == "table" and row.ids then
-							table.clear(row.ids)
-							if row.hidden and typeof(row.Show) == "function" then
-								row.hidden = false
-								task.spawn(row.Show)
-							end
-						end
-					end
-				end
-			end
-		end)
-		ui.Enabled = false
-		ui:SetAttribute("Enabled", false)
-		GB.Log.log("UI", "closed SkillObtained " .. tostring(name))
-		return true
-	end
-
-	local function clickContinueSurface(ui)
-		if not ui then
-			return false
-		end
-		local named = ui:FindFirstChild("ClickToContinue", true) or ui:FindFirstChild("ContinueButton", true)
-		if named and named:IsA("GuiButton") then
-			return M.clickGui(named)
-		end
-		local btn = ui:FindFirstChildWhichIsA("GuiButton", true)
-		if btn then
-			return M.clickGui(btn)
-		end
-		return false
-	end
-
+	-- Attempt only. Caller must validate overlay actually closed.
 	function M.dismissTutorialOverlay()
 		local vis, ui = M.tutorialOverlayVisible()
 		if not vis then
 			M._overlayLog = nil
 			M._soSeen = nil
 			M._soWaitLog = nil
-			M._soTries = 0
-			return false
+			return false, nil, "gone"
 		end
 		local now = os.clock()
 		local label = overlayLabel(ui)
 		if ui.Name == "SkillObtained" then
 			M._soSeen = M._soSeen or now
-			local waited = now - M._soSeen
-			if waited < SKILL_OBTAINED_LISTEN then
+			if now - M._soSeen < SKILL_OBTAINED_LISTEN then
 				if M._soWaitLog ~= label then
 					M._soWaitLog = label
 					GB.Log.log("GATE", "waiting SkillObtained listener " .. label)
 				end
-				return true
+				return false, ui, "wait_listener"
 			end
 		else
 			M._soSeen = nil
 			M._soWaitLog = nil
 		end
-		if now - (M._overlayAt or 0) < 0.45 then
-			return true
+		if now - (M._overlayAt or 0) < 0.4 then
+			return false, ui, "rate"
 		end
 		M._overlayAt = now
-		if M._overlayLog ~= label then
-			M._overlayLog = label
-			GB.Log.log("UI", "dismiss overlay " .. label)
-		end
-		clickContinueSurface(ui)
-		firePressAnywhere()
-		if ui.Name == "SkillObtained" then
-			M._soTries = (M._soTries or 0) + 1
-			task.wait(0.08)
-			if layerOn(ui) and M._soTries >= 1 then
-				completeSkillObtained(ui)
-				M._soTries = 0
-				M._soSeen = nil
-			end
-		else
-			M._soTries = 0
-		end
-		return true
+		local ok, method, n = M.invokeContinueInput(ui, M._continueStrategy or "owner")
+		return ok, ui, method, n
 	end
 
 	function M.refresh()
@@ -533,6 +679,7 @@ return function(GB)
 				ui.DialogueActive = snap.DialogueActive == true
 				ui.BackpackOpen = snap.BackpackOpen == true
 				ui.InventoryOpen = snap.InventoryOpen == true
+				ui.GateType = snap.GateType
 			end
 		else
 			local vis, overlay = M.tutorialOverlayVisible()
@@ -598,6 +745,8 @@ return function(GB)
 		end
 		return M.snap
 	end
+
+	M.Refresh = M.refresh
 
 	function M.changed(field)
 		local a, b = M.snap[field], M.prev[field]

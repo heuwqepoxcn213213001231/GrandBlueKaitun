@@ -2,8 +2,8 @@
 
 | Feature | Status | Reason |
 |---|---|---|
-| Fresh bootstrap | PARTIAL | Wait character + StatReplication; live quest via GetData+tracker (1.0.6). Overlay dismiss 1.0.7. Planner 1.1.0. Kill-credit EnemyDrop 1.1.1. Dead-target + UI gates 1.1.2. SkillObtained close 1.1.4 |
-| Tutorial | WORKING | Introduction Talk/Dummy/Dash/Block/turn-in; Basics EquipSkill scroll + Cast + Invest + OpenLogbookHelp; Gearing Up EquipFlintlock backpack+SaveOrder |
+| Fresh bootstrap | PARTIAL | Wait character + StatReplication; live quest via GetData+tracker (1.0.6). Overlay dismiss 1.0.7. Planner 1.1.0. Kill-credit EnemyDrop 1.1.1. Dead-target + UI gates 1.1.2. ContinueOverlay InputBegan 1.1.5 |
+| Tutorial | WORKING | Introduction Talk/Dummy/Dash/Block/turn-in; Basics EquipSkill scroll + Cast + Invest + OpenLogbookHelp; Gearing Up EquipFlintlock backpack+SaveOrder; SkillObtained ContinueOverlay via real InputBegan (1.1.5) |
 | Quest | WORKING | Goal+Acquire planner for all 151 QuestInfo stages. Collect KillUntilDrop uses EnemyDrop kill-credit (inventory/quest count; no world drop required). UNKNOWN_OBJECTIVE stops that loop |
 | Auto level | WORKING | Story gates + repeatable `full_until` bands |
 | Island | WORKING | Anchor → Setting Sail 30 → Clown → Journey 70 → Maple. Geometry API type-safe on Folder/Model/BasePart (`World.GetIsland*`) |

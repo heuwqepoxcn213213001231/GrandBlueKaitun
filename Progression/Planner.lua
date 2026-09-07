@@ -10,6 +10,15 @@ return function(GB)
 		return qs and qs.Objective
 	end
 
+	function M.Replan()
+		local cur = GB.PlayerData and GB.PlayerData.current and GB.PlayerData.current()
+		if not (cur and GB.Quest and GB.Quest.questState) then
+			M.last = nil
+			return nil
+		end
+		return M.build(GB.Quest.questState(cur))
+	end
+
 	function M.build(qs)
 		if not qs or not qs.Objective then
 			M.last = nil

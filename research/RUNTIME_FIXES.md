@@ -1,5 +1,34 @@
 # Runtime Fixes
 
+## 1.1.5 — ContinueOverlay: real press-anywhere, never hide GUI
+
+1.1.4 hid `SkillObtained` (`Enabled=false`) and fired `PromptSkillEquip` as a fallback. That is not the game flow. The card is a **transient `PassiveDisplay` event**. Continuation is `PassiveObtained.Notify` after `task.wait(3)`:
+
+```
+UIS.InputBegan → Touch / MouseButton1 / ButtonX
+gameProcessed=true returns unless ButtonX
+Debris CantAttack, Event:Fire(true), disconnect,
+Enabled=false + Attribute false, Unhide,
+PromptSkillEquip if ModuleType==Tool, AdvanceQueue
+```
+
+`ContinueButton` is a TextLabel. Clicking GUI descendants does nothing. `firesignal(InputBegan, fakeTable)` reported success without running the closure.
+
+**Fix:** `Tutorial.HandleContinuationOverlay` / `ExecuteGate` / `ValidateGateCompleted`. Gate type `ContinueOverlay` vs `ActionRequired` / `EquipRequired`. Invoke owner or ButtonX+MouseButton1 fingerprint connections, then VirtualInput **ButtonX** (only key accepted when processed). Success only if overlay actually closes. Then `PlayerData.refreshLive` + `State.refresh` + `Quest.Refresh` + `Planner.Replan`. Finite attempts → `BLOCKING_GATE_UNRESOLVED` dump. Recovery does not recycle lookup on the same overlay.
+
+```
+[Kaitun][GATE] detected ContinueOverlay SkillObtained payload=Gunshot
+[Kaitun][GATE] continuation=UIS.InputBegan
+[Kaitun][UI] continue SkillObtained Gunshot via InputBegan:connection
+[Kaitun][GATE] SkillObtained cleared
+[Kaitun][STATE] tutorial complete
+[Kaitun][STATE] task quest:Gearing Up
+```
+
+`GBKaitun:DumpTutorialState()` returns DetectedGate / GateType / Payload / GuiPath / ContinuationMethod / Attempt / LastTransition / CachedState / ActualVisibleState.
+
+---
+
 ## 1.1.4 — SkillObtained dismiss actually closes the card
 
 1.1.3 logged `dismiss overlay SkillObtained Gunshot` then looped. `firesignal(UIS.InputBegan, fake, false)` returned success without running `PassiveObtained` (listener uses InputObject + `gameProcessed`). Card stayed up.

@@ -104,6 +104,11 @@ return function(GB)
 	end
 
 	local function logDoing(doing, target)
+		local key = tostring(doing) .. "|" .. tostring(target or "-")
+		if M._doingKey == key then
+			return
+		end
+		M._doingKey = key
 		GB.Log.log("STATE", string.format("doing=%s target=%s", tostring(doing), tostring(target or "-")))
 	end
 
@@ -166,26 +171,52 @@ return function(GB)
 			return
 		end
 
+		local gate = GB.Tutorial and GB.Tutorial.GetCurrentGate and GB.Tutorial.GetCurrentGate()
+		local continueOverlay = gate and gate.Type == (GB.Tutorial.GateTypes and GB.Tutorial.GateTypes.ContinueOverlay)
+
 		-- Recovery dumps / strategy change, then resume story. Do not freeze.
-		if GB.Recovery.stuck() then
+		-- ContinueOverlay owns its own attempt budget — do not recycle lookup.
+		if GB.Recovery.stuck() and not continueOverlay then
 			setTask("recovery")
 			GB.Recovery.run("engine")
+			gate = GB.Tutorial and GB.Tutorial.GetCurrentGate and GB.Tutorial.GetCurrentGate()
+			continueOverlay = gate and gate.Type == (GB.Tutorial.GateTypes and GB.Tutorial.GateTypes.ContinueOverlay)
 		end
 
-		-- SkillObtained / press-anywhere before GameplayPaused wait.
-		if GB.Recovery.outcome == "BLOCKING_UI" or (GB.Tutorial and GB.Tutorial.IsBlocking and select(1, GB.Tutorial.IsBlocking())) then
+		local blocking = GB.Tutorial and GB.Tutorial.IsBlocking and select(1, GB.Tutorial.IsBlocking())
+		if GB.Recovery.outcome == "BLOCKING_UI" or GB.Recovery.outcome == "BLOCKING_GATE_UNRESOLVED" or blocking then
+			if GB.Recovery.outcome == "BLOCKING_GATE_UNRESOLVED" and GB.Tutorial and GB.Tutorial.unresolved then
+				return
+			end
 			setTask("tutorial")
-			logDoing("tutorial", snap.UI and snap.UI.TutorialStep)
+			logDoing("tutorial", gate and (gate.Id .. ":" .. tostring(gate.Payload or gate.Type)) or (snap.UI and snap.UI.TutorialStep))
 			if GB.Combat then
 				GB.Combat.stopLock()
 			end
-			if GB.Tutorial and GB.Tutorial.ExecuteCurrentStep then
-				GB.Tutorial.ExecuteCurrentStep()
+			local cleared = false
+			if GB.Tutorial and GB.Tutorial.ExecuteGate then
+				cleared = GB.Tutorial.ExecuteGate(gate)
+			elseif GB.Tutorial and GB.Tutorial.ExecuteCurrentStep then
+				cleared = GB.Tutorial.ExecuteCurrentStep()
 			end
-			if GB.Recovery.outcome == "BLOCKING_UI" and GB.Tutorial and not select(1, GB.Tutorial.IsBlocking()) then
+			if cleared and GB.Tutorial and not select(1, GB.Tutorial.IsBlocking()) then
 				GB.Recovery.outcome = nil
+				M._doingKey = nil
+				if GB.Tutorial.refreshAfterGate then
+					GB.Tutorial.refreshAfterGate()
+				else
+					if GB.PlayerData and GB.PlayerData.refreshLive then
+						GB.PlayerData.refreshLive(true)
+					end
+					if GB.Planner and GB.Planner.Replan then
+						GB.Planner.Replan()
+					end
+				end
+				snap = GB.State.refresh()
+				-- fall through to quest this tick
+			else
+				return
 			end
-			return
 		end
 
 		if snap.GameplayPaused then

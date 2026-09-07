@@ -21,8 +21,51 @@ Internal ID = module name. Visible text is fallback only.
 | UpgradeSkill | (button) | skill upgrade tutorial | TutorialEvent FireServer("UpgradeSkill") | TutorialsCompleted | skill UI | TutorialEvent | — | UNRESOLVED |
 | Pets | (button) | pet tutorial | TutorialEvent FireServer("Pets") | TutorialsCompleted | Pets UI | TutorialEvent | — | UNRESOLVED |
 | Mining | TutorialScreen Mining | first pickaxe equip | TutorialEvent client "Mining" | Data.TutorialsCompleted.Mining | TutorialScreen | TutorialLocal CloseGUI → FireServer | First Upgrade | dismiss overlay only |
-| Unlock Skill | PRESS ANYWHERE / Unlock Skill | skill unlock | UIS.InputBegan click | TutorialEvent FireServer("Unlock Skill") | TutorialScreen / SkillObtained | dismissTutorialOverlay | Basics | RUNTIME_VERIFIED 1.0.7 |
-| SkillObtained | PRESS ANYWHERE TO CONTINUE / Gunshot Active Skill | first Flintlock gear / any PassiveDisplay | wait 3s InputBegan; if still open run PassiveObtained close + PromptSkillEquip | SkillObtained.Enabled=false; PromptSkillEquip if Tool | `PlayerGui.SkillObtained` (`RS.ScreenGuis.SkillObtained`) | PassiveObtained InputBegan / completeSkillObtained | Gearing Up after Equip | IMPLEMENTED 1.1.4 |
+| Unlock Skill | PRESS ANYWHERE / Unlock Skill | skill unlock (`TutorialEvent` queue) | `TutorialLocal` `UIS.InputBegan` MouseButton1/Touch/ButtonX after ClickToContinue visible (~0.75s). `ClickToContinue` is **TextLabel**. Last stage `CloseGUI` → `TutorialEvent:FireServer(name)` | `TutorialScreen.Enabled=false` + server TutorialsCompleted | `PlayerGui.TutorialScreen` | `TutorialLocal` InputBegan → AdvanceStage/CloseGUI | Basics / Mining / later tutorials | RUNTIME_VERIFIED ContinueOverlay 1.1.5 |
+| SkillObtained | PRESS ANYWHERE TO CONTINUE / Gunshot Active Skill | `Events.PassiveDisplay` → `Queue` → `Notify` (transient **event**, not a persistent tutorial flag) | Wait **3s**, then `UIS.InputBegan`. Accept Touch / MouseButton1 / ButtonX. `gameProcessed=true` returns unless ButtonX. `ContinueButton` is **TextLabel Active=false**. No GuiButton. | Handler: Debris CantAttack, `Event:Fire(true)`, disconnect, `Enabled=false` + Attribute false, `UI_Utilities.Unhide`, if `ModuleType=="Tool"` then `PromptSkillEquip:FireServer(name)`, `AdvanceQueue` | `PlayerGui.SkillObtained` (`RS.ScreenGuis.SkillObtained`) | `PassiveObtained` InputBegan (invoke connection / ButtonX). **Never hide GUI.** Validate overlay gone. | Gearing Up after Equip Flintlock (Gunshot default ModuleType Tool) | IMPLEMENTED ContinueOverlay 1.1.5 |
+
+## Gate types (1.1.5)
+
+| Type | Example | Execute | Validate |
+|---|---|---|---|
+| `ContinueOverlay` | SkillObtained / TutorialScreen "PRESS ANYWHERE TO CONTINUE" | Invoke game `UIS.InputBegan` handler (PassiveObtained / TutorialLocal). Do not `Enabled=false` / Destroy. | Overlay `Enabled` + Attribute `Enabled` both false. Release Tutorial owner. Refresh PlayerData + State + Quest + Planner. |
+| `ActionRequired` | "Open the backpack." | Perform gameplay/UI action (BackpackToggle, menu click). | Instruction text / backpack open / quest condition changes. |
+| `EquipRequired` | Equip Flintlock 0/1 | Open backpack + `SaveOrder` gear slot. HeldItem is not enough. | Flintlock Title under Equips.Slots; Equip 1/1. |
+| `Dialogue` | Sell Watch / talk | DialogueUI click path. | DialogueUI.Enabled false or quest stage change. |
+| `UISelection` | Skill scroll unlock | Click the verified ImageButton. | Scroll consumed / skill owned. |
+| `InputRequired` | Unsheath / Dash / Block | PressKey / ControlsUI bind. | Game state flag. |
+
+SkillObtained is an **event-spawned overlay**. There is no server tutorial completion flag to wait on. Completion = `Notify` InputBegan ran and `AdvanceQueue` finished.
+
+## SkillObtained / Gunshot — verified implementation
+
+GUI: `PlayerGui.SkillObtained` cloned from `RS.ScreenGuis.SkillObtained`.
+
+| Object | Class | Role |
+|---|---|---|
+| SkillObtained | ScreenGui | `Enabled` + Attribute `Enabled` |
+| Frame.SkillName | TextLabel | payload (e.g. Gunshot) |
+| Frame.Header | TextLabel | "Active Skill" |
+| Frame.Description | TextLabel | skill description |
+| Frame.ContinueButton | TextLabel | "PRESS ANYWHERE TO CONTINUE" — **not a button**, `Active=false` |
+| PassiveObtained | LocalScript | owner of continuation |
+| Visuals | LocalScript | listens `Event` BindableEvent for FX only |
+| Event | BindableEvent | visuals; `Fire(true)` is close FX, not completion |
+
+`Gunshot` (`RS.Modules.SkillInformation.Skills.Gun.Gunshot`) does not set `ModuleType`. Default from `SkillInfoUtilities.ReturnDefaultTable` is **`Tool`**. The real InputBegan handler therefore fires `PromptSkillEquip:FireServer("Gunshot")`. Invoking that remote without the handler skips Unhide / CantAttack Debris / AdvanceQueue.
+
+Old dismiss (`firesignal` / `Enabled=false`) hid or claimed success without running the handler. Card stayed, or listener stayed armed.
+
+## Other continue overlays (Studio)
+
+| Overlay | Continuation | Notes |
+|---|---|---|
+| `TutorialScreen` | Same InputBegan rule; `ClickToContinue` TextLabel; multi-stage then `TutorialEvent:FireServer` | `WaitForClear` waits for SkillObtained first |
+| `QuestOverlay` / `ScreenShadow` | **ActionRequired**, not continue | "Open the backpack." etc. |
+| `DialogueUI` | Dialogue buttons | not press-anywhere |
+| No `ItemObtained` ScreenGui | — | not present in this place |
+
+## Gearing Up Equip — runtime evidence (1.1.2)
 
 ## Gearing Up Equip — runtime evidence (1.1.2)
 
