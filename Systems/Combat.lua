@@ -615,7 +615,15 @@ return function(GB)
 		plan.Quest = qn or plan.Quest
 		plan.Instance = mob
 		plan.SkipStream = true
+		if timeout == 0 or timeout == false then
+			local ok = M.hunt(name, qn, plan)
+			return ok == true, ok and "engaged" or "travel"
+		end
 		return M.huntUntilDead(name, timeout or 16, qn, plan)
+	end
+
+	function M.engageNearestOf(names, questOf, planOf)
+		return M.huntNearestOf(names, 0, questOf, planOf)
 	end
 
 	local function standDest(mob)

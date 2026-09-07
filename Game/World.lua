@@ -271,12 +271,14 @@ return function(GB)
 
 	function M.waitUnpause()
 		local t = os.clock()
-		while GB.lp and GB.lp:GetAttribute("GameplayPaused") and os.clock() - t < 12 do
+		-- Cap short: a 12s block froze Scheduler.step (~16s) after death/stream.
+		while GB.lp and GB.lp:GetAttribute("GameplayPaused") and os.clock() - t < 0.8 do
 			if GB.State and GB.State.dismissTutorialOverlay then
 				GB.State.dismissTutorialOverlay()
 			end
-			task.wait(0.2)
+			task.wait(0.15)
 		end
+		return not (GB.lp and GB.lp:GetAttribute("GameplayPaused") == true)
 	end
 
 	function M.setPos(cf, opts)

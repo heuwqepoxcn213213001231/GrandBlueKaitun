@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
--- Version: 1.1.26
--- Commit: f5a2de5
--- BuiltAt: 2026-09-08T04:59:54+07:00
+-- Version: 1.1.27
+-- Commit: 8295847
+-- BuiltAt: 2026-09-08T05:04:18+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -35,9 +35,9 @@ return function(meta)
 
 	stopPreviousInstance()
 
-	local BUILD_VERSION = "1.1.26"
-	local BUILD_COMMIT = "f5a2de5"
-	local BUILD_AT = "2026-09-08T04:59:54+07:00"
+	local BUILD_VERSION = "1.1.27"
+	local BUILD_COMMIT = "8295847"
+	local BUILD_AT = "2026-09-08T05:04:18+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -2854,6 +2854,9 @@ return function(GB)
 		M._tracker = readTracker()
 		local stale = now - (M._lastQuestFetchAt or 0) >= LIVE_SAFETY_TTL
 		if not force and not M._questDirty and not stale and (next(M._live) or M._tracker or M._current) then
+			if next(M._live) then
+				M._lastGoodLiveAt = now
+			end
 			M._current = pickCurrent()
 			pdone("PlayerData.refreshLive", t0)
 			return M._live
@@ -2868,21 +2871,56 @@ return function(GB)
 			end
 		end
 		if quests ~= nil or done ~= nil then
-			M._done = completedSet(done)
-			M._live, M._order = ingestList(quests)
-			M._at = now
-			M._lastQuestFetchAt = now
-			M._questDirty = false
-			M._tracker = readTracker() or M._tracker
-			local prev = M._current
-			M._current = pickCurrent()
-			if M._current and M._current ~= prev then
-				GB.Log.log("STATE", "live quest " .. M._current)
-				if GB.Combat and GB.Combat.stopLock then
-					GB.Combat.stopLock()
+			local newLive, newOrder = ingestList(quests)
+			local liveN, prevN = 0, 0
+			for _ in pairs(newLive) do
+				liveN = liveN + 1
+			end
+			for _ in pairs(M._live) do
+				prevN = prevN + 1
+			end
+			-- Respawn/stream often returns empty Quests for a few seconds. Keep the last good set.
+			if liveN == 0 and prevN > 0 and now - (M._lastGoodLiveAt or 0) < 12 then
+				if os.clock() - (M._emptyKeepAt or 0) > 4 then
+					M._emptyKeepAt = os.clock()
+					GB.Log.warn("STATE", "keep live quests; empty refresh " .. tostring(why or "poll"))
 				end
-				if GB.Persist and GB.Persist.checkpoint then
-					GB.Persist.checkpoint("quest", M._current)
+				M._lastQuestFetchAt = now
+				M._questDirty = true
+				M._current = pickCurrent()
+			else
+				if done ~= nil then
+					local newDone = completedSet(done)
+					local doneN = 0
+					for _ in pairs(newDone) do
+						doneN = doneN + 1
+					end
+					if doneN > 0 or not next(M._done) then
+						M._done = newDone
+					end
+				end
+				M._live, M._order = ingestList(quests)
+				liveN = 0
+				for _ in pairs(M._live) do
+					liveN = liveN + 1
+				end
+				if liveN > 0 then
+					M._lastGoodLiveAt = now
+				end
+				M._at = now
+				M._lastQuestFetchAt = now
+				M._questDirty = false
+				M._tracker = readTracker() or M._tracker
+				local prev = M._current
+				M._current = pickCurrent()
+				if M._current and M._current ~= prev then
+					GB.Log.log("STATE", "live quest " .. M._current)
+					if GB.Combat and GB.Combat.stopLock then
+						GB.Combat.stopLock()
+					end
+					if GB.Persist and GB.Persist.checkpoint then
+						GB.Persist.checkpoint("quest", M._current)
+					end
 				end
 			end
 		elseif force or stale then
@@ -6616,12 +6654,14 @@ return function(GB)
 
 	function M.waitUnpause()
 		local t = os.clock()
-		while GB.lp and GB.lp:GetAttribute("GameplayPaused") and os.clock() - t < 12 do
+		-- Cap short: a 12s block froze Scheduler.step (~16s) after death/stream.
+		while GB.lp and GB.lp:GetAttribute("GameplayPaused") and os.clock() - t < 0.8 do
 			if GB.State and GB.State.dismissTutorialOverlay then
 				GB.State.dismissTutorialOverlay()
 			end
-			task.wait(0.2)
+			task.wait(0.15)
 		end
+		return not (GB.lp and GB.lp:GetAttribute("GameplayPaused") == true)
 	end
 
 	function M.setPos(cf, opts)
@@ -7996,8 +8036,34 @@ return function(GB)
 		}
 	end
 
+	local function farmSnap(snap)
+		snap = snap or {}
+		local isl = snap.CurrentIsland
+		if (not isl or isl == "") and M._lastFarmIsland then
+			isl = M._lastFarmIsland
+		end
+		if snap.PhysicalIsland == nil and M._lastFarmIsland and os.clock() - (GB._respawnAt or 0) < 10 then
+			isl = M._lastFarmIsland
+		end
+		local lv = tonumber(snap.Level) or 0
+		if lv < 1 and M._lastFarmLevel then
+			lv = M._lastFarmLevel
+		end
+		if (tonumber(snap.Level) or 0) > 0 then
+			M._lastFarmLevel = snap.Level
+		end
+		return isl, lv
+	end
+
 	local function runFarmGoal(snap, why)
-		local jobs = farmPool(snap.CurrentIsland, snap.Level or 0)
+		local island, lv = farmSnap(snap)
+		local jobs = farmPool(island, lv)
+		if #jobs == 0 and M._lastFarmIsland and M._lastFarmIsland ~= island then
+			jobs = farmPool(M._lastFarmIsland, lv)
+			if #jobs > 0 then
+				island = M._lastFarmIsland
+			end
+		end
 		if #jobs == 0 then
 			return {
 				attempted = false,
@@ -8005,6 +8071,7 @@ return function(GB)
 				reason = "no_repeat",
 			}
 		end
+		M._lastFarmIsland = island
 		local blockers = blockerList()
 		local note = tostring(why or "story_blocked")
 		for _, b in ipairs(blockers) do
@@ -8043,21 +8110,34 @@ return function(GB)
 
 		local names, questOf, planOf = collectKillPool(jobs)
 		local locked = GB.Combat and GB.Combat.lockMatchesNames and GB.Combat.lockMatchesNames(names)
-		if (#names > 0 or locked) and GB.Combat and GB.Combat.huntNearestOf then
-			setTask("farm_pool:" .. tostring(snap.CurrentIsland))
+		if (#names > 0 or locked) and GB.Combat then
+			setTask("farm_pool:" .. tostring(island))
 			logDoing("farm_pool", table.concat(names, "+"))
-			setOwner("COMBAT", names[1])
-			local ok, whyHunt = GB.Combat.huntNearestOf(names, 16, questOf, planOf)
+			setOwner("COMBAT", names[1] or locked)
+			if locked and GB.Combat.lockMob and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(GB.Combat.lockMob) then
+				return {
+					attempted = true,
+					progressed = true,
+					reason = "lock_active",
+					quest = poolLabel,
+				}
+			end
+			local ok, whyHunt
+			if GB.Combat.engageNearestOf then
+				ok, whyHunt = GB.Combat.engageNearestOf(names, questOf, planOf)
+			else
+				ok, whyHunt = GB.Combat.huntNearestOf(names, 4, questOf, planOf)
+			end
 			if M._farmReasonKey ~= (poolLabel .. "|" .. tostring(whyHunt)) or os.clock() - (M._farmReasonAt or 0) > 2.8 then
 				M._farmReasonKey = poolLabel .. "|" .. tostring(whyHunt)
 				M._farmReasonAt = os.clock()
-				GB.Log.log("STATE", string.format("farm_result %s reason=%s", poolLabel, tostring(whyHunt or (ok and "pool_kill" or "pool_miss"))))
+				GB.Log.log("STATE", string.format("farm_result %s reason=%s", poolLabel, tostring(whyHunt or (ok and "pool_engage" or "pool_miss"))))
 			end
 			if ok then
 				return {
 					attempted = true,
 					progressed = true,
-					reason = tostring(whyHunt or "pool_kill"),
+					reason = tostring(whyHunt or "pool_engage"),
 					quest = poolLabel,
 				}
 			end
@@ -8258,13 +8338,19 @@ return function(GB)
 		end
 
 		if snap.GameplayPaused then
-			setTask("wait_unpause")
-			logDoing("wait_unpause")
 			if GB.State.dismissTutorialOverlay then
 				GB.State.dismissTutorialOverlay()
 			end
-			GB.World.waitUnpause()
-			return
+			if GB.World.waitUnpause then
+				GB.World.waitUnpause()
+			end
+			snap = GB.State.refresh()
+			if snap.GameplayPaused then
+				if farmHandled(runFarmGoal(snap, "paused_resume")) then
+					return
+				end
+				return
+			end
 		end
 
 		if GB.Stats and GB.Stats.tick then
@@ -10286,7 +10372,15 @@ return function(GB)
 		plan.Quest = qn or plan.Quest
 		plan.Instance = mob
 		plan.SkipStream = true
+		if timeout == 0 or timeout == false then
+			local ok = M.hunt(name, qn, plan)
+			return ok == true, ok and "engaged" or "travel"
+		end
 		return M.huntUntilDead(name, timeout or 16, qn, plan)
+	end
+
+	function M.engageNearestOf(names, questOf, planOf)
+		return M.huntNearestOf(names, 0, questOf, planOf)
 	end
 
 	local function standDest(mob)
@@ -16066,12 +16160,16 @@ return function(GB)
 		if GB.dead() then
 			return
 		end
+		GB._respawnAt = os.clock()
 		GB.Cache.invalidate()
 		GB.Remotes.statReplicate()
 		if GB.Combat then
 			GB.Combat.stopLock()
 		end
 		GB.Log.log("STATE", "respawn")
+		if GB.World and GB.World.lastSafe and GB.lp and GB.lp:GetAttribute("GameplayPaused") ~= true then
+			GB.World.goSafe()
+		end
 	end)
 
 	GB.Scheduler.add("recovery", function()

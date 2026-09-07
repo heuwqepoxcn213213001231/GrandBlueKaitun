@@ -1,5 +1,16 @@
 # Runtime Fixes
 
+## 1.1.27 — Respawn resume, no 16s scheduler hang
+
+Death mid-farm: `huntUntilDead(16)` blocked `Scheduler.step` (~16382ms), `GameplayPaused` waited 12s more, empty `GetData Quests` wiped live repeats, planner sat `wait_level:Setting Sail`. Telemetry `moved 1613 studs` was the game respawn, then the bot never re-engaged the pack.
+
+**Fix**
+
+- Farm engage is one `hunt()` — combat Heartbeat kills. Engine does not wait 16s per mob.
+- `waitUnpause` capped at 0.8s. Paused ticks still try the farm pool.
+- Empty quest refresh after respawn keeps the last live set for 12s.
+- CharacterAdded returns to `lastSafe` and replans the island farm pool.
+
 ## 1.1.26 — Parallel island farm, no wait_level stall
 
 Live loop quests on the same island (Officer Termination + Granny's Nemesis) were serialized. Miss on `Corrupt Guard` returned `retry_window` (`attempted=false`) and DecisionEngine dropped to `wait_level:Setting Sail`. Recovery/stream-pull after 5 misses teleported away from the pack.

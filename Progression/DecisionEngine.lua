@@ -366,8 +366,34 @@ return function(GB)
 		}
 	end
 
+	local function farmSnap(snap)
+		snap = snap or {}
+		local isl = snap.CurrentIsland
+		if (not isl or isl == "") and M._lastFarmIsland then
+			isl = M._lastFarmIsland
+		end
+		if snap.PhysicalIsland == nil and M._lastFarmIsland and os.clock() - (GB._respawnAt or 0) < 10 then
+			isl = M._lastFarmIsland
+		end
+		local lv = tonumber(snap.Level) or 0
+		if lv < 1 and M._lastFarmLevel then
+			lv = M._lastFarmLevel
+		end
+		if (tonumber(snap.Level) or 0) > 0 then
+			M._lastFarmLevel = snap.Level
+		end
+		return isl, lv
+	end
+
 	local function runFarmGoal(snap, why)
-		local jobs = farmPool(snap.CurrentIsland, snap.Level or 0)
+		local island, lv = farmSnap(snap)
+		local jobs = farmPool(island, lv)
+		if #jobs == 0 and M._lastFarmIsland and M._lastFarmIsland ~= island then
+			jobs = farmPool(M._lastFarmIsland, lv)
+			if #jobs > 0 then
+				island = M._lastFarmIsland
+			end
+		end
 		if #jobs == 0 then
 			return {
 				attempted = false,
@@ -375,6 +401,7 @@ return function(GB)
 				reason = "no_repeat",
 			}
 		end
+		M._lastFarmIsland = island
 		local blockers = blockerList()
 		local note = tostring(why or "story_blocked")
 		for _, b in ipairs(blockers) do
@@ -413,21 +440,34 @@ return function(GB)
 
 		local names, questOf, planOf = collectKillPool(jobs)
 		local locked = GB.Combat and GB.Combat.lockMatchesNames and GB.Combat.lockMatchesNames(names)
-		if (#names > 0 or locked) and GB.Combat and GB.Combat.huntNearestOf then
-			setTask("farm_pool:" .. tostring(snap.CurrentIsland))
+		if (#names > 0 or locked) and GB.Combat then
+			setTask("farm_pool:" .. tostring(island))
 			logDoing("farm_pool", table.concat(names, "+"))
-			setOwner("COMBAT", names[1])
-			local ok, whyHunt = GB.Combat.huntNearestOf(names, 16, questOf, planOf)
+			setOwner("COMBAT", names[1] or locked)
+			if locked and GB.Combat.lockMob and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(GB.Combat.lockMob) then
+				return {
+					attempted = true,
+					progressed = true,
+					reason = "lock_active",
+					quest = poolLabel,
+				}
+			end
+			local ok, whyHunt
+			if GB.Combat.engageNearestOf then
+				ok, whyHunt = GB.Combat.engageNearestOf(names, questOf, planOf)
+			else
+				ok, whyHunt = GB.Combat.huntNearestOf(names, 4, questOf, planOf)
+			end
 			if M._farmReasonKey ~= (poolLabel .. "|" .. tostring(whyHunt)) or os.clock() - (M._farmReasonAt or 0) > 2.8 then
 				M._farmReasonKey = poolLabel .. "|" .. tostring(whyHunt)
 				M._farmReasonAt = os.clock()
-				GB.Log.log("STATE", string.format("farm_result %s reason=%s", poolLabel, tostring(whyHunt or (ok and "pool_kill" or "pool_miss"))))
+				GB.Log.log("STATE", string.format("farm_result %s reason=%s", poolLabel, tostring(whyHunt or (ok and "pool_engage" or "pool_miss"))))
 			end
 			if ok then
 				return {
 					attempted = true,
 					progressed = true,
-					reason = tostring(whyHunt or "pool_kill"),
+					reason = tostring(whyHunt or "pool_engage"),
 					quest = poolLabel,
 				}
 			end
@@ -628,13 +668,19 @@ return function(GB)
 		end
 
 		if snap.GameplayPaused then
-			setTask("wait_unpause")
-			logDoing("wait_unpause")
 			if GB.State.dismissTutorialOverlay then
 				GB.State.dismissTutorialOverlay()
 			end
-			GB.World.waitUnpause()
-			return
+			if GB.World.waitUnpause then
+				GB.World.waitUnpause()
+			end
+			snap = GB.State.refresh()
+			if snap.GameplayPaused then
+				if farmHandled(runFarmGoal(snap, "paused_resume")) then
+					return
+				end
+				return
+			end
 		end
 
 		if GB.Stats and GB.Stats.tick then

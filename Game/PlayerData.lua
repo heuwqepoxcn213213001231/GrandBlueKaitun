@@ -357,6 +357,9 @@ return function(GB)
 		M._tracker = readTracker()
 		local stale = now - (M._lastQuestFetchAt or 0) >= LIVE_SAFETY_TTL
 		if not force and not M._questDirty and not stale and (next(M._live) or M._tracker or M._current) then
+			if next(M._live) then
+				M._lastGoodLiveAt = now
+			end
 			M._current = pickCurrent()
 			pdone("PlayerData.refreshLive", t0)
 			return M._live
@@ -371,21 +374,56 @@ return function(GB)
 			end
 		end
 		if quests ~= nil or done ~= nil then
-			M._done = completedSet(done)
-			M._live, M._order = ingestList(quests)
-			M._at = now
-			M._lastQuestFetchAt = now
-			M._questDirty = false
-			M._tracker = readTracker() or M._tracker
-			local prev = M._current
-			M._current = pickCurrent()
-			if M._current and M._current ~= prev then
-				GB.Log.log("STATE", "live quest " .. M._current)
-				if GB.Combat and GB.Combat.stopLock then
-					GB.Combat.stopLock()
+			local newLive, newOrder = ingestList(quests)
+			local liveN, prevN = 0, 0
+			for _ in pairs(newLive) do
+				liveN = liveN + 1
+			end
+			for _ in pairs(M._live) do
+				prevN = prevN + 1
+			end
+			-- Respawn/stream often returns empty Quests for a few seconds. Keep the last good set.
+			if liveN == 0 and prevN > 0 and now - (M._lastGoodLiveAt or 0) < 12 then
+				if os.clock() - (M._emptyKeepAt or 0) > 4 then
+					M._emptyKeepAt = os.clock()
+					GB.Log.warn("STATE", "keep live quests; empty refresh " .. tostring(why or "poll"))
 				end
-				if GB.Persist and GB.Persist.checkpoint then
-					GB.Persist.checkpoint("quest", M._current)
+				M._lastQuestFetchAt = now
+				M._questDirty = true
+				M._current = pickCurrent()
+			else
+				if done ~= nil then
+					local newDone = completedSet(done)
+					local doneN = 0
+					for _ in pairs(newDone) do
+						doneN = doneN + 1
+					end
+					if doneN > 0 or not next(M._done) then
+						M._done = newDone
+					end
+				end
+				M._live, M._order = ingestList(quests)
+				liveN = 0
+				for _ in pairs(M._live) do
+					liveN = liveN + 1
+				end
+				if liveN > 0 then
+					M._lastGoodLiveAt = now
+				end
+				M._at = now
+				M._lastQuestFetchAt = now
+				M._questDirty = false
+				M._tracker = readTracker() or M._tracker
+				local prev = M._current
+				M._current = pickCurrent()
+				if M._current and M._current ~= prev then
+					GB.Log.log("STATE", "live quest " .. M._current)
+					if GB.Combat and GB.Combat.stopLock then
+						GB.Combat.stopLock()
+					end
+					if GB.Persist and GB.Persist.checkpoint then
+						GB.Persist.checkpoint("quest", M._current)
+					end
 				end
 			end
 		elseif force or stale then

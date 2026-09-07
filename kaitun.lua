@@ -339,12 +339,16 @@ return function(GB)
 		if GB.dead() then
 			return
 		end
+		GB._respawnAt = os.clock()
 		GB.Cache.invalidate()
 		GB.Remotes.statReplicate()
 		if GB.Combat then
 			GB.Combat.stopLock()
 		end
 		GB.Log.log("STATE", "respawn")
+		if GB.World and GB.World.lastSafe and GB.lp and GB.lp:GetAttribute("GameplayPaused") ~= true then
+			GB.World.goSafe()
+		end
 	end)
 
 	GB.Scheduler.add("recovery", function()
