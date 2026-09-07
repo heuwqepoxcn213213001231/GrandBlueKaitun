@@ -168,6 +168,18 @@ local function localRoot()
 	return ""
 end
 
+local function cacheBustToken()
+	local base = tostring(math.floor((os.clock() or 0) * 1000000)) .. tostring(math.random(1000, 9999))
+	local job = ""
+	pcall(function()
+		job = tostring(game.JobId or "")
+	end)
+	job = job:gsub("[^%w]", "")
+	return base .. job:sub(1, 10)
+end
+
+local BOOT_CACHE_BUST = cacheBustToken()
+
 local function diskCachePath(rel, ver)
 	return "GBKaitun_cache/" .. tostring(ver) .. "/" .. rel:gsub("/", "__")
 end
@@ -229,8 +241,15 @@ local function lockUrl(rel, ver)
 	if not url:match("^https://raw%.githubusercontent%.com/") then
 		error("[Kaitun][Loader] URL host rejected")
 	end
+	local q = {}
 	if ver and rel ~= "VERSION" then
-		url = url .. "?v=" .. tostring(ver)
+		q[#q + 1] = "v=" .. tostring(ver)
+	end
+	if rel == "VERSION" or rel == "manifest.json" then
+		q[#q + 1] = "cb=" .. tostring(BOOT_CACHE_BUST)
+	end
+	if #q > 0 then
+		url = url .. "?" .. table.concat(q, "&")
 	end
 	return url
 end

@@ -72,6 +72,8 @@ def main() -> None:
         fail("loader.lua still has hardcoded version fallback")
     if "api.github.com/repos/" in loader_src:
         fail("loader.lua still resolves commit via GitHub API at runtime")
+    if "BOOT_CACHE_BUST" not in loader_src:
+        fail("loader.lua missing VERSION/manifest cache-bust token")
     if "[Kaitun][Loader][FATAL] VERSION mismatch file=" not in loader_src:
         fail("loader.lua missing fatal VERSION mismatch guard")
     if "GB_VERSION or \"1." in kaitun_src:
