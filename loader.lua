@@ -4,6 +4,7 @@
 local DEFAULT_OWNER = "heuwqepoxcn213213001231"
 local DEFAULT_REPO = "GrandBlueKaitun"
 local DEFAULT_BRANCH = "main"
+local DEFAULT_BOOTSTRAP_REF = "52def73"
 
 if type(getgenv) ~= "function" then
 	error("[Kaitun][Loader] getgenv missing")
@@ -103,12 +104,34 @@ if type(getgenv().GB_BRANCH) == "string" and trim(getgenv().GB_BRANCH) ~= "" the
 end
 
 local BRANCH_REF = branchRefPath(BRANCH)
+local function sanitizeRef(v)
+	v = trim(v)
+	if v == "" then
+		return ""
+	end
+	if not v:match("^[%w._/-]+$") then
+		return ""
+	end
+	return branchRefPath(v)
+end
+
+local BOOTSTRAP_REF = sanitizeRef(type(getgenv().GB_BOOTSTRAP_REF) == "string" and getgenv().GB_BOOTSTRAP_REF or "")
+if BOOTSTRAP_REF == "" then
+	BOOTSTRAP_REF = sanitizeRef(DEFAULT_BOOTSTRAP_REF)
+end
+
 local RAW_BRANCH_BASE = string.format(
 	"https://raw.githubusercontent.com/%s/%s/%s/",
 	OWNER,
 	REPO,
 	BRANCH
 )
+local RAW_BOOTSTRAP_BASE = (BOOTSTRAP_REF ~= "") and string.format(
+	"https://raw.githubusercontent.com/%s/%s/%s/",
+	OWNER,
+	REPO,
+	BOOTSTRAP_REF
+) or nil
 
 local LOCKED_PREFIX = string.format(
 	"https://raw.githubusercontent.com/%s/%s/%s/",
@@ -342,6 +365,7 @@ local function bootRoots()
 	if MODE ~= "REMOTE" or HAS_CUSTOM_BASE then
 		return out
 	end
+	pushUnique(out, seen, RAW_BOOTSTRAP_BASE)
 	pushUnique(out, seen, RAW_BRANCH_BASE)
 	pushUnique(out, seen, LOCKED_PREFIX)
 	return out
@@ -397,6 +421,9 @@ end
 print("[Kaitun][Loader] Source " .. MODE)
 if MODE == "REMOTE" then
 	print("[Kaitun][Loader] Base " .. BASE_URL)
+	if BOOTSTRAP_REF ~= "" then
+		print("[Kaitun][Loader] BootstrapRef " .. BOOTSTRAP_REF)
+	end
 end
 
 local manifest, manifestRoot = fetchBestManifest()
