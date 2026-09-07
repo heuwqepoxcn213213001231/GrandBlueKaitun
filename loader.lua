@@ -103,6 +103,12 @@ if type(getgenv().GB_BRANCH) == "string" and trim(getgenv().GB_BRANCH) ~= "" the
 end
 
 local BRANCH_REF = branchRefPath(BRANCH)
+local RAW_BRANCH_BASE = string.format(
+	"https://raw.githubusercontent.com/%s/%s/%s/",
+	OWNER,
+	REPO,
+	BRANCH
+)
 
 local LOCKED_PREFIX = string.format(
 	"https://raw.githubusercontent.com/%s/%s/%s/",
@@ -112,6 +118,7 @@ local LOCKED_PREFIX = string.format(
 )
 
 local BASE_URL = LOCKED_PREFIX
+local HAS_CUSTOM_BASE = false
 if type(getgenv().GB_BASE_URL) == "string" and trim(getgenv().GB_BASE_URL) ~= "" then
 	BASE_URL = trim(getgenv().GB_BASE_URL)
 	if BASE_URL:sub(-1) ~= "/" then
@@ -121,6 +128,7 @@ if type(getgenv().GB_BASE_URL) == "string" and trim(getgenv().GB_BASE_URL) ~= ""
 		error("[Kaitun][Loader] GB_BASE_URL must be raw.githubusercontent.com")
 	end
 	LOCKED_PREFIX = BASE_URL
+	HAS_CUSTOM_BASE = true
 end
 
 local function jsonDecode(s)
@@ -320,20 +328,84 @@ local function fetch(rel, rootBase)
 	return fetchRemote(rel, rootBase)
 end
 
+local function pushUnique(list, seen, value)
+	if type(value) ~= "string" or value == "" or seen[value] then
+		return
+	end
+	seen[value] = true
+	list[#list + 1] = value
+end
+
+local function bootRoots()
+	local out, seen = {}, {}
+	pushUnique(out, seen, BASE_URL)
+	if MODE ~= "REMOTE" or HAS_CUSTOM_BASE then
+		return out
+	end
+	pushUnique(out, seen, RAW_BRANCH_BASE)
+	pushUnique(out, seen, LOCKED_PREFIX)
+	return out
+end
+
+local function manifestBuildAt(m)
+	local b = type(m.build) == "table" and m.build or {}
+	return trim(b.built_at or b.builtAt or m.built_at or "")
+end
+
+local function manifestBuildCommit(m)
+	local b = type(m.build) == "table" and m.build or {}
+	return trim(b.commit or m.commit or "")
+end
+
+local function pickNewerManifest(current, candidate)
+	if not current then
+		return candidate
+	end
+	local ca = manifestBuildAt(current.Manifest)
+	local cb = manifestBuildAt(candidate.Manifest)
+	if cb ~= "" and (ca == "" or cb > ca) then
+		return candidate
+	end
+	if cb == ca then
+		local cc = manifestBuildCommit(current.Manifest)
+		local cd = manifestBuildCommit(candidate.Manifest)
+		if cd ~= "" and (cc == "" or cd > cc) then
+			return candidate
+		end
+	end
+	return current
+end
+
+local function fetchBestManifest()
+	local best = nil
+	for _, root in ipairs(bootRoots()) do
+		local url = lockUrl("manifest.json", nil, root)
+		local ok, src = pcall(httpGetRetry, url, "manifest.json")
+		if ok and type(src) == "string" and #src > 0 then
+			local okM, man = pcall(jsonDecode, src)
+			if okM and type(man) == "table" and type(man.version) == "string" then
+				best = pickNewerManifest(best, { Root = root, Manifest = man, Raw = src })
+			end
+		end
+	end
+	if best then
+		return best.Manifest, best.Root
+	end
+	return jsonDecode(fetch("manifest.json", BASE_URL)), BASE_URL
+end
+
 print("[Kaitun][Loader] Source " .. MODE)
 if MODE == "REMOTE" then
 	print("[Kaitun][Loader] Base " .. BASE_URL)
 end
 
-local versionText = trim(fetch("VERSION"))
-if versionText == "" then
-	error("[Kaitun][Loader] VERSION empty")
-end
-MANIFEST_VER = versionText
-
-local manifest = jsonDecode(fetch("manifest.json"))
+local manifest, manifestRoot = fetchBestManifest()
 if type(manifest.version) ~= "string" or type(manifest.files) ~= "table" or type(manifest.order) ~= "table" then
 	error("[Kaitun][Loader] manifest missing version/files/order")
+end
+local versionText = trim(fetch("VERSION", manifestRoot))
+if versionText == "" then
+	error("[Kaitun][Loader] VERSION empty")
 end
 if trim(manifest.version) ~= versionText then
 	error(string.format(
@@ -343,6 +415,10 @@ if trim(manifest.version) ~= versionText then
 	))
 end
 MANIFEST_VER = trim(manifest.version)
+BASE_URL = manifestRoot
+if MODE == "REMOTE" then
+	print("[Kaitun][Loader] ManifestBase " .. BASE_URL)
+end
 print("[Kaitun][Loader] Manifest " .. MANIFEST_VER)
 local buildMeta = type(manifest.build) == "table" and manifest.build or {}
 local BUILD_COMMIT = trim(buildMeta.commit or manifest.commit or "")
