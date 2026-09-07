@@ -1,6 +1,6 @@
 # FINAL Implementation Report — Grand Blue Kaitun
 
-**Version:** `1.0.1`  
+**Version:** `1.0.2`  
 **Place:** `118635363908336` (Studio connected).  
 **Entry:** `NiaUISilent/Hub/Grand Blue/kaitun.lua`  
 **Ngôn ngữ log:** `[Kaitun][CAT]`.  
@@ -88,7 +88,7 @@ Flintlock **150**, Cutlass **200**, Rowboat **50**, Transponder Snail **100**, R
 
 ## Combat / travel (kept from prior kaitun)
 
-AttackModule.Swing only. Dummy stand **beside**. destOk Y 8–180. groundAt skip water. lastSafe + Graves [2] rescue. NPC_ALIAS Graves → Graves [2]. pcall subsystems. guiNum. Never skip Escort / Hypnotist after RE.
+AttackModule.Swing only. Dummy stand **beside**. destOk Y 8–180. groundAt skip water. lastSafe + Graves rescue. World Graves = DialogueNPCs `Officer Graves [2]` / DisplayName `Officer Graves`. Talk fires DisplayName. Never skip Escort / Hypnotist after RE.
 
 ## Remaining UNKNOWN / DISABLED
 

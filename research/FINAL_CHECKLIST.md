@@ -2,9 +2,9 @@
 
 | Feature | Status | Reason |
 |---|---|---|
-| Fresh bootstrap | PARTIAL | Wait character + StatReplication; Introduction via live quest. 1.0.1: Folder islands no longer crash `State.refresh` |
-| Tutorial | PARTIAL | Introduction/Basics handlers (dummy, stats, Strong Punch prompt) |
-| Quest | WORKING | Generic Talk/Kill/Collect/Purchase/Equip/Upgrade/… from live stages |
+| Fresh bootstrap | PARTIAL | Wait character + StatReplication; Introduction via live quest. 1.0.1 Folder islands. 1.0.2 Graves resolve + Talk validate |
+| Tutorial | PARTIAL | Introduction Talk Graves → dummy/Dash/Block → turn-in; Basics Talk/skill/stats/Logbook UI |
+| Quest | WORKING | Generic live stage executor (Talk/Kill/Collect/Purchase/Equip/Upgrade/Mine/Fish/Farm/Cook/Deliver/Interact/Travel/Escort/Boss). UNKNOWN_OBJECTIVE stops that loop |
 | Auto level | WORKING | Story gates + repeatable `full_until` bands |
 | Island | WORKING | Anchor → Setting Sail 30 → Clown → Journey 70 → Maple. Geometry API type-safe on Folder/Model/BasePart (`World.GetIsland*`) |
 | Travel | PARTIAL | destOk hop/walk; island spawn; no invented teleport list |
@@ -33,7 +33,7 @@
 | Anti-stuck | WORKING | destOk, groundAt, water/void rescue, task timeout |
 | Logging | WORKING | `[Kaitun][CAT]` rate-limited |
 | Config | WORKING | GBConfig Auto* Build FruitMode Codes NeverSkip |
-| Resolvers | WORKING | Name/tag/alias; log candidates on fail |
+| Resolvers | WORKING | DisplayName + alias + DialogueNPCs + tags; skip RS create model; stream-pull; nearby dump after 3 |
 
 **Counts:** WORKING **12** · PARTIAL **17** · DISABLED **3**.
 

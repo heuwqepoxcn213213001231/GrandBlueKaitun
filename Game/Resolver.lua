@@ -1,29 +1,112 @@
 -- Resolve NPC / enemy / item / island / shop / trainer / remote.
--- Search name, tag, attribute, known parent. On fail log candidates.
+-- World Graves is DialogueNPCs "Officer Graves [2]" (DisplayName "Officer Graves").
+-- ReplicatedStorage "Officer Graves" is character-create — never interact.
 
 return function(GB)
 	local CS = game:GetService("CollectionService")
 	local RS = game:GetService("ReplicatedStorage")
 	local M = {}
 
-	-- ReplicatedStorage "Officer Graves" is character-create, not world.
+	-- Verified only. Studio + QuestInfo + DialogueUtilities.GetNPCName.
 	M.NPC_ALIAS = {
-		["Officer Graves"] = "Officer Graves [2]",
-		["Graves"] = "Officer Graves [2]",
+		["Officer Graves"] = { "Officer Graves [2]", "Graves" },
+		["Officer Graves [2]"] = { "Officer Graves", "Graves" },
+		["Graves"] = { "Officer Graves", "Officer Graves [2]" },
 	}
 
-	local function aliveModel(m)
-		if not (m and m.Parent) then
+	M.ENEMY_ALIAS = {
+		["Barrel Clown"] = { '"Barrel Clown" Binki', "Binki" },
+		["Binki"] = { '"Barrel Clown" Binki', "Barrel Clown" },
+		['"Barrel Clown" Binki'] = { "Barrel Clown", "Binki" },
+		["Hypnotist"] = { '"Hypnotist" Mango', "Mango" },
+		["Mango"] = { '"Hypnotist" Mango', "Hypnotist" },
+		['"Hypnotist" Mango'] = { "Hypnotist", "Mango" },
+	}
+
+	local missLog = {}
+
+	local function aliases()
+		if GB.QuestData and GB.QuestData.NPC_ALIAS then
+			return GB.QuestData.NPC_ALIAS
+		end
+		return M.NPC_ALIAS
+	end
+
+	local function pushName(list, seen, name)
+		if type(name) ~= "string" or name == "" or name == "\\" then
+			return
+		end
+		if seen[name] then
+			return
+		end
+		seen[name] = true
+		list[#list + 1] = name
+	end
+
+	function M.namesFor(request, opts)
+		opts = opts or {}
+		local list, seen = {}, {}
+		pushName(list, seen, request)
+		pushName(list, seen, opts.DisplayName)
+		pushName(list, seen, opts.InternalName)
+		pushName(list, seen, opts.QuestName)
+		local src = aliases()
+		local function addMapped(key)
+			local v = src[key] or M.NPC_ALIAS[key] or M.ENEMY_ALIAS[key]
+			if type(v) == "string" then
+				pushName(list, seen, v)
+			elseif type(v) == "table" then
+				for _, n in ipairs(v) do
+					pushName(list, seen, n)
+				end
+			end
+		end
+		for _, n in ipairs({ request, opts.DisplayName, opts.InternalName }) do
+			if type(n) == "string" then
+				addMapped(n)
+			end
+		end
+		for key, v in pairs(src) do
+			if v == request or (type(v) == "table" and table.find(v, request)) then
+				pushName(list, seen, key)
+			end
+		end
+		return list
+	end
+
+	local function inRS(inst)
+		return inst and RS:IsAncestorOf(inst)
+	end
+
+	function M.displayName(model)
+		if not model then
+			return nil
+		end
+		local attr = model:GetAttribute("NPCName") or model:GetAttribute("DisplayName")
+		if type(attr) == "string" and attr ~= "" then
+			return attr
+		end
+		local h = model:FindFirstChildOfClass("Humanoid")
+		if h and h.DisplayName and h.DisplayName ~= "" then
+			return h.DisplayName
+		end
+		return model.Name
+	end
+
+	local function isDialogue(inst)
+		if not inst then
 			return false
 		end
-		if m:IsA("Model") then
-			local h = m:FindFirstChildOfClass("Humanoid")
-			if h and h.Health <= 0 then
-				return false
-			end
-			return m.PrimaryPart or m:FindFirstChild("HumanoidRootPart") or m:FindFirstChildWhichIsA("BasePart")
+		if inst:GetAttribute("Interaction") == "Dialogue" then
+			return true
 		end
-		return m:IsA("BasePart")
+		if inst:FindFirstChild("Dialogue") then
+			return true
+		end
+		if inst:HasTag("Dialogue") or inst:HasTag("Interactable") then
+			return true
+		end
+		return false
 	end
 
 	local function partOf(inst)
@@ -34,10 +117,32 @@ return function(GB)
 			return inst
 		end
 		if inst:IsA("Model") then
-			return inst.PrimaryPart or inst:FindFirstChild("HumanoidRootPart") or inst:FindFirstChildWhichIsA("BasePart")
+			if inst.PrimaryPart then
+				return inst.PrimaryPart
+			end
+			local hrp = inst:FindFirstChild("HumanoidRootPart")
+			if hrp and hrp:IsA("BasePart") then
+				return hrp
+			end
+			local p = inst:FindFirstChildWhichIsA("BasePart")
+			if p then
+				return p
+			end
+			local ok, cf = pcall(inst.GetPivot, inst)
+			if ok and typeof(cf) == "CFrame" then
+				return inst
+			end
+			return nil
 		end
 		if inst:IsA("ProximityPrompt") then
-			return inst.Parent and (inst.Parent:IsA("BasePart") and inst.Parent or inst.Parent:FindFirstChildWhichIsA("BasePart"))
+			local p = inst.Parent
+			if p and p:IsA("BasePart") then
+				return p
+			end
+			return p and p:FindFirstChildWhichIsA("BasePart")
+		end
+		if inst:IsA("Folder") or inst:IsA("Configuration") then
+			return inst:FindFirstChildWhichIsA("BasePart", true)
 		end
 		return inst:FindFirstChildWhichIsA("BasePart", true)
 	end
@@ -46,33 +151,178 @@ return function(GB)
 		return partOf(inst)
 	end
 
-	function M.displayName(model)
-		if not model then
+	function M.positionOf(inst)
+		local p = partOf(inst)
+		if not p then
 			return nil
 		end
-		local h = model:FindFirstChildOfClass("Humanoid")
-		if h and h.DisplayName and h.DisplayName ~= "" then
-			return h.DisplayName
+		if p:IsA("BasePart") then
+			return p.Position
 		end
-		return model.Name
+		if p:IsA("Model") then
+			local ok, cf = pcall(p.GetPivot, p)
+			if ok and typeof(cf) == "CFrame" then
+				return cf.Position
+			end
+		end
+		return nil
 	end
 
-	local function scan(pred, limit)
+	local function climbRoot(inst)
+		if not inst then
+			return nil
+		end
+		if inst:IsA("Model") then
+			return inst
+		end
+		local m = inst:FindFirstAncestorOfClass("Model")
+		if m and not inRS(m) then
+			return m
+		end
+		if inst:IsA("BasePart") or inst:IsA("Folder") or inst:IsA("Configuration") then
+			return inst
+		end
+		return inst
+	end
+
+	local function usable(inst, kind)
+		if not (inst and inst.Parent) or inRS(inst) then
+			return false
+		end
+		local root = climbRoot(inst)
+		if not root or inRS(root) then
+			return false
+		end
+		if kind == "enemy" then
+			local h = root:FindFirstChildOfClass("Humanoid")
+			if h and h.Health <= 0 then
+				return false
+			end
+		end
+		if root:IsA("Model") or root:IsA("BasePart") or root:IsA("Folder") or root:IsA("Configuration") then
+			return M.positionOf(root) ~= nil or partOf(root) ~= nil or isDialogue(root)
+		end
+		return false
+	end
+
+	local function islandOf(inst)
+		if not inst then
+			return nil
+		end
+		local p = inst
+		while p and p ~= workspace do
+			local n = p.Name
+			if n == "Anchor Town" or n == "Clown Town" or n == "Maple Village" then
+				return n
+			end
+			p = p.Parent
+		end
+		local pos = M.positionOf(inst)
+		if pos and GB.World and GB.World.GetIslandFromPosition then
+			return GB.World.GetIslandFromPosition(pos)
+		end
+		return nil
+	end
+
+	function M.pack(inst, request)
+		local root = climbRoot(inst) or inst
+		return {
+			Instance = root,
+			Root = root,
+			Position = M.positionOf(root),
+			DisplayName = M.displayName(root),
+			InternalName = root.Name,
+			Interaction = root:GetAttribute("Interaction"),
+			Island = islandOf(root),
+			Request = request,
+		}
+	end
+
+	local function npcRoots()
+		local roots, seen = {}, {}
+		local function add(inst)
+			if inst and not seen[inst] then
+				seen[inst] = true
+				roots[#roots + 1] = inst
+			end
+		end
+		local aa = workspace:FindFirstChild("AA IMPORTANT")
+		if aa then
+			add(aa:FindFirstChild("DialogueNPCs"))
+			add(aa:FindFirstChild("Markers"))
+			add(aa:FindFirstChild("NPCAreas"))
+			add(aa:FindFirstChild("PointsOfInterest"))
+		end
+		add(workspace:FindFirstChild("DialogueNPCs"))
+		add(workspace:FindFirstChild("Entities"))
+		add(workspace:FindFirstChild("Islands"))
+		return roots
+	end
+
+	local function nameHit(inst, names)
+		local nm = inst.Name
+		local disp = M.displayName(inst)
+		local npcAttr = inst:GetAttribute("NPCName")
+		for _, n in ipairs(names) do
+			if nm == n or disp == n or npcAttr == n then
+				return true
+			end
+			if inst:HasTag(n) then
+				return true
+			end
+		end
+		return false
+	end
+
+	local function dialogueNameHit(inst, names)
+		local cfg = inst:FindFirstChild("Dialogue")
+		if not (cfg and cfg:IsA("Configuration")) then
+			return false
+		end
+		local qn = cfg:FindFirstChild("QuestName2") or cfg:FindFirstChild("QuestName")
+		if qn then
+			local v = qn:FindFirstChild("QuestName")
+			local val = v and v.Value
+			-- quest-name node is evidence the model is a quest NPC, not a name match
+			if type(val) == "string" then
+				for _, n in ipairs(names) do
+					if val == n then
+						return true
+					end
+				end
+			end
+		end
+		return false
+	end
+
+	local function firstWorldTagged(tag)
+		local ok, tagged = pcall(CS.GetTagged, CS, tag)
+		if not ok or type(tagged) ~= "table" then
+			return nil
+		end
+		for _, t in ipairs(tagged) do
+			if usable(t, "npc") then
+				return climbRoot(t)
+			end
+		end
+		return nil
+	end
+
+	local function scanRoots(pred, limit)
 		limit = limit or 8
 		local hits = {}
-		local folders = {
-			workspace:FindFirstChild("Entities"),
-			workspace:FindFirstChild("Islands"),
-			workspace,
-		}
-		for _, root in ipairs(folders) do
-			if root then
-				for _, d in ipairs(root:GetDescendants()) do
-					if pred(d) then
-						table.insert(hits, d)
-						if #hits >= limit then
-							return hits
-						end
+		for _, root in ipairs(npcRoots()) do
+			if pred(root) then
+				hits[#hits + 1] = root
+				if #hits >= limit then
+					return hits
+				end
+			end
+			for _, d in ipairs(root:GetDescendants()) do
+				if pred(d) then
+					hits[#hits + 1] = d
+					if #hits >= limit then
+						return hits
 					end
 				end
 			end
@@ -80,99 +330,253 @@ return function(GB)
 		return hits
 	end
 
-	function M.byName(name, kind)
-		if not name or name == "" or name == "\\" then
-			return nil
+	local function scoreInst(inst, names, opts)
+		local s = 0
+		local nm = inst.Name
+		local disp = M.displayName(inst)
+		for i, n in ipairs(names) do
+			local w = (#names - i + 1)
+			if nm == n then
+				s = s + 50 + w
+			end
+			if disp == n then
+				s = s + 45 + w
+			end
+			if inst:HasTag(n) then
+				s = s + 40 + w
+			end
+			if inst:GetAttribute("NPCName") == n then
+				s = s + 42 + w
+			end
 		end
-		name = M.NPC_ALIAS[name] or name
-		local cacheKey = "res:" .. (kind or "any") .. ":" .. name
-		local hit = GB.Cache.get(cacheKey, 1.8)
-		if hit and hit.Parent then
-			return hit
+		if isDialogue(inst) then
+			s = s + 8
 		end
+		local parent = inst.Parent
+		if parent and parent.Parent and parent.Parent.Name == "DialogueNPCs" then
+			s = s + 12
+		end
+		if opts and opts.Island and islandOf(inst) == opts.Island then
+			s = s + 6
+		end
+		if inRS(inst) then
+			s = s - 200
+		end
+		return s
+	end
 
-		-- CollectionService tag
-		local ok, tagged = pcall(CS.GetTagged, CS, name)
-		if ok then
-			for _, t in ipairs(tagged) do
-				if aliveModel(t) and not RS:IsAncestorOf(t) then
-					GB.Cache.set(cacheKey, t)
-					return t
+	function M.dumpNearby(request, opts)
+		opts = opts or {}
+		local names = M.namesFor(request, opts)
+		local origin
+		local hrp = GB.World and GB.World.hrp and GB.World.hrp()
+		if hrp then
+			origin = hrp.Position
+		end
+		local cand = {}
+		for _, root in ipairs(npcRoots()) do
+			for _, d in ipairs(root:GetDescendants()) do
+				if d:IsA("Model") and not inRS(d) then
+					local disp = M.displayName(d)
+					local low = string.lower(d.Name .. " " .. tostring(disp or ""))
+					local want = false
+					for _, n in ipairs(names) do
+						if string.find(low, string.lower(n), 1, true) then
+							want = true
+							break
+						end
+					end
+					if not want and (isDialogue(d) or d:FindFirstChildOfClass("Humanoid")) then
+						local pos = M.positionOf(d)
+						if origin and pos and (pos - origin).Magnitude < 90 then
+							want = true
+						end
+					end
+					if want then
+						local pos = M.positionOf(d)
+						local dist = (origin and pos) and math.floor((pos - origin).Magnitude) or -1
+						cand[#cand + 1] = {
+							Name = d.Name,
+							ClassName = d.ClassName,
+							DisplayName = disp,
+							Parent = d.Parent and d.Parent.Name,
+							Position = pos,
+							Dist = dist,
+							Score = scoreInst(d, names, opts),
+						}
+					end
 				end
 			end
 		end
+		table.sort(cand, function(a, b)
+			if a.Score ~= b.Score then
+				return a.Score > b.Score
+			end
+			local da = a.Dist >= 0 and a.Dist or 1e9
+			local db = b.Dist >= 0 and b.Dist or 1e9
+			return da < db
+		end)
+		local n = math.min(#cand, 8)
+		local bits = {}
+		for i = 1, n do
+			local c = cand[i]
+			bits[i] = string.format(
+				"%s [%s] disp=%s parent=%s d=%s",
+				c.Name,
+				c.ClassName,
+				tostring(c.DisplayName),
+				tostring(c.Parent),
+				tostring(c.Dist)
+			)
+		end
+		GB.Log.warn(
+			"RESOLVE",
+			string.format("miss '%s' nearby=%d %s", tostring(request), #cand, table.concat(bits, " | "))
+		)
+		return cand
+	end
 
-		local function match(d)
-			if RS:IsAncestorOf(d) then
-				return false
+	function M.resolve(request, opts)
+		opts = opts or {}
+		if type(request) ~= "string" or request == "" or request == "\\" then
+			return nil
+		end
+		local names = M.namesFor(request, opts)
+		local kind = opts.ExpectedRole or opts.kind or "npc"
+		local cacheKey = "res:" .. kind .. ":" .. table.concat(names, "|")
+		local hit = GB.Cache.get(cacheKey, opts.deep and 0.4 or 2.0)
+		if hit and hit.Parent then
+			return M.pack(hit, request)
+		end
+
+		local best, bestS
+		local function consider(inst)
+			if not usable(inst, kind) then
+				return
 			end
-			if not aliveModel(d) then
-				return false
+			local root = climbRoot(inst)
+			if not root then
+				return
 			end
-			if d.Name == name then
-				return true
+			if not (nameHit(root, names) or dialogueNameHit(root, names)) then
+				return
 			end
-			local h = d:FindFirstChildOfClass("Humanoid")
-			if h and h.DisplayName == name then
-				return true
+			local s = scoreInst(root, names, opts)
+			if not bestS or s > bestS then
+				best, bestS = root, s
 			end
-			if d:GetAttribute("Item") == name then
-				return true
+		end
+
+		for _, n in ipairs(names) do
+			local tagged = firstWorldTagged(n)
+			if tagged then
+				consider(tagged)
 			end
-			return false
 		end
 
 		local ents = workspace:FindFirstChild("Entities")
 		if ents then
-			local c = ents:FindFirstChild(name)
-			if c and aliveModel(c) then
-				GB.Cache.set(cacheKey, c)
-				return c
-			end
-		end
-
-		local found = scan(match, 4)
-		if found[1] then
-			GB.Cache.set(cacheKey, found[1])
-			return found[1]
-		end
-
-		-- fuzzy
-		local lower = string.lower(name)
-		local cand = scan(function(d)
-			if RS:IsAncestorOf(d) or not d:IsA("Model") then
-				return false
-			end
-			return string.find(string.lower(d.Name), lower, 1, true) ~= nil
-		end, 6)
-		if #cand > 0 then
-			GB.Log.warn("ERROR", "resolve fail exact '" .. name .. "' candidates=" .. table.concat((function()
-				local n = {}
-				for i, v in ipairs(cand) do
-					n[i] = v.Name
+			for _, n in ipairs(names) do
+				local c = ents:FindFirstChild(n)
+				if c then
+					consider(c)
 				end
-				return n
-			end)(), ","))
-			if cand[1] then
-				GB.Cache.set(cacheKey, cand[1])
-				return cand[1]
 			end
-		else
-			GB.Log.warn("ERROR", "resolve miss " .. tostring(name))
+		end
+
+		local aa = workspace:FindFirstChild("AA IMPORTANT")
+		local dlg = (aa and aa:FindFirstChild("DialogueNPCs")) or workspace:FindFirstChild("DialogueNPCs")
+		if dlg then
+			if opts.Island then
+				local folder = dlg:FindFirstChild(opts.Island)
+				if folder then
+					for _, c in ipairs(folder:GetChildren()) do
+						consider(c)
+					end
+				end
+			end
+			for _, islandFolder in ipairs(dlg:GetChildren()) do
+				for _, c in ipairs(islandFolder:GetChildren()) do
+					consider(c)
+				end
+			end
+		end
+
+		if not best or opts.deep then
+			scanRoots(function(d)
+				if d:IsA("Model") or d:IsA("Folder") or d:IsA("BasePart") then
+					consider(d)
+				end
+				return false
+			end, 1)
+		end
+
+		if best then
+			GB.Cache.set(cacheKey, best)
+			local pack = M.pack(best, request)
+			GB.Log.log("RESOLVE", string.format("%s -> %s", request, best:GetFullName()))
+			return pack
+		end
+
+		local now = os.clock()
+		local mk = "miss:" .. request
+		if not missLog[mk] or now - missLog[mk] > 8 then
+			missLog[mk] = now
+			GB.Log.warn("ERROR", "resolve miss " .. table.concat(names, " / "))
 		end
 		return nil
 	end
 
-	function M.npc(name)
-		return M.byName(name, "npc")
+	function M.byName(name, kind)
+		local pack = M.resolve(name, { kind = kind or "any", ExpectedRole = kind })
+		return pack and pack.Instance
+	end
+
+	function M.npc(name, opts)
+		opts = opts or {}
+		opts.ExpectedRole = opts.ExpectedRole or "npc"
+		opts.kind = "npc"
+		local pack = M.resolve(name, opts)
+		return pack and pack.Instance
+	end
+
+	function M.resolveNPC(name, opts)
+		opts = opts or {}
+		opts.ExpectedRole = opts.ExpectedRole or "npc"
+		opts.kind = "npc"
+		return M.resolve(name, opts)
 	end
 
 	function M.enemy(name)
-		-- Kill-name fixes from Studio quest modules (dump used `\`)
 		if name == "\\" or name == "" then
 			return nil
 		end
-		return M.byName(name, "enemy")
+		local pack = M.resolve(name, { kind = "enemy", ExpectedRole = "enemy" })
+		return pack and pack.Instance
+	end
+
+	function M.waitTagged(tag, timeout)
+		timeout = timeout or 4
+		local hit = firstWorldTagged(tag)
+		if hit then
+			return hit
+		end
+		local t0 = os.clock()
+		local got
+		local conn = CS:GetInstanceAddedSignal(tag):Connect(function(inst)
+			if usable(inst, "npc") then
+				got = climbRoot(inst)
+			end
+		end)
+		while not got and os.clock() - t0 < timeout do
+			got = firstWorldTagged(tag)
+			if got then
+				break
+			end
+			task.wait(0.15)
+		end
+		conn:Disconnect()
+		return got
 	end
 
 	function M.shopItem(name)
@@ -193,7 +597,7 @@ return function(GB)
 			end
 			return false
 		end
-		local found = scan(isShop, 6)
+		local found = scanRoots(isShop, 6)
 		if found[1] then
 			local part = found[1]
 			if part:IsA("ProximityPrompt") then
@@ -251,8 +655,12 @@ return function(GB)
 		pcall(function()
 			tagged = CS:GetTagged("Afuaru's Chests")
 		end)
-		if tagged and tagged[1] then
-			return tagged[1]
+		if tagged then
+			for _, t in ipairs(tagged) do
+				if t.Parent and not inRS(t) then
+					return t
+				end
+			end
 		end
 		return M.byName("Afuaru's Chests", "chest")
 	end

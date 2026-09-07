@@ -1,6 +1,6 @@
 # Deployment Report — Grand Blue Kaitun 1.0.0
 
-Current shipped version: **1.0.1** (Folder island geometry). See `RUNTIME_FIXES.md`.
+Current shipped version: **1.0.2** (Graves resolve + quest executor). See `RUNTIME_FIXES.md`.
 
 ## Quyết định repo
 

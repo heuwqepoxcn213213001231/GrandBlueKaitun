@@ -4,7 +4,7 @@ Rule: args only from Studio call sites / data.rules / StatSystem. FireServer ≠
 
 | Action | Remote | Arguments | Evidence | Validation | Status |
 |---|---|---|---|---|---|
-| Talk NPC | `Events.ClientQuest` RE | `("Talk", DisplayName)` | Dialogue + DialogueHandler | Live quest stage / Completed | VERIFIED |
+| Talk NPC | `Events.ClientQuest` RE | `("Talk", DisplayName)` | PromptInformation.Dialogue: Humanoid.DisplayName or Name. Graves DisplayName=`Officer Graves` (instance `Officer Graves [2]`) | Live Talk count / stage | VERIFIED |
 | Automatic Talk | `Events.ClientQuest` RE | `("Automatic Talk", DisplayName)` | PromptInformation.Dialogue | Stage complete | VERIFIED |
 | Logbook accept | `Events.ClientQuest` RE | `("BeginAutomatic", questName)` | LogbookHandler | Quest appears in Cache.Data.Quests | VERIFIED |
 | Closet visit | `Events.ClientQuest` RE | `("Closet", "Visit")` | PromptInformation.Closet | Tutorial Visit | VERIFIED |

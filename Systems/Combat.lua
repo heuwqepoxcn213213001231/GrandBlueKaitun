@@ -161,11 +161,25 @@ return function(GB)
 		if not live then
 			return true
 		end
+		if GB.PlayerData.finished(questName) then
+			return true
+		end
 		local _, st = GB.QuestData.currentStage(live)
 		if not st then
 			return true
 		end
-		return st.Complete == true
+		if st.Complete then
+			return true
+		end
+		local conds = st.Conditions or st.conditions or {}
+		for _, cond in ipairs(conds) do
+			if type(cond) == "table" and not cond.Complete then
+				local cur = GB.QuestData.conditionCurrent(cond)
+				local prev = type(before) == "number" and before or 0
+				return cur > prev
+			end
+		end
+		return false
 	end
 
 	function M.tick()

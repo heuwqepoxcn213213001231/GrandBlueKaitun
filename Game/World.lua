@@ -88,7 +88,7 @@ return function(GB)
 		if M.anchorSafe then
 			return
 		end
-		local g = GB.Resolver.npc("Officer Graves [2]")
+		local g = GB.Resolver.npc("Officer Graves") or GB.Resolver.npc("Officer Graves [2]")
 		local p = g and GB.Resolver.part(g)
 		if p then
 			M.anchorSafe = CFrame.new(p.Position + Vector3.new(0, 0, 6))
@@ -757,6 +757,131 @@ return function(GB)
 			end
 		end
 		return M.GetIslandPosition(isl)
+	end
+
+	function M.ToPosition(pos, range)
+		return M.moveTo(pos, range or 6)
+	end
+
+	function M.ToInstance(inst, range)
+		return M.moveTo(inst, range or 8)
+	end
+
+	function M.safeOffset(inst, dist)
+		dist = dist or (GB.Config.TalkOffset or 5)
+		local part = GB.Resolver.part(inst)
+		if not part or not part:IsA("BasePart") then
+			local pos = GB.Resolver.positionOf(inst)
+			return pos and (pos + Vector3.new(0, 0, dist))
+		end
+		local look = part.CFrame.LookVector
+		local off = Vector3.new(look.X, 0, look.Z)
+		if off.Magnitude < 0.2 then
+			off = Vector3.new(0, 0, 1)
+		end
+		return part.Position + off.Unit * dist
+	end
+
+	function M.ToNPC(resolved, range)
+		local inst = type(resolved) == "table" and resolved.Instance or resolved
+		if not inst then
+			return false
+		end
+		local dest = M.safeOffset(inst, range or (GB.Config.TalkOffset or 5))
+		if not dest then
+			return M.moveTo(inst, range or 8)
+		end
+		if not M.destOk(dest) then
+			local g = M.groundAt(dest)
+			if g then
+				dest = g
+			end
+		end
+		GB.Log.log("TRAVEL", "Teleport -> " .. (M.displayLabel(resolved) or inst.Name))
+		return M.setPos(dest)
+	end
+
+	function M.displayLabel(resolved)
+		if type(resolved) == "table" then
+			return resolved.DisplayName or resolved.InternalName
+		end
+		if typeof(resolved) == "Instance" then
+			return GB.Resolver.displayName(resolved)
+		end
+		return nil
+	end
+
+	function M.ToEnemy(inst, range)
+		return M.moveTo(inst, range or 12)
+	end
+
+	function M.ToInteractable(inst, range)
+		return M.moveTo(inst, range or 8)
+	end
+
+	function M.sameIsland(a, b)
+		return a and b and a == b
+	end
+
+	function M.pullStream(island)
+		if type(island) ~= "string" or island == "" then
+			return false
+		end
+		local dests = {}
+		local function addPos(pos)
+			if typeof(pos) == "Vector3" then
+				local u = usablePos(pos)
+				if u and M.destOk(u) then
+					dests[#dests + 1] = u
+				end
+			end
+		end
+		addPos(M.islandSpawn(island))
+		local aa = workspace:FindFirstChild("AA IMPORTANT")
+		local sl = aa and aa:FindFirstChild("Spawn Locations")
+		if sl then
+			for _, c in ipairs(sl:GetChildren()) do
+				if string.find(c.Name, island, 1, true) then
+					if isPart(c) then
+						addPos(c.Position)
+					else
+						addPos(instancePosition(c))
+					end
+				end
+			end
+		end
+		local dlg = aa and aa:FindFirstChild("DialogueNPCs")
+		local folder = dlg and dlg:FindFirstChild(island)
+		if folder then
+			for _, c in ipairs(folder:GetChildren()) do
+				addPos(GB.Resolver.positionOf(c))
+			end
+		end
+		if #dests == 0 then
+			return false
+		end
+		local root = M.hrp()
+		local start = root and root.Position
+		local pick = dests[1]
+		if start then
+			local bestD = (pick - start).Magnitude
+			for i = 2, #dests do
+				local d = (dests[i] - start).Magnitude
+				if d > 40 and d < bestD then
+					pick, bestD = dests[i], d
+				end
+			end
+			if bestD < 18 then
+				for i = 1, #dests do
+					if (dests[i] - start).Magnitude > 80 then
+						pick = dests[i]
+						break
+					end
+				end
+			end
+		end
+		GB.Log.log("TRAVEL", "stream pull " .. island)
+		return M.setPos(pick)
 	end
 
 	return M

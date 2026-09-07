@@ -1,5 +1,53 @@
 # Runtime Fixes
 
+## 1.0.2 — Officer Graves resolve miss (Introduction stuck)
+
+### Issue
+
+Modules loaded. Island resolver worked. Live quest Introduction on Anchor Town lv0. Loop:
+
+```
+[Kaitun][STATE] task quest:Introduction
+[Kaitun][ERROR] resolve miss Officer Graves [2]
+[Kaitun][QUEST] NPC miss Officer Graves [2]
+```
+
+UI: "Talk to Officer Graves" / "Talk To Officer Graves (0/1)". Never 0/1 → 1/1.
+
+### Root Cause (Studio place `118635363908336`)
+
+| What | Identity |
+|---|---|
+| Quest target / marker tag / Humanoid.DisplayName | `Officer Graves` |
+| World model Name + CollectionService tag | `Officer Graves [2]` |
+| Path | `Workspace.AA IMPORTANT.DialogueNPCs.Anchor Town.Officer Graves [2]` |
+| Attributes | `Interaction=Dialogue`, `PromptAdded=true` |
+| RS `Officer Graves` | character-create. Tag `Officer Graves` lives here. **Not** the world NPC. |
+
+1. Resolver **replaced** the search key with alias `"Officer Graves [2]"` before matching. Humanoid.DisplayName is `"Officer Graves"`, so DisplayName match never ran.
+2. `workspace.StreamingEnabled = true`. Graves is ~400+ studs from `PersistentAnchor.Center`. Client often has **no** DialogueNPC instance. `GetTagged("Officer Graves [2]")` empty → `resolve miss`.
+3. Fuzzy required the literal substring `"officer graves [2]"` — a streamed name without `[2]` would also miss.
+4. Scan skipped `DialogueNPCs` as a first-class container; treated missing Model/HRP as dead.
+
+Game Talk (PromptInformation.Dialogue): `ClientQuest:FireServer("Talk", DisplayName)` then `DialogueBindable:Fire(Configuration)`. DisplayName = `"Officer Graves"`. Never `BeginQuest`.
+
+### Fix
+
+- `ResolveNPC`: names = request + verified aliases both ways + DisplayName + `NPCName` attr + tags. Skip ReplicatedStorage. Search `AA IMPORTANT.DialogueNPCs` / Entities / Islands / Markers first.
+- Result object: Instance, Root, Position, DisplayName, InternalName, Interaction, Island. Root may be Model / BasePart / Folder / Configuration.
+- After 3 misses: invalidate cache, ranked nearby dump (≤8), island stream-pull via runtime spawn/DialogueNPC positions (no hardcoded coords). After 5: STUCK + Recovery.
+- Talk: `World.ToNPC` offset (not inside), unpause, Talk(DisplayName), DialogueBindable, wait live 0/1 → 1/1.
+- Generic QuestExecutor: live state → stage → objective → handler → validate. Escort = NeverSkip follow only.
+
+### Files
+
+- `Game/Resolver.lua`, `Game/QuestData.lua`, `Game/World.lua`
+- `Systems/Quest.lua`, `Systems/Combat.lua`, `Config.lua`
+- `research/QUEST_EXECUTION_MATRIX.md`
+- `VERSION` / `manifest.json` / `loader.lua` → **1.0.2**
+
+---
+
 ## 1.0.1 — Folder island `PrimaryPart` crash
 
 ### Issue
