@@ -44,6 +44,11 @@ return function(GB)
 		["The Wandering Hypnotist"] = "\"Hypnotist\" Mango",
 	}
 
+	-- Named kill that starts disguised (barrel / prop). Do not defer on miss.
+	M.HIDDEN_KILLS = {
+		["Stephon's Tormentor"] = true,
+	}
+
 	M.GATES = {
 		["The Hoarder"] = 7,
 		["Captain's Brat"] = 15,
@@ -549,6 +554,10 @@ return function(GB)
 
 	function M.isObjectTarget(target)
 		return type(target) == "string" and M.OBJECT_TARGETS[target] ~= nil
+	end
+
+	function M.isHiddenKill(name)
+		return type(name) == "string" and M.HIDDEN_KILLS[name] == true
 	end
 
 	function M.hasDestroyStage(name)

@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
--- Version: 1.1.31
--- Commit: 2de761d
--- BuiltAt: 2026-09-08T05:58:34+07:00
+-- Version: 1.1.32
+-- Commit: 506a298
+-- BuiltAt: 2026-09-08T06:08:01+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -35,9 +35,9 @@ return function(meta)
 
 	stopPreviousInstance()
 
-	local BUILD_VERSION = "1.1.31"
-	local BUILD_COMMIT = "2de761d"
-	local BUILD_AT = "2026-09-08T05:58:34+07:00"
+	local BUILD_VERSION = "1.1.32"
+	local BUILD_COMMIT = "506a298"
+	local BUILD_AT = "2026-09-08T06:08:01+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -3348,6 +3348,11 @@ return function(GB)
 		["The Wandering Hypnotist"] = "\"Hypnotist\" Mango",
 	}
 
+	-- Named kill that starts disguised (barrel / prop). Do not defer on miss.
+	M.HIDDEN_KILLS = {
+		["Stephon's Tormentor"] = true,
+	}
+
 	M.GATES = {
 		["The Hoarder"] = 7,
 		["Captain's Brat"] = 15,
@@ -3855,6 +3860,10 @@ return function(GB)
 		return type(target) == "string" and M.OBJECT_TARGETS[target] ~= nil
 	end
 
+	function M.isHiddenKill(name)
+		return type(name) == "string" and M.HIDDEN_KILLS[name] == true
+	end
+
 	function M.hasDestroyStage(name)
 		if type(name) ~= "string" or name == "" then
 			return false
@@ -4138,7 +4147,7 @@ return function(GB)
 	M.STAGES["Sabotage The Cannon|4|Talk|Clowny D. Clown"] = { quest = "Sabotage The Cannon", stage = 4, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Clowny D. Clown", amount = 1, acquire = nil, source = "Clowny D. Clown", location = "Clown Town", marker = "Clowny D. Clown", handler = "Quest.talk", status = "IMPLEMENTED" }
 	M.STAGES["Stephon's Tormentor|1|Required|Level"] = { quest = "Stephon's Tormentor", stage = 1, island = "Clown Town", objective = "Required", goal = "LevelGate", target = "Level", amount = 1, acquire = nil, source = nil, location = "Clown Town", marker = nil, handler = "DecisionEngine.levelFarm", status = "IMPLEMENTED" }
 	M.STAGES["Stephon's Tormentor|2|Talk|Stephon"] = { quest = "Stephon's Tormentor", stage = 2, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Stephon", amount = 1, acquire = nil, source = "Stephon", location = "Clown Town", marker = "Stephon", handler = "Quest.talk", status = "IMPLEMENTED" }
-	M.STAGES["Stephon's Tormentor|3|Kill|\"Barrel Clown\" Binki"] = { quest = "Stephon's Tormentor", stage = 3, island = "Clown Town", objective = "Kill", goal = "Kill", target = "\"Barrel Clown\" Binki", amount = 1, acquire = nil, source = "\"Barrel Clown\" Binki", location = "Clown Town", marker = nil, handler = "Combat.attack", status = "IMPLEMENTED" }
+	M.STAGES["Stephon's Tormentor|3|Kill|\"Barrel Clown\" Binki"] = { quest = "Stephon's Tormentor", stage = 3, island = "Clown Town", objective = "Kill", goal = "Kill", target = "\"Barrel Clown\" Binki", amount = 1, acquire = nil, source = "\"Barrel Clown\" Binki", location = "Clown Town", marker = "Stephon", handler = "Combat.attack", status = "IMPLEMENTED" }
 	M.STAGES["Stephon's Tormentor|4|Talk|Stephon"] = { quest = "Stephon's Tormentor", stage = 4, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Stephon", amount = 1, acquire = nil, source = "Stephon", location = "Clown Town", marker = "Stephon", handler = "Quest.talk", status = "IMPLEMENTED" }
 	M.STAGES["The Ringmaster|1|Required|Level"] = { quest = "The Ringmaster", stage = 1, island = "Clown Town", objective = "Required", goal = "LevelGate", target = "Level", amount = 1, acquire = nil, source = nil, location = "Clown Town", marker = nil, handler = "DecisionEngine.levelFarm", status = "IMPLEMENTED" }
 	M.STAGES["The Ringmaster|2|Talk|Mayor Kiyoshi [2]"] = { quest = "The Ringmaster", stage = 2, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Mayor Kiyoshi [2]", amount = 1, acquire = nil, source = "Mayor Kiyoshi [2]", location = "Clown Town", marker = "Mayor Kiyoshi [2]", handler = "Quest.talk", status = "IMPLEMENTED" }
@@ -6411,6 +6420,140 @@ return function(GB)
 			end
 		end
 		return nil
+	end
+
+	function M.isBinkiRequest(name)
+		if type(name) ~= "string" or name == "" then
+			return false
+		end
+		return string.find(name, "Binki", 1, true) ~= nil
+			or string.find(name, "Barrel Clown", 1, true) ~= nil
+	end
+
+	local function barrelName(n)
+		if type(n) ~= "string" or n == "" then
+			return false
+		end
+		return string.find(string.lower(n), "barrel", 1, true) ~= nil
+	end
+
+	function M.isBarrelName(n)
+		return barrelName(n)
+	end
+
+	local function barrelRoot(inst)
+		if not inst then
+			return nil
+		end
+		if barrelName(inst.Name) and (inst:IsA("Model") or inst:IsA("BasePart")) then
+			return inst
+		end
+		local cur = inst
+		while cur and cur ~= workspace do
+			if barrelName(cur.Name) and (cur:IsA("Model") or cur:IsA("BasePart")) then
+				local p = cur.Parent
+				if p and (p.Name == "Islands" or p.Name == "Entities" or p.Name == "Island" or p.Name == "AA IMPORTANT") then
+					return cur
+				end
+				if p and not barrelName(p.Name) then
+					return cur
+				end
+			end
+			cur = cur.Parent
+		end
+		return inst
+	end
+
+	function M.findDisguisedEnemy(name)
+		if not M.isBinkiRequest(name) then
+			return nil
+		end
+		for _, tag in ipairs({ name, "Binki", "Barrel Clown", '"Barrel Clown" Binki' }) do
+			local tagged = M.taggedAny(tag)
+			if tagged and tagged.Parent and not inRS(tagged) and not M.isPet(tagged) then
+				return M.objectCombatRoot(tagged, name) or tagged
+			end
+		end
+		local ents = workspace:FindFirstChild("Entities")
+		if not ents then
+			return nil
+		end
+		local names = M.namesFor(name, {})
+		for _, ch in ipairs(ents:GetChildren()) do
+			if ch.Parent and not M.isPet(ch) then
+				if M.nameMatches(ch, names) then
+					return ch
+				end
+				local npc = ch:GetAttribute("NPCName") or ch:GetAttribute("DisplayName")
+				if type(npc) == "string" and (string.find(npc, "Binki", 1, true) or string.find(npc, "Barrel Clown", 1, true)) then
+					return ch
+				end
+				if ch:FindFirstChildOfClass("Humanoid") and barrelName(ch.Name) then
+					return ch
+				end
+			end
+		end
+		return nil
+	end
+
+	function M.nearbyBarrelProps(origin, radius)
+		if typeof(origin) ~= "Vector3" then
+			return {}
+		end
+		radius = radius or 70
+		local hits, seen = {}, {}
+		local function add(inst, pos)
+			if not inst or seen[inst] or not inst.Parent or inRS(inst) or M.isPet(inst) then
+				return
+			end
+			if M.isMarkerTree and M.isMarkerTree(inst) then
+				return
+			end
+			local root = barrelRoot(inst)
+			if not root or seen[root] or not barrelName(root.Name) then
+				return
+			end
+			if not (M.part(root) or M.positionOf(root)) then
+				return
+			end
+			seen[inst] = true
+			seen[root] = true
+			local at = pos or M.positionOf(root)
+			if not at then
+				return
+			end
+			local d = (at - origin).Magnitude
+			if d <= radius then
+				hits[#hits + 1] = { inst = root, dist = d }
+			end
+		end
+		local ents = workspace:FindFirstChild("Entities")
+		if ents then
+			for _, ch in ipairs(ents:GetChildren()) do
+				if barrelName(ch.Name) then
+					add(ch)
+				end
+			end
+		end
+		local ok, parts = pcall(function()
+			return workspace:GetPartBoundsInRadius(origin, radius)
+		end)
+		if ok and type(parts) == "table" then
+			for _, part in ipairs(parts) do
+				if part and barrelName(part.Name) then
+					add(part, part.Position)
+				else
+					local model = part and part:FindFirstAncestorOfClass("Model")
+					if model and barrelName(model.Name) then
+						add(model)
+					end
+				end
+			end
+		end
+		table.sort(hits, function(a, b)
+			return a.dist < b.dist
+		end)
+		return hits
 	end
 
 	function M.waitTagged(tag, timeout)
@@ -10381,6 +10524,18 @@ return function(GB)
 			if GB.Resolver and GB.Resolver.isDummyName and GB.Resolver.isDummyName(want) and isDummy(target.Name) then
 				return true
 			end
+			if GB.Resolver and GB.Resolver.isBinkiRequest and GB.Resolver.isBinkiRequest(want) then
+				if GB.Resolver.isBinkiRequest(target.Name) then
+					return true
+				end
+				if GB.Resolver.isBarrelName and (GB.Resolver.isBarrelName(target.Name) or GB.Resolver.isBarrelName(GB.Resolver.displayName(target))) then
+					return true
+				end
+				local npc = target:GetAttribute("NPCName") or target:GetAttribute("DisplayName")
+				if type(npc) == "string" and (string.find(npc, "Binki", 1, true) or string.find(npc, "Barrel Clown", 1, true)) then
+					return true
+				end
+			end
 			if context.Object and GB.Resolver then
 				local spec = GB.QuestData and GB.QuestData.objectSpec and GB.QuestData.objectSpec(want)
 				local tags = { want }
@@ -10722,18 +10877,77 @@ return function(GB)
 		if obj then
 			return obj
 		end
+		if GB.Resolver and GB.Resolver.findDisguisedEnemy then
+			local hidden = GB.Resolver.findDisguisedEnemy(name)
+			if hidden and M.IsValidTarget(hidden, { Name = name }) then
+				return hidden
+			end
+		end
 		local wantObject = (targetPlan and targetPlan.ObjectiveType == "Destroy")
 			or (GB.QuestData and GB.QuestData.isObjectTarget and GB.QuestData.isObjectTarget(name))
+		local hiddenKill = GB.Resolver and GB.Resolver.isBinkiRequest and GB.Resolver.isBinkiRequest(name)
 		local skipBlock = type(targetPlan) == "table" and targetPlan.SkipStream == true
-		if wantObject or not skipBlock then
+		if wantObject or hiddenKill or not skipBlock then
 			M.approachMarker(targetPlan, name)
 			local again = findWorldTarget(name, targetPlan)
 			if again then
 				GB.Log.log("COMBAT", tostring(name) .. " loaded")
 				return again
 			end
+			if hiddenKill then
+				again = GB.Resolver.findDisguisedEnemy and GB.Resolver.findDisguisedEnemy(name)
+				if again and M.IsValidTarget(again, { Name = name }) then
+					GB.Log.log("COMBAT", tostring(name) .. " revealed")
+					return again
+				end
+				M.pokeReveal(name, targetPlan)
+			end
 		end
 		return nil
+	end
+
+	function M.pokeReveal(name, plan)
+		if not (GB.Resolver and GB.Resolver.isBinkiRequest and GB.Resolver.isBinkiRequest(name)) then
+			return false
+		end
+		local now = os.clock()
+		if M._pokeAt and now - M._pokeAt < 0.75 then
+			return false
+		end
+		M._pokeAt = now
+		local origin
+		local hrp = GB.World and GB.World.hrp and GB.World.hrp()
+		if hrp then
+			origin = hrp.Position
+		end
+		if not origin then
+			return false
+		end
+		local list = GB.Resolver.nearbyBarrelProps and GB.Resolver.nearbyBarrelProps(origin, 72) or {}
+		if #list == 0 then
+			M.approachMarker(plan, name)
+			if not M._pokeLog or now - M._pokeLog > 4 then
+				M._pokeLog = now
+				GB.Log.log("COMBAT", "no barrel near " .. tostring(name))
+			end
+			return false
+		end
+		M._pokeI = (M._pokeI or 0) % #list + 1
+		local barrel = list[M._pokeI].inst
+		if not barrel then
+			return false
+		end
+		if not M._pokeLog or now - M._pokeLog > 3 then
+			M._pokeLog = now
+			GB.Log.log("COMBAT", string.format("poke barrel %s d=%.0f", tostring(barrel.Name), list[M._pokeI].dist or 0))
+		end
+		if GB.World.ToEnemy then
+			GB.World.ToEnemy(barrel, 4.2)
+		elseif GB.World.moveTo then
+			GB.World.moveTo(barrel, 5)
+		end
+		M.swing()
+		return true
 	end
 
 	local function nameHits(inst, name)
@@ -12560,6 +12774,9 @@ return function(GB)
 			return true
 		end
 		if GB.QuestData and GB.QuestData.hasDestroyStage and GB.QuestData.hasDestroyStage(name) then
+			return true
+		end
+		if GB.QuestData and GB.QuestData.isHiddenKill and GB.QuestData.isHiddenKill(name) then
 			return true
 		end
 		local qs = M.questState(name)

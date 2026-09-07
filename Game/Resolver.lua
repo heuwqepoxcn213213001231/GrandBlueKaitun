@@ -1583,6 +1583,140 @@ return function(GB)
 		return nil
 	end
 
+	function M.isBinkiRequest(name)
+		if type(name) ~= "string" or name == "" then
+			return false
+		end
+		return string.find(name, "Binki", 1, true) ~= nil
+			or string.find(name, "Barrel Clown", 1, true) ~= nil
+	end
+
+	local function barrelName(n)
+		if type(n) ~= "string" or n == "" then
+			return false
+		end
+		return string.find(string.lower(n), "barrel", 1, true) ~= nil
+	end
+
+	function M.isBarrelName(n)
+		return barrelName(n)
+	end
+
+	local function barrelRoot(inst)
+		if not inst then
+			return nil
+		end
+		if barrelName(inst.Name) and (inst:IsA("Model") or inst:IsA("BasePart")) then
+			return inst
+		end
+		local cur = inst
+		while cur and cur ~= workspace do
+			if barrelName(cur.Name) and (cur:IsA("Model") or cur:IsA("BasePart")) then
+				local p = cur.Parent
+				if p and (p.Name == "Islands" or p.Name == "Entities" or p.Name == "Island" or p.Name == "AA IMPORTANT") then
+					return cur
+				end
+				if p and not barrelName(p.Name) then
+					return cur
+				end
+			end
+			cur = cur.Parent
+		end
+		return inst
+	end
+
+	function M.findDisguisedEnemy(name)
+		if not M.isBinkiRequest(name) then
+			return nil
+		end
+		for _, tag in ipairs({ name, "Binki", "Barrel Clown", '"Barrel Clown" Binki' }) do
+			local tagged = M.taggedAny(tag)
+			if tagged and tagged.Parent and not inRS(tagged) and not M.isPet(tagged) then
+				return M.objectCombatRoot(tagged, name) or tagged
+			end
+		end
+		local ents = workspace:FindFirstChild("Entities")
+		if not ents then
+			return nil
+		end
+		local names = M.namesFor(name, {})
+		for _, ch in ipairs(ents:GetChildren()) do
+			if ch.Parent and not M.isPet(ch) then
+				if M.nameMatches(ch, names) then
+					return ch
+				end
+				local npc = ch:GetAttribute("NPCName") or ch:GetAttribute("DisplayName")
+				if type(npc) == "string" and (string.find(npc, "Binki", 1, true) or string.find(npc, "Barrel Clown", 1, true)) then
+					return ch
+				end
+				if ch:FindFirstChildOfClass("Humanoid") and barrelName(ch.Name) then
+					return ch
+				end
+			end
+		end
+		return nil
+	end
+
+	function M.nearbyBarrelProps(origin, radius)
+		if typeof(origin) ~= "Vector3" then
+			return {}
+		end
+		radius = radius or 70
+		local hits, seen = {}, {}
+		local function add(inst, pos)
+			if not inst or seen[inst] or not inst.Parent or inRS(inst) or M.isPet(inst) then
+				return
+			end
+			if M.isMarkerTree and M.isMarkerTree(inst) then
+				return
+			end
+			local root = barrelRoot(inst)
+			if not root or seen[root] or not barrelName(root.Name) then
+				return
+			end
+			if not (M.part(root) or M.positionOf(root)) then
+				return
+			end
+			seen[inst] = true
+			seen[root] = true
+			local at = pos or M.positionOf(root)
+			if not at then
+				return
+			end
+			local d = (at - origin).Magnitude
+			if d <= radius then
+				hits[#hits + 1] = { inst = root, dist = d }
+			end
+		end
+		local ents = workspace:FindFirstChild("Entities")
+		if ents then
+			for _, ch in ipairs(ents:GetChildren()) do
+				if barrelName(ch.Name) then
+					add(ch)
+				end
+			end
+		end
+		local ok, parts = pcall(function()
+			return workspace:GetPartBoundsInRadius(origin, radius)
+		end)
+		if ok and type(parts) == "table" then
+			for _, part in ipairs(parts) do
+				if part and barrelName(part.Name) then
+					add(part, part.Position)
+				else
+					local model = part and part:FindFirstAncestorOfClass("Model")
+					if model and barrelName(model.Name) then
+						add(model)
+					end
+				end
+			end
+		end
+		table.sort(hits, function(a, b)
+			return a.dist < b.dist
+		end)
+		return hits
+	end
+
 	function M.waitTagged(tag, timeout)
 		timeout = timeout or 4
 		local hit = firstWorldTagged(tag)

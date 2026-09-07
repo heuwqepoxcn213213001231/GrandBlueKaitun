@@ -625,6 +625,9 @@ return function(GB)
 		if GB.QuestData and GB.QuestData.hasDestroyStage and GB.QuestData.hasDestroyStage(name) then
 			return true
 		end
+		if GB.QuestData and GB.QuestData.isHiddenKill and GB.QuestData.isHiddenKill(name) then
+			return true
+		end
 		local qs = M.questState(name)
 		local o = qs and qs.Objective
 		if o and o.Type == "Destroy" then

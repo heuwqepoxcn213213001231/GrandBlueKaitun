@@ -236,6 +236,18 @@ return function(GB)
 			if GB.Resolver and GB.Resolver.isDummyName and GB.Resolver.isDummyName(want) and isDummy(target.Name) then
 				return true
 			end
+			if GB.Resolver and GB.Resolver.isBinkiRequest and GB.Resolver.isBinkiRequest(want) then
+				if GB.Resolver.isBinkiRequest(target.Name) then
+					return true
+				end
+				if GB.Resolver.isBarrelName and (GB.Resolver.isBarrelName(target.Name) or GB.Resolver.isBarrelName(GB.Resolver.displayName(target))) then
+					return true
+				end
+				local npc = target:GetAttribute("NPCName") or target:GetAttribute("DisplayName")
+				if type(npc) == "string" and (string.find(npc, "Binki", 1, true) or string.find(npc, "Barrel Clown", 1, true)) then
+					return true
+				end
+			end
 			if context.Object and GB.Resolver then
 				local spec = GB.QuestData and GB.QuestData.objectSpec and GB.QuestData.objectSpec(want)
 				local tags = { want }
@@ -577,18 +589,77 @@ return function(GB)
 		if obj then
 			return obj
 		end
+		if GB.Resolver and GB.Resolver.findDisguisedEnemy then
+			local hidden = GB.Resolver.findDisguisedEnemy(name)
+			if hidden and M.IsValidTarget(hidden, { Name = name }) then
+				return hidden
+			end
+		end
 		local wantObject = (targetPlan and targetPlan.ObjectiveType == "Destroy")
 			or (GB.QuestData and GB.QuestData.isObjectTarget and GB.QuestData.isObjectTarget(name))
+		local hiddenKill = GB.Resolver and GB.Resolver.isBinkiRequest and GB.Resolver.isBinkiRequest(name)
 		local skipBlock = type(targetPlan) == "table" and targetPlan.SkipStream == true
-		if wantObject or not skipBlock then
+		if wantObject or hiddenKill or not skipBlock then
 			M.approachMarker(targetPlan, name)
 			local again = findWorldTarget(name, targetPlan)
 			if again then
 				GB.Log.log("COMBAT", tostring(name) .. " loaded")
 				return again
 			end
+			if hiddenKill then
+				again = GB.Resolver.findDisguisedEnemy and GB.Resolver.findDisguisedEnemy(name)
+				if again and M.IsValidTarget(again, { Name = name }) then
+					GB.Log.log("COMBAT", tostring(name) .. " revealed")
+					return again
+				end
+				M.pokeReveal(name, targetPlan)
+			end
 		end
 		return nil
+	end
+
+	function M.pokeReveal(name, plan)
+		if not (GB.Resolver and GB.Resolver.isBinkiRequest and GB.Resolver.isBinkiRequest(name)) then
+			return false
+		end
+		local now = os.clock()
+		if M._pokeAt and now - M._pokeAt < 0.75 then
+			return false
+		end
+		M._pokeAt = now
+		local origin
+		local hrp = GB.World and GB.World.hrp and GB.World.hrp()
+		if hrp then
+			origin = hrp.Position
+		end
+		if not origin then
+			return false
+		end
+		local list = GB.Resolver.nearbyBarrelProps and GB.Resolver.nearbyBarrelProps(origin, 72) or {}
+		if #list == 0 then
+			M.approachMarker(plan, name)
+			if not M._pokeLog or now - M._pokeLog > 4 then
+				M._pokeLog = now
+				GB.Log.log("COMBAT", "no barrel near " .. tostring(name))
+			end
+			return false
+		end
+		M._pokeI = (M._pokeI or 0) % #list + 1
+		local barrel = list[M._pokeI].inst
+		if not barrel then
+			return false
+		end
+		if not M._pokeLog or now - M._pokeLog > 3 then
+			M._pokeLog = now
+			GB.Log.log("COMBAT", string.format("poke barrel %s d=%.0f", tostring(barrel.Name), list[M._pokeI].dist or 0))
+		end
+		if GB.World.ToEnemy then
+			GB.World.ToEnemy(barrel, 4.2)
+		elseif GB.World.moveTo then
+			GB.World.moveTo(barrel, 5)
+		end
+		M.swing()
+		return true
 	end
 
 	local function nameHits(inst, name)

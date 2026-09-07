@@ -1,5 +1,15 @@
 # Runtime Fixes
 
+## 1.1.32 — Barrel Clown Binki: poke barrels, don't hunt a missing name
+
+`Stephon's Tormentor` HUD is `Defeat "Barrel Clown" Binki (0/1)`. Binki hides in a barrel. Combat looked for an Entities enemy by that name, missed, and stood still next to crates. Kill-stage marker was nil.
+
+**Fix**
+
+- Resolve Binki via tag / NPCName / Entities barrel+Humanoid.
+- On miss, swing nearby `Barrel*` props (`GetPartBoundsInRadius`) to reveal him. Cycle barrels, stay in Stephon's yard.
+- Hidden-kill quests never defer. Marker for the kill stage is Stephon.
+
 ## 1.1.31 — Never defer live Destroy; no findTarget wait
 
 Reload of 1.1.30 still logged `defer Sabotage The Cannon deferred_after_fail`. After boot, live quest payload can be empty so `Objective.Type` was not `Destroy` and `noteFail` still deferred 30s. Engine then `otherOrFarm` — tele away. `findTarget` also `task.wait` 0.35–2.2s (`Quest.doLive` 271ms).
