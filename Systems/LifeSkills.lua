@@ -231,6 +231,13 @@ return function(GB)
 	end
 
 	function M.smeltToward(target)
+		if target == "Copper Bar" or target == "Copper Ore" then
+			local has = GB.PlayerData.hasItem and select(1, GB.PlayerData.hasItem("Copper Ore"))
+			if not has then
+				GB.Log.warn("SMELT", "need Copper Ore")
+				return false
+			end
+		end
 		local station = (GB.Resolver.taggedAny and GB.Resolver.taggedAny("Furnace")) or GB.Resolver.byName("Furnace")
 		if not station then
 			GB.Log.warn("SMELT", "furnace miss " .. tostring(target))

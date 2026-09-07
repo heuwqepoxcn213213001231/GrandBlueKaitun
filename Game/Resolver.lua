@@ -34,6 +34,14 @@ return function(GB)
 			"Training Dummy8",
 		},
 		["TrainingDummy"] = { "Training Dummy", "Training Dummy1" },
+		-- Quest/mob-zone name. Live models: Corrupt Swordsman Officer N / Corrupt Sniper Officer N.
+		-- Tag + NPCName are the variant, not "Corrupt Marine Officer". Foot soldier is "Corrupt Marine" only.
+		["Corrupt Marine Officer"] = {
+			"Corrupt Swordsman Officer",
+			"Corrupt Sniper Officer",
+		},
+		["Corrupt Swordsman Officer"] = { "Corrupt Marine Officer", "Corrupt Sniper Officer" },
+		["Corrupt Sniper Officer"] = { "Corrupt Marine Officer", "Corrupt Swordsman Officer" },
 	}
 
 	local missLog = {}
@@ -391,19 +399,69 @@ return function(GB)
 		return roots
 	end
 
-	local function nameHit(inst, names)
-		local nm = inst.Name
-		local disp = M.displayName(inst)
-		local npcAttr = inst:GetAttribute("NPCName")
-		for _, n in ipairs(names) do
-			if nm == n or disp == n or npcAttr == n then
-				return true
-			end
-			if inst:HasTag(n) then
+	function M.baseName(s)
+		if type(s) ~= "string" then
+			return ""
+		end
+		return (string.gsub(s, " %d+$", ""))
+	end
+
+	function M.isCorruptOfficer(inst)
+		if not inst then
+			return false
+		end
+		if inst:HasTag("Corrupt Swordsman Officer") or inst:HasTag("Corrupt Sniper Officer") then
+			return true
+		end
+		for _, s in ipairs({ inst:GetAttribute("NPCName"), inst.Name, M.displayName(inst) }) do
+			if type(s) == "string" and string.find(s, "Officer", 1, true) and string.find(s, "Corrupt", 1, true) then
 				return true
 			end
 		end
 		return false
+	end
+
+	function M.nameMatches(inst, names)
+		if not (inst and type(names) == "table") then
+			return false
+		end
+		local nm = inst.Name
+		local disp = M.displayName(inst)
+		local npc = inst:GetAttribute("NPCName")
+		local bases = { M.baseName(nm), M.baseName(disp or ""), M.baseName(type(npc) == "string" and npc or "") }
+		for _, n in ipairs(names) do
+			if type(n) == "string" and n ~= "" then
+				if n == "Corrupt Marine Officer" and M.isCorruptOfficer(inst) then
+					return true
+				end
+				if nm == n or disp == n or npc == n then
+					return true
+				end
+				local tagged
+				pcall(function()
+					tagged = inst:HasTag(n)
+				end)
+				if tagged then
+					return true
+				end
+				for _, b in ipairs(bases) do
+					if b == n then
+						return true
+					end
+				end
+				if #n > 3 and string.sub(nm, 1, #n) == n then
+					local ch = string.sub(nm, #n + 1, #n + 1)
+					if ch == "" or ch == " " then
+						return true
+					end
+				end
+			end
+		end
+		return false
+	end
+
+	local function nameHit(inst, names)
+		return M.nameMatches(inst, names)
 	end
 
 	local function dialogueNameHit(inst, names)

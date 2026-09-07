@@ -1,5 +1,17 @@
 # Runtime Fixes
 
+## 1.1.13 — Tea Party Crashers: Corrupt Marine Officer is a family name
+
+`Kill Corrupt Marine Officer` 7. Resolver exact-match on `Workspace.Entities` miss. Nearby dump had **Corrupt Swordsman Officer** d=56, Marine Snitch, Maeve. Live models: `Corrupt Swordsman Officer 3017`, `Corrupt Sniper Officer 3015`. Tags: variant name + `Corrupt Marine`. `NPCName` = variant. Mob zone part is named `Corrupt Marine Officer` — not the combatant. Foot soldier `Corrupt Marine N` is a different kill.
+
+**Fix:** alias + `nameMatches` (strip trailing id, prefix, `isCorruptOfficer`). `IsValidTarget` uses the same matcher. Smelt Copper Bar aborts if no Copper Ore (0/1 GUI).
+
+```
+[Kaitun][RESOLVE] Corrupt Marine Officer -> Workspace.Entities.Corrupt Swordsman Officer 3017
+```
+
+---
+
 ## 1.1.12 — Mine is HOLD charge, stats 8:2 on current totals
 
 Copper Ore 0/2. `EquipAndActivateBindable("Pickaxe")` tap started Swing then QTE died (`Beginning charge` / `bindable event fired`). Ore prompt HOLD. `TutorialLocal` already said hold then release at the top.

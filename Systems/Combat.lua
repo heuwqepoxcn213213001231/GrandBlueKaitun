@@ -207,23 +207,19 @@ return function(GB)
 		end
 		if context.Name then
 			local want = context.Name
-			local disp = GB.Resolver and GB.Resolver.displayName(target)
-			local npc = target:GetAttribute("NPCName")
-			if target.Name ~= want and disp ~= want and npc ~= want then
-				if not (GB.Resolver and GB.Resolver.isDummyName and GB.Resolver.isDummyName(want) and isDummy(target.Name)) then
-					local names = GB.Resolver and GB.Resolver.namesFor and GB.Resolver.namesFor(want, {})
-					local hit = false
-					if type(names) == "table" then
-						for _, n in ipairs(names) do
-							if target.Name == n or disp == n or npc == n or target:HasTag(n) then
-								hit = true
-								break
-							end
-						end
-					end
-					if not hit then
-						return false
-					end
+			if GB.Resolver and GB.Resolver.isDummyName and GB.Resolver.isDummyName(want) and isDummy(target.Name) then
+				return true
+			end
+			local names = GB.Resolver and GB.Resolver.namesFor and GB.Resolver.namesFor(want, {})
+			if GB.Resolver and GB.Resolver.nameMatches then
+				if not GB.Resolver.nameMatches(target, names or { want }) then
+					return false
+				end
+			else
+				local disp = GB.Resolver and GB.Resolver.displayName(target)
+				local npc = target:GetAttribute("NPCName")
+				if target.Name ~= want and disp ~= want and npc ~= want then
+					return false
 				end
 			end
 		end

@@ -66,7 +66,7 @@ Talk remote: `ClientQuest:FireServer("Talk", DisplayName)` + `DialogueBindable:F
 | Setting Sail | 4 | Anchor Town | Spawn | Spawn | Rowboat | — | Rowboat | Anchor Town | A Voice in a Shell | Boat.spawnRowboat | live Spawn Rowboat count 1 | STATIC_VERIFIED | IMPLEMENTED |
 | Setting Sail | 5 | Anchor Town | Talk | Talk | Mayor Kiyoshi | — | Mayor Kiyoshi | Anchor Town | A Voice in a Shell | Quest.talk | live Talk Mayor Kiyoshi count 1 | STATIC_VERIFIED | IMPLEMENTED |
 | Tea Party Crashers | 1 | Anchor Town | Talk | Talk | Maeve | — | Maeve | Anchor Town | First Upgrade | Quest.talk | live Talk Maeve count 1 | STATIC_VERIFIED | IMPLEMENTED |
-| Tea Party Crashers | 2 | Anchor Town | Kill | Kill | Corrupt Marine Officer | — | Corrupt Marine Officer | Anchor Town | First Upgrade | Combat.attack | live Kill Corrupt Marine Officer count 7 | STATIC_VERIFIED | IMPLEMENTED |
+| Tea Party Crashers | 2 | Anchor Town | Kill | Kill | Corrupt Marine Officer | — | Corrupt Swordsman Officer / Sniper Officer | Anchor Town | First Upgrade | Combat.attack | live Kill Corrupt Marine Officer count 7 | RUNTIME_VERIFIED | IMPLEMENTED |
 | Tea Party Crashers | 2 | Anchor Town | Kill | Kill | Marine Snitch | — | Marine Snitch | Anchor Town | First Upgrade | Combat.attack | live Kill Marine Snitch count 1 | STATIC_VERIFIED | IMPLEMENTED |
 | Tea Party Crashers | 3 | Anchor Town | Talk | Talk | Maeve | — | Maeve | Anchor Town | First Upgrade | Quest.talk | live Talk Maeve count 1 | STATIC_VERIFIED | IMPLEMENTED |
 | The Hoarder | 1 | Anchor Town | Required | LevelGate | Level | — | — | Anchor Town | Gearing Up | DecisionEngine.levelFarm | live Required Level count 1 | STATIC_VERIFIED | IMPLEMENTED |
