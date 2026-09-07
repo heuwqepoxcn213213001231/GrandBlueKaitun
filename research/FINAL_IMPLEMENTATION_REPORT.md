@@ -1,8 +1,10 @@
 # FINAL Implementation Report — Grand Blue Kaitun
 
+**Version:** `1.0.1`  
 **Place:** `118635363908336` (Studio connected).  
 **Entry:** `NiaUISilent/Hub/Grand Blue/kaitun.lua`  
-**Ngôn ngữ log:** `[Kaitun][CAT]`.
+**Ngôn ngữ log:** `[Kaitun][CAT]`.  
+**Runtime fixes:** `research/RUNTIME_FIXES.md`.
 
 ## Architecture
 
@@ -20,7 +22,9 @@ Grand Blue/
 
 Load: `readfile` từ `GB_ROOT` / `NiaUISilent/Hub/Grand Blue/` / `Grand Blue/`. Mỗi module `return function(GB)`.
 
-**PlayerState** (`Core/State.lua`): Character, Level, Exp, Gold, CelestialCoins, Stats, SkillPoints, Skills, Inventory, Backpack, Equipment, Weapon, FightingStyle, Fruit, StoredFruits, Race, Trait, Haki, CurrentIsland, CurrentQuest, Boat, LifeSkills, Flags. GUI `guiNum` fallback cho level / unused stat points.
+**PlayerState** (`Core/State.lua`): Character, Level, Exp, Gold, CelestialCoins, Stats, SkillPoints, Skills, Inventory, Backpack, Equipment, Weapon, FightingStyle, Fruit, StoredFruits, Race, Trait, Haki, CurrentIsland, PhysicalIsland, CurrentQuest, Boat, LifeSkills, Flags. GUI `guiNum` fallback cho level / unused stat points. `PhysicalIsland` từ `World.GetIslandFromPosition`; fail → `nil`, retry tick sau — không pcall-wrap.
+
+**Island geometry** (`Game/World.lua`): `GetIslandPosition` / `GetIslandBounds` / `IsPositionInsideIsland` / `GetIslandFromPosition`. Studio: `Workspace.Islands.*` là **Folder** (Anchor Town, Clown Town, Maple Village) — không đọc `.PrimaryPart` trước `IsA("Model")`. Origin: `PersistentAnchor.Center` + `Radius` khi có; không thì `Island` centroid/AABB (median, bỏ part nhỏ/xa); fallback `Constants.Persistent` GetBoundingBox. Map chưa load → `nil`.
 
 **DecisionEngine:** Recovery → Tutorial → Codes/Rewards → Shop unlock → Equip → Stats → Skills → Travel/Boat → live story → picker → next story → best repeat → Boss/Fruit/Chest/Treasure.
 

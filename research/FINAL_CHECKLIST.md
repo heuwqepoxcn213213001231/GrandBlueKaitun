@@ -2,11 +2,11 @@
 
 | Feature | Status | Reason |
 |---|---|---|
-| Fresh bootstrap | PARTIAL | Wait character + StatReplication; Introduction via live quest |
+| Fresh bootstrap | PARTIAL | Wait character + StatReplication; Introduction via live quest. 1.0.1: Folder islands no longer crash `State.refresh` |
 | Tutorial | PARTIAL | Introduction/Basics handlers (dummy, stats, Strong Punch prompt) |
 | Quest | WORKING | Generic Talk/Kill/Collect/Purchase/Equip/Upgrade/… from live stages |
 | Auto level | WORKING | Story gates + repeatable `full_until` bands |
-| Island | WORKING | Anchor → Setting Sail 30 → Clown → Journey 70 → Maple |
+| Island | WORKING | Anchor → Setting Sail 30 → Clown → Journey 70 → Maple. Geometry API type-safe on Folder/Model/BasePart (`World.GetIsland*`) |
 | Travel | PARTIAL | destOk hop/walk; island spawn; no invented teleport list |
 | Combat | WORKING | AttackModule.Swing, lock beside dummy, reacquire, destOk |
 | Stats | WORKING | `StatPoints("Invest", name, n)` MenuHandler |

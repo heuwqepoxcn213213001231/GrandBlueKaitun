@@ -47,7 +47,7 @@ return function(GB)
 		local s = {}
 		local lp = GB.lp
 		local char = lp and lp.Character
-		local hrp = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
+		local hrp = char and (char:FindFirstChild("HumanoidRootPart") or (char:IsA("Model") and char.PrimaryPart))
 		local hum = char and char:FindFirstChildOfClass("Humanoid")
 		s.Character = char
 		s.HRP = hrp
@@ -86,7 +86,10 @@ return function(GB)
 		s.Completed = d.CompletedSet or {}
 		s.CurrentQuest = d.CurrentQuest
 		s.CurrentIsland = (GB.World and GB.World.islandFromProgress(s)) or "Anchor Town"
-		s.PhysicalIsland = GB.World and GB.World.islandFromPosition(s.Position) or s.CurrentIsland
+		s.PhysicalIsland = nil
+		if GB.World and s.Position then
+			s.PhysicalIsland = GB.World.GetIslandFromPosition(s.Position)
+		end
 
 		-- GUI fallbacks (old kaitun: StatpointText.Value lies)
 		pcall(function()
