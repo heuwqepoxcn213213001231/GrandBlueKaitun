@@ -14,6 +14,9 @@ return function(GB)
 		continueAttempts = 0,
 		unresolved = nil,
 		dumpedTree = nil,
+		_overlayText = nil,
+		_overlayTextSrc = nil,
+		_overlayTextAt = 0,
 	}
 
 	M.GateTypes = {
@@ -24,6 +27,23 @@ return function(GB)
 		EquipRequired = "EquipRequired",
 		InputRequired = "InputRequired",
 	}
+	local OVERLAY_TEXT_TTL = 0.65
+
+	local function pbegin()
+		return GB.Profiler and GB.Profiler.begin and GB.Profiler.begin() or nil
+	end
+
+	local function pdone(name, t0)
+		if t0 and GB.Profiler and GB.Profiler.done then
+			GB.Profiler.done(name, t0)
+		end
+	end
+
+	local function perfCount(name, n)
+		if GB.Profiler and GB.Profiler.count then
+			GB.Profiler.count(name, n or 1)
+		end
+	end
 
 	-- Studio-verified fullscreen continue overlays (no GuiButton).
 	M.CONTINUE_OVERLAYS = {
@@ -160,9 +180,57 @@ return function(GB)
 		return GB.State and GB.State.guiText(inst)
 	end
 
+	local function overlayKeyword(t)
+		if type(t) ~= "string" or #t < 5 or #t > 90 then
+			return false
+		end
+		local low = string.lower(t)
+		return string.find(low, "backpack", 1, true)
+			or string.find(low, "drag", 1, true)
+			or string.find(low, "open the", 1, true)
+			or string.find(low, "select", 1, true)
+			or string.find(low, "invest", 1, true)
+			or string.find(low, "sell", 1, true)
+	end
+
+	local function collectOverlayText(root, budget)
+		if not (root and budget and budget > 0) then
+			return nil, budget or 0
+		end
+		for _, d in ipairs(root:GetChildren()) do
+			if budget <= 0 then
+				break
+			end
+			if d:IsA("TextLabel") or d:IsA("TextButton") then
+				local t = d.Text
+				if overlayKeyword(t) then
+					return t, budget
+				end
+				budget = budget - 1
+			end
+			local hit
+			hit, budget = collectOverlayText(d, budget)
+			if hit then
+				return hit, budget
+			end
+		end
+		return nil, budget
+	end
+
 	local function overlayText()
+		local now = os.clock()
+		if now - (M._overlayTextAt or 0) < OVERLAY_TEXT_TTL then
+			if M._overlayText == false then
+				return nil, nil
+			end
+			return M._overlayText, M._overlayTextSrc
+		end
+		perfCount("QuestGuiScan", 1)
 		local pg = GB.lp and GB.lp.PlayerGui
 		if not pg then
+			M._overlayText = false
+			M._overlayTextSrc = nil
+			M._overlayTextAt = now
 			return nil
 		end
 		local qo = pg:FindFirstChild("QuestOverlay")
@@ -170,29 +238,25 @@ return function(GB)
 			local msg = qo:FindFirstChild("QuestMessage") or qo:FindFirstChildWhichIsA("TextLabel", true)
 			local t = guiText(msg)
 			if type(t) == "string" and t ~= "" then
+				M._overlayText = t
+				M._overlayTextSrc = "QuestOverlay"
+				M._overlayTextAt = now
 				return t, "QuestOverlay"
 			end
 		end
 		local ss = pg:FindFirstChild("ScreenShadow")
 		if ss then
-			for _, d in ipairs(ss:GetDescendants()) do
-				if d:IsA("TextLabel") or d:IsA("TextButton") then
-					local t = d.Text
-					if type(t) == "string" and #t > 4 and #t < 80 then
-						local low = string.lower(t)
-						if string.find(low, "backpack", 1, true)
-							or string.find(low, "drag", 1, true)
-							or string.find(low, "open the", 1, true)
-							or string.find(low, "select", 1, true)
-							or string.find(low, "invest", 1, true)
-							or string.find(low, "sell", 1, true)
-						then
-							return t, "ScreenShadow"
-						end
-					end
-				end
+			local hit = collectOverlayText(ss, 120)
+			if hit then
+				M._overlayText = hit
+				M._overlayTextSrc = "ScreenShadow"
+				M._overlayTextAt = now
+				return hit, "ScreenShadow"
 			end
 		end
+		M._overlayText = false
+		M._overlayTextSrc = nil
+		M._overlayTextAt = now
 		return nil, nil
 	end
 
@@ -401,20 +465,19 @@ return function(GB)
 	end
 
 	function M.refreshAfterGate()
-		if GB.PlayerData and GB.PlayerData.refreshLive then
-			GB.PlayerData.refreshLive(true)
+		if GB.PlayerData and GB.PlayerData.forceQuestRefresh then
+			GB.PlayerData.forceQuestRefresh("tutorial_gate")
+		elseif GB.PlayerData and GB.PlayerData.refreshLive then
+			GB.PlayerData.refreshLive(true, "tutorial_gate")
 		end
 		if GB.State and GB.State.refresh then
 			GB.State.refresh()
 		end
-		if GB.Quest and GB.PlayerData and GB.PlayerData.current then
-			local cur = GB.PlayerData.current()
-			if cur and GB.Quest.questState then
-				GB.Quest.questState(cur)
-			end
-		end
 		if GB.Planner and GB.Planner.Replan then
 			GB.Planner.Replan()
+		end
+		if GB.Stats and GB.Stats.markDirty then
+			GB.Stats.markDirty("tutorial_gate")
 		end
 		if GB.Recovery and GB.Recovery.markSuccess then
 			GB.Recovery.markSuccess()
@@ -697,6 +760,39 @@ return function(GB)
 
 	function M.dump()
 		return M.snapshot()
+	end
+
+	local _snapshotRaw = M.snapshot
+	function M.snapshot()
+		local t0 = pbegin()
+		local out = { pcall(_snapshotRaw) }
+		pdone("Tutorial.snapshot", t0)
+		if not out[1] then
+			error(out[2])
+		end
+		return unpack(out, 2)
+	end
+
+	local _getCurrentGateRaw = M.GetCurrentGate
+	function M.GetCurrentGate()
+		local t0 = pbegin()
+		local out = { pcall(_getCurrentGateRaw) }
+		pdone("Tutorial.GetCurrentGate", t0)
+		if not out[1] then
+			error(out[2])
+		end
+		return unpack(out, 2)
+	end
+
+	local _continuationRaw = M.HandleContinuationOverlay
+	function M.HandleContinuationOverlay(gate)
+		local t0 = pbegin()
+		local out = { pcall(_continuationRaw, gate) }
+		pdone("Tutorial continuation", t0)
+		if not out[1] then
+			error(out[2])
+		end
+		return unpack(out, 2)
 	end
 
 	return M

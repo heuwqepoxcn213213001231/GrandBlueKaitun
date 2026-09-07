@@ -55,6 +55,53 @@ return function(GB)
 	local dummyPos = nil
 	local dummyMiss = 0
 	M.lastCandidates = {}
+	local negativeCache = {}
+	local negativeEpoch = 1
+	local NEG_TTL = 3.8
+
+	local function pbegin()
+		return GB.Profiler and GB.Profiler.begin and GB.Profiler.begin() or nil
+	end
+
+	local function pdone(name, t0)
+		if t0 and GB.Profiler and GB.Profiler.done then
+			GB.Profiler.done(name, t0)
+		end
+	end
+
+	local function perfCount(name, n)
+		if GB.Profiler and GB.Profiler.count then
+			GB.Profiler.count(name, n or 1)
+		end
+	end
+
+	local function clearNegative()
+		negativeCache = {}
+		negativeEpoch = negativeEpoch + 1
+	end
+
+	local function negativeHit(key)
+		local row = negativeCache[key]
+		if type(row) ~= "table" then
+			return false
+		end
+		if row.epoch ~= negativeEpoch then
+			negativeCache[key] = nil
+			return false
+		end
+		if os.clock() >= (row.untilAt or 0) then
+			negativeCache[key] = nil
+			return false
+		end
+		return true
+	end
+
+	local function noteNegative(key, ttl)
+		negativeCache[key] = {
+			untilAt = os.clock() + (ttl or NEG_TTL),
+			epoch = negativeEpoch,
+		}
+	end
 
 	function M.isDummyName(name)
 		if type(name) ~= "string" or name == "" then
@@ -505,12 +552,15 @@ return function(GB)
 	end
 
 	local function scanRoots(pred, limit)
+		local t0 = pbegin()
 		limit = limit or 8
+		perfCount("ResolverDeepScan", 1)
 		local hits = {}
 		for _, root in ipairs(npcRoots()) do
 			if pred(root) then
 				hits[#hits + 1] = root
 				if #hits >= limit then
+					pdone("Resolver deep scan", t0)
 					return hits
 				end
 			end
@@ -518,11 +568,13 @@ return function(GB)
 				if pred(d) then
 					hits[#hits + 1] = d
 					if #hits >= limit then
+						pdone("Resolver deep scan", t0)
 						return hits
 					end
 				end
 			end
 		end
+		pdone("Resolver deep scan", t0)
 		return hits
 	end
 
@@ -562,6 +614,7 @@ return function(GB)
 	end
 
 	function M.dumpNearby(request, opts)
+		local t0 = pbegin()
 		opts = opts or {}
 		local names = M.namesFor(request, opts)
 		local origin
@@ -570,6 +623,7 @@ return function(GB)
 			origin = hrp.Position
 		end
 		local cand = {}
+		perfCount("ResolverDeepScan", 1)
 		for _, root in ipairs(npcRoots()) do
 			for _, d in ipairs(root:GetDescendants()) do
 				if d:IsA("Model") and not inRS(d) then
@@ -639,25 +693,36 @@ return function(GB)
 				Dist = c.Dist,
 			}
 		end
+		pdone("Resolver deep scan", t0)
 		return cand
 	end
 
 	function M.resolve(request, opts)
+		local t0 = pbegin()
 		opts = opts or {}
 		if type(request) ~= "string" or request == "" or request == "\\" then
+			pdone("Resolver.resolve", t0)
 			return nil
 		end
 		local kind0 = opts.ExpectedRole or opts.kind or "npc"
 		if (kind0 == "enemy" or kind0 == "any") and M.isDummyName(request) then
 			local d = M.dummy()
-			return d and M.pack(d, request)
+			local out = d and M.pack(d, request)
+			pdone("Resolver.resolve", t0)
+			return out
 		end
 		local names = M.namesFor(request, opts)
 		local kind = opts.ExpectedRole or opts.kind or "npc"
 		local cacheKey = "res:" .. kind .. ":" .. table.concat(names, "|")
 		local hit = GB.Cache.get(cacheKey, opts.deep and 0.4 or 2.0)
 		if hit and hit.Parent and usable(hit, kind) then
-			return M.pack(hit, request)
+			local out = M.pack(hit, request)
+			pdone("Resolver.resolve", t0)
+			return out
+		end
+		if not opts.deep and negativeHit(cacheKey) then
+			pdone("Resolver.resolve", t0)
+			return nil
 		end
 
 		local best, bestS
@@ -724,8 +789,10 @@ return function(GB)
 
 		if best then
 			GB.Cache.set(cacheKey, best)
+			negativeCache[cacheKey] = nil
 			local pack = M.pack(best, request)
 			GB.Log.log("RESOLVE", string.format("%s -> %s", request, best:GetFullName()))
+			pdone("Resolver.resolve", t0)
 			return pack
 		end
 
@@ -735,6 +802,8 @@ return function(GB)
 			missLog[mk] = now
 			GB.Log.warn("ERROR", "resolve miss " .. table.concat(names, " / "))
 		end
+		noteNegative(cacheKey, opts.negTTL or NEG_TTL)
+		pdone("Resolver.resolve", t0)
 		return nil
 	end
 
@@ -826,6 +895,28 @@ return function(GB)
 		opts.ExpectedRole = opts.ExpectedRole or "npc"
 		opts.kind = "npc"
 		return M.resolve(name, opts)
+	end
+
+	local _resolveObjectRaw = M.resolveObject
+	function M.resolveObject(name, opts)
+		local t0 = pbegin()
+		local out = { pcall(_resolveObjectRaw, name, opts) }
+		pdone("Resolver.resolveObject", t0)
+		if not out[1] then
+			error(out[2])
+		end
+		return unpack(out, 2)
+	end
+
+	local _resolveNPCRaw = M.resolveNPC
+	function M.resolveNPC(name, opts)
+		local t0 = pbegin()
+		local out = { pcall(_resolveNPCRaw, name, opts) }
+		pdone("Resolver.resolveNPC", t0)
+		if not out[1] then
+			error(out[2])
+		end
+		return unpack(out, 2)
 	end
 
 	function M.enemies(name)
@@ -1000,6 +1091,7 @@ return function(GB)
 		if cfg then
 			return cfg
 		end
+		perfCount("ResolverDeepScan", 1)
 		for _, d in ipairs(model:GetDescendants()) do
 			if d:IsA("Configuration") then
 				return d
@@ -1012,6 +1104,7 @@ return function(GB)
 		if not model then
 			return nil
 		end
+		perfCount("ResolverDeepScan", 1)
 		for _, d in ipairs(model:GetDescendants()) do
 			if d:IsA("ProximityPrompt") then
 				if not interaction or d.Name == interaction or d:GetAttribute("Interaction") == interaction then
@@ -1119,6 +1212,39 @@ return function(GB)
 		end
 		return M.byName("Afuaru's Chests", "chest")
 	end
+
+	local function watchInvalidate(root)
+		if not (root and root.Parent) then
+			return
+		end
+		GB.conns[#GB.conns + 1] = root.ChildAdded:Connect(function()
+			clearNegative()
+		end)
+		GB.conns[#GB.conns + 1] = root.ChildRemoved:Connect(function()
+			clearNegative()
+		end)
+	end
+
+	local function hookNegativeInvalidation()
+		watchInvalidate(workspace:FindFirstChild("Entities"))
+		watchInvalidate(workspace:FindFirstChild("Islands"))
+		local aa = workspace:FindFirstChild("AA IMPORTANT")
+		if aa then
+			watchInvalidate(aa)
+			watchInvalidate(aa:FindFirstChild("DialogueNPCs"))
+		end
+		GB.conns[#GB.conns + 1] = workspace.ChildAdded:Connect(function(ch)
+			if ch.Name == "Entities" or ch.Name == "Islands" or ch.Name == "AA IMPORTANT" then
+				clearNegative()
+				watchInvalidate(ch)
+				if ch.Name == "AA IMPORTANT" then
+					watchInvalidate(ch:FindFirstChild("DialogueNPCs"))
+				end
+			end
+		end)
+	end
+
+	hookNegativeInvalidation()
 
 	return M
 end

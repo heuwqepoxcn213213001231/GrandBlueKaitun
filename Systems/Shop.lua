@@ -43,9 +43,6 @@ return function(GB)
 		end
 		GB.Log.log("SHOP", "Purchase " .. name .. " x" .. qty)
 		task.wait(0.45)
-		if GB.PlayerData.invalidateLive then
-			GB.PlayerData.invalidateLive()
-		end
 		local _, after = GB.PlayerData.hasItem(name)
 		if after > before then
 			GB.Recovery.markSuccess()

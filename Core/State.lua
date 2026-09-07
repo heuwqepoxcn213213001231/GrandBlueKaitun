@@ -4,6 +4,15 @@ return function(GB)
 	local M = {
 		snap = {},
 		prev = {},
+		_overlayKnown = {},
+		_overlayHooked = false,
+		_overlayDirty = true,
+		_overlayVisible = false,
+		_overlayVisibleUi = nil,
+		_overlayVisibleAt = 0,
+		_overlayLastScanAt = 0,
+		_continueHandlers = {},
+		_continueRetryAt = {},
 		track = {
 			LastPosition = nil,
 			Level = 0,
@@ -125,6 +134,7 @@ return function(GB)
 		if typeof(getconnections) ~= "function" then
 			return false
 		end
+		perfCount("getconnections", 1)
 		local ok, conns = pcall(getconnections, sig)
 		if not (ok and type(conns) == "table") then
 			return false
@@ -184,6 +194,30 @@ return function(GB)
 	-- (TutorialLocal WaitForClear waits for SkillObtained to close first).
 	local OVERLAY_GUIS = { "SkillObtained", "TutorialScreen" }
 	local SKILL_OBTAINED_LISTEN = 3.15
+	local KNOWN_OVERLAYS = {
+		SkillObtained = true,
+		TutorialScreen = true,
+		QuestOverlay = true,
+		ScreenShadow = true,
+	}
+	local OVERLAY_CACHE_TTL = 0.25
+	local OVERLAY_FULL_SCAN_GAP = 3
+
+	local function pbegin()
+		return GB.Profiler and GB.Profiler.begin and GB.Profiler.begin() or nil
+	end
+
+	local function pdone(name, t0)
+		if t0 and GB.Profiler and GB.Profiler.done then
+			GB.Profiler.done(name, t0)
+		end
+	end
+
+	local function perfCount(name, n)
+		if GB.Profiler and GB.Profiler.count then
+			GB.Profiler.count(name, n or 1)
+		end
+	end
 
 	local function layerOn(ui)
 		if not ui then
@@ -221,34 +255,121 @@ return function(GB)
 			or string.find(low, "click anywhere", 1, true) ~= nil
 	end
 
+	local function markOverlayDirty()
+		M._overlayDirty = true
+		M._overlayVisibleAt = 0
+	end
+
+	local function bindOverlaySignals(ui)
+		if typeof(ui) ~= "Instance" then
+			return
+		end
+		if not KNOWN_OVERLAYS[ui.Name] then
+			return
+		end
+		M._overlayKnown[ui.Name] = ui
+		if ui:IsA("LayerCollector") then
+			GB.conns[#GB.conns + 1] = ui:GetPropertyChangedSignal("Enabled"):Connect(markOverlayDirty)
+		end
+	end
+
+	local function ensureOverlayHooks(pg)
+		if M._overlayHooked or not pg then
+			return
+		end
+		M._overlayHooked = true
+		for _, ui in ipairs(pg:GetChildren()) do
+			bindOverlaySignals(ui)
+		end
+		GB.conns[#GB.conns + 1] = pg.ChildAdded:Connect(function(ui)
+			bindOverlaySignals(ui)
+			markOverlayDirty()
+		end)
+		GB.conns[#GB.conns + 1] = pg.ChildRemoved:Connect(function(ui)
+			if KNOWN_OVERLAYS[ui.Name] and M._overlayKnown[ui.Name] == ui then
+				M._overlayKnown[ui.Name] = nil
+			end
+			markOverlayDirty()
+		end)
+	end
+
 	function M.tutorialOverlayVisible()
+		local t0 = pbegin()
 		local pg = GB.lp and GB.lp.PlayerGui
 		if not pg then
+			pdone("State.tutorialOverlayVisible", t0)
 			return false, nil
 		end
+		ensureOverlayHooks(pg)
+		local now = os.clock()
+		if not M._overlayDirty and now - (M._overlayVisibleAt or 0) < OVERLAY_CACHE_TTL then
+			pdone("State.tutorialOverlayVisible", t0)
+			return M._overlayVisible == true, M._overlayVisibleUi
+		end
 		for _, name in ipairs(OVERLAY_GUIS) do
-			local ui = pg:FindFirstChild(name)
+			local ui = M._overlayKnown[name]
+			if not (ui and ui.Parent) then
+				ui = pg:FindFirstChild(name)
+				if ui then
+					bindOverlaySignals(ui)
+				end
+			end
 			if layerOn(ui) then
+				M._overlayVisible = true
+				M._overlayVisibleUi = ui
+				M._overlayVisibleAt = now
+				M._overlayDirty = false
+				pdone("State.tutorialOverlayVisible", t0)
 				return true, ui
 			end
 		end
+		if now - (M._overlayLastScanAt or 0) < OVERLAY_FULL_SCAN_GAP then
+			M._overlayVisible = false
+			M._overlayVisibleUi = nil
+			M._overlayVisibleAt = now
+			M._overlayDirty = false
+			pdone("State.tutorialOverlayVisible", t0)
+			return false, nil
+		end
+		M._overlayLastScanAt = now
+		perfCount("PlayerGuiFullScan", 1)
 		for _, ui in ipairs(pg:GetChildren()) do
 			if ui:IsA("LayerCollector") and layerOn(ui) then
 				if ui:FindFirstChild("ClickToContinue", true) or ui:FindFirstChild("ContinueButton", true) then
+					M._overlayVisible = true
+					M._overlayVisibleUi = ui
+					M._overlayVisibleAt = now
+					M._overlayDirty = false
+					pdone("State.tutorialOverlayVisible", t0)
 					return true, ui
 				end
 				local title = ui:FindFirstChild("Title")
 				local tt = title and guiText(title)
 				if pressAnywhereText(tt) or (type(tt) == "string" and string.find(tt, "Unlock Skill", 1, true)) then
+					M._overlayVisible = true
+					M._overlayVisibleUi = ui
+					M._overlayVisibleAt = now
+					M._overlayDirty = false
+					pdone("State.tutorialOverlayVisible", t0)
 					return true, ui
 				end
 				for _, d in ipairs(ui:GetDescendants()) do
 					if (d:IsA("TextLabel") or d:IsA("TextButton")) and pressAnywhereText(d.Text) then
+						M._overlayVisible = true
+						M._overlayVisibleUi = ui
+						M._overlayVisibleAt = now
+						M._overlayDirty = false
+						pdone("State.tutorialOverlayVisible", t0)
 						return true, ui
 					end
 				end
 			end
 		end
+		M._overlayVisible = false
+		M._overlayVisibleUi = nil
+		M._overlayVisibleAt = now
+		M._overlayDirty = false
+		pdone("State.tutorialOverlayVisible", t0)
 		return false, nil
 	end
 
@@ -469,12 +590,32 @@ return function(GB)
 	-- Do not walk all UIS.InputBegan connections — CorePackages Scheduler ModuleScripts
 	-- throw `_src` on this executor and abort the engine tick.
 	function M.invokeContinueInput(ui, _strategy)
+		local t0 = pbegin()
 		local fakeMb = makeInput("mb1")
 		local fakeX = makeInput("x")
 		local method, invoked = nil, 0
 		local UIS = game:GetService("UserInputService")
 		local sig = rbxSignal(UIS, "InputBegan")
 		local want = (ui and ui.Name == "SkillObtained") and "PassiveObtained" or "TutorialLocal"
+		local overlayKey = (ui and ui.Name) or "GenericOverlay"
+		local cached = M._continueHandlers[overlayKey]
+		if type(cached) == "table" then
+			local okCached = false
+			if cached.kind == "fn" and typeof(cached.ref) == "function" then
+				okCached = invokeFn(cached.ref, fakeX, false)
+					or invokeFn(cached.ref, fakeX, true)
+					or invokeFn(cached.ref, fakeMb, false)
+			elseif cached.kind == "conn" then
+				okCached = invokeConn(cached.ref, fakeX, false)
+					or invokeConn(cached.ref, fakeX, true)
+					or invokeConn(cached.ref, fakeMb, false)
+			end
+			if okCached then
+				pdone("Tutorial.continuation", t0)
+				return true, "InputBegan:cache:" .. tostring(cached.owner or want), 1
+			end
+			M._continueHandlers[overlayKey] = nil
+		end
 
 		local function hitOwner(fn)
 			if typeof(fn) ~= "function" then
@@ -490,13 +631,23 @@ return function(GB)
 			if invokeFn(fn, fakeX, false) or invokeFn(fn, fakeX, true) or invokeFn(fn, fakeMb, false) then
 				invoked = invoked + 1
 				method = "InputBegan:" .. tostring(sn)
+				M._continueHandlers[overlayKey] = {
+					kind = "fn",
+					ref = fn,
+					owner = sn,
+					at = os.clock(),
+				}
 				return true
 			end
 			return false
 		end
 
+		local now = os.clock()
+		local allowHeavy = now >= (M._continueRetryAt[overlayKey] or 0)
+
 		-- 1) Direct owner fn via getgc (name-gated). Same path that closed SkillObtained.
-		if typeof(getgc) == "function" then
+		if allowHeavy and typeof(getgc) == "function" then
+			perfCount("getgc", 1)
 			local ok, gc = pcall(getgc, false)
 			if not ok then
 				ok, gc = pcall(getgc)
@@ -512,7 +663,8 @@ return function(GB)
 		end
 
 		-- 2) Name-gated connection only. Never fingerprint CorePackages.
-		if invoked == 0 and typeof(getconnections) == "function" and typeof(sig) == "RBXScriptSignal" then
+		if allowHeavy and invoked == 0 and typeof(getconnections) == "function" and typeof(sig) == "RBXScriptSignal" then
+			perfCount("getconnections", 1)
 			local ok, conns = pcall(getconnections, sig)
 			if ok and type(conns) == "table" then
 				for _, c in pairs(conns) do
@@ -527,10 +679,19 @@ return function(GB)
 						if invokeConn(c, fakeX, false) or invokeConn(c, fakeX, true) or invokeConn(c, fakeMb, false) then
 							invoked = invoked + 1
 							method = method or ("InputBegan:" .. sn)
+							M._continueHandlers[overlayKey] = {
+								kind = "conn",
+								ref = c,
+								owner = sn,
+								at = os.clock(),
+							}
 						end
 					end)
 				end
 			end
+		end
+		if invoked == 0 and allowHeavy then
+			M._continueRetryAt[overlayKey] = os.clock() + 1.8
 		end
 
 		-- 3) firesignal — some executors no-op; still try.
@@ -560,6 +721,7 @@ return function(GB)
 			method = method or "mouse1click"
 		end
 
+		pdone("Tutorial.continuation", t0)
 		return invoked > 0 or method ~= nil, method or "none", invoked
 	end
 
@@ -712,6 +874,7 @@ return function(GB)
 	end
 
 	function M.refresh()
+		local t0 = pbegin()
 		M.prev = M.snap
 		local s = {}
 		local lp = GB.lp
@@ -864,6 +1027,7 @@ return function(GB)
 		M.track.CurrentQuest = s.CurrentQuest
 		M.track.QuestProgress = qsig
 		M.snap = s
+		pdone("State.refresh", t0)
 		return s
 	end
 

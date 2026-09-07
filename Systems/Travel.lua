@@ -13,10 +13,10 @@ return function(GB)
 			GB.Log.log("TRAVEL", "walk/hop " .. name)
 			return GB.World.moveTo(dest, 20)
 		end
-		if name == "Clown Town" and not GB.PlayerData.finished("Setting Sail") then
+		if name == "Clown Town" and not GB.PlayerData.finished("Setting Sail", true) then
 			return false
 		end
-		if name == "Maple Village" and not GB.PlayerData.finished("Journey to Maple Village") then
+		if name == "Maple Village" and not GB.PlayerData.finished("Journey to Maple Village", true) then
 			if GB.PlayerData.live("Journey to Maple Village") then
 				return GB.Boat.travelToward("Maple Village")
 			end

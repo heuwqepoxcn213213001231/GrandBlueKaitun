@@ -57,7 +57,7 @@ Không đoán Remote arguments. Không bịa item/NPC/quest/fruit.
 - **EXP scale:** Repeatable + Story ngoài Anchor Town: `math.round(exp * 0.8)` trong QuestInfo loader. Giá trị `exp` trong dump = field module; có thể là pre-scale.
 - **Repeatable decay:** `player > rangeMax+5` → `floor(exp * max(0.1, 1/(1+(lv-(rangeMax+5))*0.15)))`. `full_until` (picker) = `rangeMax + 5`.
 - **MidIslandGate(N):** dump `Consolidated=true` → runtime trả **1**; level ý định = argument N (7/15/20/30/35/40/43/45/50/58/60/70). Studio `LevelGateConfig` xác nhận.
-- **Stats (StatSystem):** Strength, Willpower, Agility, Precision, Energy, Health. Invest **VERIFIED** `StatPoints("Invest", name, n)` (MenuHandler). Default live ratio **8 Strength : 2 Health** on current totals (`StatRatio`). Cost = unused points 1:1. Cap/grant curve UNKNOWN.
+- **Stats (StatSystem):** Strength, Willpower, Agility, Precision, Energy, Health. Invest path traced from MenuHandler as `StatPoints("Invest", name, n)` but runtime status is **IMPLEMENTED_UNVERIFIED** until one-point before/after delta is observed live. Default live ratio **8 Strength : 2 Health** (`StatRatio`).
 - **Haki trainer / backpack size:** UNKNOWN. Shop prices + RaceOdds + fruit names: Studio VERIFIED (xem FINAL / E / G).
 
 ## Systems snapshot

@@ -23,6 +23,9 @@ return function(GB)
 		_released = nil,
 		_hpLogged = nil,
 		lastKillBefore = nil,
+		lastQuestCheck = 0,
+		lastQuestRefresh = 0,
+		lastQuestDone = nil,
 		KillTypes = {
 			Kill = true,
 			Defeat = true,
@@ -36,6 +39,24 @@ return function(GB)
 	local REPOS_DIST = 4.2
 	local TARGET_MOVED = 3.5
 	local DEAD_TTL = 12
+	local QUEST_CHECK_MIN_GAP = 0.32
+	local QUEST_CHECK_SAFETY = 2.8
+
+	local function pbegin()
+		return GB.Profiler and GB.Profiler.begin and GB.Profiler.begin() or nil
+	end
+
+	local function pdone(name, t0)
+		if t0 and GB.Profiler and GB.Profiler.done then
+			GB.Profiler.done(name, t0)
+		end
+	end
+
+	local function perfCount(name, n)
+		if GB.Profiler and GB.Profiler.count then
+			GB.Profiler.count(name, n or 1)
+		end
+	end
 
 	local function loadAttack()
 		if not M.Attack then
@@ -108,8 +129,10 @@ return function(GB)
 			return
 		end
 		M.deadTargets[target] = os.clock()
-		if GB.Cache and GB.Cache.invalidate then
-			GB.Cache.invalidate()
+		if GB.Cache and GB.Cache.invalidatePrefix then
+			GB.Cache.invalidatePrefix("res:enemy:")
+		elseif GB.Cache and GB.Cache.invalidate then
+			GB.Cache.invalidate("res:enemy:" .. tostring(target and target.Name or "?"))
 		end
 		if GB.Resolver and GB.Resolver.invalidateDummy and isDummy(target.Name) then
 			GB.Resolver.invalidateDummy()
@@ -280,6 +303,9 @@ return function(GB)
 			Quest = questName,
 		}
 		M.lockQuest = questName
+		M.lastQuestDone = nil
+		M.lastQuestCheck = 0
+		M.lastQuestRefresh = 0
 		M._released = nil
 		M._hpLogged = nil
 		if target then
@@ -309,18 +335,36 @@ return function(GB)
 		end
 	end
 
-	function M.questCombatDone(questName)
+	function M.questCombatDone(questName, opts)
+		opts = opts or {}
 		questName = questName or M.lockQuest
 		if not questName or not GB.Quest then
 			return false
 		end
-		if GB.PlayerData and GB.PlayerData.invalidateLive then
-			GB.PlayerData.invalidateLive()
+		local now = os.clock()
+		local force = opts.force == true
+		if not force then
+			if now - (M.lastQuestCheck or 0) < QUEST_CHECK_MIN_GAP then
+				return false
+			end
+			local dirty = GB.PlayerData and GB.PlayerData.questDirty and GB.PlayerData.questDirty() or false
+			if not dirty and now - (M.lastQuestRefresh or 0) < QUEST_CHECK_SAFETY then
+				return false
+			end
 		end
-		if GB.PlayerData and GB.PlayerData.finished and GB.PlayerData.finished(questName) then
+		M.lastQuestCheck = now
+		M.lastQuestRefresh = now
+		perfCount("HeartbeatQuestCheck", 1)
+		local t0 = pbegin()
+		if GB.PlayerData and GB.PlayerData.refreshLive then
+			GB.PlayerData.refreshLive(force, opts.source or "combat")
+		end
+		if GB.PlayerData and GB.PlayerData.finished and GB.PlayerData.finished(questName, true) then
+			pdone("Combat Heartbeat slow path", t0)
 			return true
 		end
 		local qs = GB.Quest.questState(questName)
+		pdone("Combat Heartbeat slow path", t0)
 		if not qs then
 			return false
 		end
@@ -347,11 +391,10 @@ return function(GB)
 		if not (questName and GB.Quest) then
 			return
 		end
-		if GB.PlayerData and GB.PlayerData.invalidateLive then
-			GB.PlayerData.invalidateLive()
-		end
-		if GB.PlayerData and GB.PlayerData.refreshLive then
-			GB.PlayerData.refreshLive(true)
+		if GB.PlayerData and GB.PlayerData.forceQuestRefresh then
+			GB.PlayerData.forceQuestRefresh("kill_credit")
+		elseif GB.PlayerData and GB.PlayerData.refreshLive then
+			GB.PlayerData.refreshLive(true, "kill_credit")
 		end
 		local after = GB.Quest.questState(questName)
 		local prevCur = type(before) == "table" and before.Current or (type(before) == "number" and before) or 0
@@ -397,7 +440,10 @@ return function(GB)
 		local before = M.lastKillBefore
 		M.stopLock()
 		if qn then
-			M.logKillCredit(qn, before)
+			local ok = M.logKillCredit(qn, before)
+			if ok or M.questCombatDone(qn, { force = true, source = "target_dead" }) then
+				M.lastQuestDone = qn
+			end
 		end
 	end
 
@@ -556,10 +602,6 @@ return function(GB)
 				M.onTargetDead(mob2, "poll")
 				return
 			end
-			if M.lockQuest and M.questCombatDone(M.lockQuest) then
-				M.stopLock()
-				return
-			end
 			if M.needReposition(mob2) then
 				M.standPose(mob2)
 			end
@@ -626,8 +668,12 @@ return function(GB)
 		local t0 = os.clock()
 		local tracked = M.lockMob or mob
 		while os.clock() - t0 < timeout do
-			if questName and M.questCombatDone(questName) then
+			if questName and M.lastQuestDone == questName then
 				M.stopLock()
+				return true, "quest_done"
+			end
+			if questName and not M.lockConn and M.questCombatDone(questName, { source = "hunt", force = true }) then
+				M.lastQuestDone = questName
 				return true, "quest_done"
 			end
 			local cur = M.lockMob or tracked
@@ -815,7 +861,7 @@ return function(GB)
 		if not live then
 			return true
 		end
-		if GB.PlayerData.finished(questName) then
+		if GB.PlayerData.finished(questName, true) then
 			return true
 		end
 		local _, st = GB.QuestData.currentStage(live)
@@ -841,7 +887,8 @@ return function(GB)
 		if M.lockMob then
 			if not M.IsEnemyAlive(M.lockMob) then
 				M.onTargetDead(M.lockMob, "tick")
-			elseif M.lockQuest and M.questCombatDone(M.lockQuest) then
+			elseif M.lockQuest and M.questCombatDone(M.lockQuest, { source = "combat_tick" }) then
+				M.lastQuestDone = M.lockQuest
 				M.stopLock()
 			end
 		end

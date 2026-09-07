@@ -51,13 +51,10 @@ return function(GB)
 		local hits = 0
 		while os.clock() - t0 < 18 do
 			if questName and GB.Quest then
-				if GB.PlayerData.invalidateLive then
-					GB.PlayerData.invalidateLive()
-				end
 				if GB.PlayerData.refreshLive then
-					GB.PlayerData.refreshLive(true)
+					GB.PlayerData.refreshLive(false, "chest_probe")
 				end
-				if GB.PlayerData.finished(questName) then
+				if GB.PlayerData.finished(questName, true) then
 					return true
 				end
 				local qs = GB.Quest.questState(questName)
@@ -75,6 +72,9 @@ return function(GB)
 			else
 				if M.openOne(chest) then
 					hits = hits + 1
+					if GB.PlayerData and GB.PlayerData.forceQuestRefresh then
+						GB.PlayerData.forceQuestRefresh("chest_loot")
+					end
 				end
 				task.wait(0.4)
 			end

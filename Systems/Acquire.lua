@@ -7,7 +7,24 @@ return function(GB)
 		lastSource = nil,
 		cycles = {},
 		picked = {},
+		dropMiss = {},
 	}
+
+	local function pbegin()
+		return GB.Profiler and GB.Profiler.begin and GB.Profiler.begin() or nil
+	end
+
+	local function pdone(name, t0)
+		if t0 and GB.Profiler and GB.Profiler.done then
+			GB.Profiler.done(name, t0)
+		end
+	end
+
+	local function perfCount(name, n)
+		if GB.Profiler and GB.Profiler.count then
+			GB.Profiler.count(name, n or 1)
+		end
+	end
 
 	local DROP_FOLDERS = {
 		"Drops",
@@ -87,6 +104,7 @@ return function(GB)
 		if type(item) ~= "string" or item == "" then
 			return nil
 		end
+		local now = os.clock()
 		local origin
 		local hrp = GB.World.hrp()
 		if hrp then
@@ -111,6 +129,7 @@ return function(GB)
 
 		for _, root in ipairs(roots) do
 			consider(root)
+			perfCount("WorkspaceDeepScan", 1)
 			for _, d in ipairs(root:GetDescendants()) do
 				consider(d)
 			end
@@ -140,7 +159,8 @@ return function(GB)
 			end
 		end
 
-		if #hits == 0 then
+		if #hits == 0 and now - (M.dropMiss[item] or 0) > 2.5 then
+			perfCount("WorkspaceDeepScan", 1)
 			for _, d in ipairs(workspace:GetDescendants()) do
 				if d:IsA("ProximityPrompt") and not inRS(d) then
 					local parent = d.Parent
@@ -152,6 +172,11 @@ return function(GB)
 					end
 				end
 			end
+		end
+		if #hits == 0 then
+			M.dropMiss[item] = now
+		else
+			M.dropMiss[item] = nil
 		end
 
 		if #hits == 0 then
@@ -271,13 +296,10 @@ return function(GB)
 		if not qname or not GB.Quest then
 			return 0, false
 		end
-		if GB.PlayerData.invalidateLive then
-			GB.PlayerData.invalidateLive()
-		end
 		if GB.PlayerData.refreshLive then
-			GB.PlayerData.refreshLive(true)
+			GB.PlayerData.refreshLive(false, "acquire_probe")
 		end
-		if GB.PlayerData.finished(qname) then
+		if GB.PlayerData.finished(qname, true) then
 			return needAmount(ctx, amount), true
 		end
 		local qs = GB.Quest.questState(qname)
@@ -327,6 +349,9 @@ return function(GB)
 		end
 		if M.WorldPickup(item) then
 			task.wait(0.35)
+			if GB.PlayerData and GB.PlayerData.forceQuestRefresh then
+				GB.PlayerData.forceQuestRefresh("acquire_pickup")
+			end
 			if credited(item, amount, ctx) then
 				return true
 			end
@@ -375,8 +400,8 @@ return function(GB)
 						GB.Combat.stopLock()
 					end
 				end
-				if GB.PlayerData.invalidateLive then
-					GB.PlayerData.invalidateLive()
+				if GB.PlayerData and GB.PlayerData.forceQuestRefresh then
+					GB.PlayerData.forceQuestRefresh("acquire_kill")
 				end
 				task.wait(0.15)
 				if credited(item, amount, ctx) then
@@ -530,6 +555,28 @@ return function(GB)
 				M.cycles[k] = nil
 			end
 		end
+	end
+
+	local _acquireItemRaw = M.AcquireItem
+	function M.AcquireItem(item, amount, ctx)
+		local t0 = pbegin()
+		local out = { pcall(_acquireItemRaw, item, amount, ctx) }
+		pdone("Acquire", t0)
+		if not out[1] then
+			error(out[2])
+		end
+		return unpack(out, 2)
+	end
+
+	local _enemyDropRaw = M.AcquireFromEnemyDrop
+	function M.AcquireFromEnemyDrop(item, amount, ctx)
+		local t0 = pbegin()
+		local out = { pcall(_enemyDropRaw, item, amount, ctx) }
+		pdone("Acquire", t0)
+		if not out[1] then
+			error(out[2])
+		end
+		return unpack(out, 2)
 	end
 
 	return M

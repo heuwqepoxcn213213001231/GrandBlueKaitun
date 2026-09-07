@@ -11,6 +11,22 @@ return function(GB)
 
 	local ISLANDS = { "Anchor Town", "Clown Town", "Maple Village" }
 
+	local function pbegin()
+		return GB.Profiler and GB.Profiler.begin and GB.Profiler.begin() or nil
+	end
+
+	local function pdone(name, t0)
+		if t0 and GB.Profiler and GB.Profiler.done then
+			GB.Profiler.done(name, t0)
+		end
+	end
+
+	local function perfCount(name, n)
+		if GB.Profiler and GB.Profiler.count then
+			GB.Profiler.count(name, n or 1)
+		end
+	end
+
 	function M.char()
 		return GB.lp and GB.lp.Character
 	end
@@ -241,7 +257,6 @@ return function(GB)
 		root.AssemblyLinearVelocity = Vector3.zero
 		root.CFrame = dest
 		GB.Log.warn("TRAVEL", "rescue swim/void")
-		GB.Recovery.markSuccess()
 	end
 
 	function M.goSafe()
@@ -501,6 +516,7 @@ return function(GB)
 		if not inst then
 			return 0
 		end
+		perfCount("WorkspaceDeepScan", 1)
 		for _, d in ipairs(inst:GetDescendants()) do
 			if isPart(d) then
 				n = n + 1
@@ -580,6 +596,7 @@ return function(GB)
 		local spawn
 		local spawnRoot = island:FindFirstChild("SpawnLocations")
 		if spawnRoot then
+			perfCount("WorkspaceDeepScan", 1)
 			for _, d in ipairs(spawnRoot:GetDescendants()) do
 				if d:IsA("SpawnLocation") or isPart(d) then
 					spawn = d
@@ -859,10 +876,10 @@ return function(GB)
 
 	function M.islandFromProgress(snap)
 		snap = snap or GB.State.get()
-		if not GB.PlayerData.finished("Setting Sail") then
+		if not GB.PlayerData.finished("Setting Sail", true) then
 			return "Anchor Town"
 		end
-		if not GB.PlayerData.finished("Journey to Maple Village") then
+		if not GB.PlayerData.finished("Journey to Maple Village", true) then
 			return "Clown Town"
 		end
 		return "Maple Village"
@@ -882,6 +899,7 @@ return function(GB)
 			if spawnRoot:IsA("SpawnLocation") or isPart(spawnRoot) then
 				return usablePos(spawnRoot.Position)
 			end
+			perfCount("WorkspaceDeepScan", 1)
 			for _, d in ipairs(spawnRoot:GetDescendants()) do
 				if d:IsA("SpawnLocation") or isPart(d) then
 					return usablePos(d.Position)
@@ -1181,6 +1199,28 @@ return function(GB)
 		end
 		GB.Log.log("TRAVEL", "stream pull " .. island)
 		return M.setPos(pick)
+	end
+
+	local _moveToRaw = M.moveTo
+	function M.moveTo(instOrPos, range)
+		local t0 = pbegin()
+		local out = { pcall(_moveToRaw, instOrPos, range) }
+		pdone("World travel operations", t0)
+		if not out[1] then
+			error(out[2])
+		end
+		return unpack(out, 2)
+	end
+
+	local _toEnemyRaw = M.ToEnemy
+	function M.ToEnemy(inst, range)
+		local t0 = pbegin()
+		local out = { pcall(_toEnemyRaw, inst, range) }
+		pdone("World travel operations", t0)
+		if not out[1] then
+			error(out[2])
+		end
+		return unpack(out, 2)
 	end
 
 	return M

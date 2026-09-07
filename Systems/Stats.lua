@@ -7,9 +7,29 @@ return function(GB)
 
 	local ORDER = { "Strength", "Health", "Willpower", "Agility", "Precision", "Energy" }
 	local STATE_TTL = 1.1
-	local GUI_TTL = 0.55
+	local GUI_TTL = 3.2
 	local VERIFY_TIMEOUT = 3.1
 	local BLOCK_RETRY_GAP = 20
+	local FAIL_PAUSE_GAP = 45
+
+	local function pbegin()
+		return GB.Profiler and GB.Profiler.begin and GB.Profiler.begin() or nil
+	end
+
+	local function pdone(name, t0)
+		if t0 and GB.Profiler and GB.Profiler.done then
+			GB.Profiler.done(name, t0)
+		end
+	end
+
+	local function perfCount(name, n)
+		if GB.Profiler and GB.Profiler.count then
+			GB.Profiler.count(name, n or 1)
+		end
+	end
+
+	M._dirty = true
+	M._pausedUntil = 0
 
 	local function cloneState(src)
 		local out = { Source = src and src.Source or "Unknown" }
@@ -60,6 +80,7 @@ return function(GB)
 		if M._guiLabel and M._guiLabel.Parent then
 			return M._guiLabel
 		end
+		perfCount("PlayerGuiFullScan", 1)
 		local lp = GB.lp
 		local pg = lp and lp.PlayerGui
 		if not pg then
@@ -191,6 +212,16 @@ return function(GB)
 		M._blocked = false
 		M._blockedReason = nil
 		M._blockedAt = nil
+		M._pausedUntil = 0
+	end
+
+	function M.markDirty(reason)
+		M._dirty = true
+		M._dirtyAt = os.clock()
+		if reason and (not M._dirtyLogAt or os.clock() - M._dirtyLogAt > 2.5) then
+			M._dirtyLogAt = os.clock()
+			GB.Log.log("STAT", "dirty " .. tostring(reason))
+		end
 	end
 
 	local function gateNeedsStrength(state)
@@ -238,7 +269,8 @@ return function(GB)
 			return false, "no_points", before
 		end
 		GB.Log.log("STAT", "before " .. fmtCore(before) .. " src=" .. tostring(before.Source))
-		GB.Log.log("STAT", string.format("invest %s x%d", tostring(statName), amount))
+		local phase = (not M._remoteVerified and statName == "Strength" and amount == 1) and "test" or "invest"
+		GB.Log.log("STAT", string.format("%s %s x%d", phase, tostring(statName), amount))
 		local ok, err = GB.Remotes.statInvest(statName, amount)
 		if not ok then
 			return false, err or "remote", before
@@ -252,6 +284,7 @@ return function(GB)
 			Deadline = os.clock() + VERIFY_TIMEOUT,
 		}
 		M._attempted = true
+		M._dirty = false
 		return true, "sent", before
 	end
 
@@ -278,6 +311,7 @@ return function(GB)
 			M._pending = nil
 			M._state = after
 			M._stateAt = os.clock()
+			M._dirty = (tonumber(after.Unused) or 0) > 0
 			GB.Log.log("STAT", "after " .. fmtCore(after) .. " VERIFIED src=" .. tostring(after.Source))
 			if GB.Recovery and GB.Recovery.markSuccess then
 				GB.Recovery.markSuccess()
@@ -287,17 +321,12 @@ return function(GB)
 		if os.clock() < p.Deadline then
 			return false, "waiting"
 		end
-		GB.Log.warn(
-			"STAT",
-			string.format(
-				"[FAIL] %s unchanged Str=%d unused=%d",
-				tostring(p.Stat),
-				tonumber(after[p.Stat]) or 0,
-				tonumber(after.Unused) or 0
-			)
-		)
+		GB.Log.warn("STAT", string.format("[FAIL] unchanged unused=%d Str=%d", tonumber(after.Unused) or 0, tonumber(after.Strength) or 0))
 		M._pending = nil
+		M._dirty = false
+		M._pausedUntil = os.clock() + FAIL_PAUSE_GAP
 		markBlocked("no_state_transition")
+		GB.Log.warn("STAT", "AutoStats paused after failed canary")
 		return false, "no_state_transition"
 	end
 
@@ -310,6 +339,7 @@ return function(GB)
 		if M._pending then
 			return false, "pending"
 		end
+		M.markDirty("manual")
 		statName = tostring(statName or "Strength")
 		for _, n in ipairs(ORDER) do
 			if n == statName then
@@ -344,11 +374,51 @@ return function(GB)
 	end
 
 	function M.tick()
+		local t0 = pbegin()
 		if not GB.Config.AutoStats then
+			pdone("Stats.tick", t0)
+			return
+		end
+		if os.clock() < (M._pausedUntil or 0) then
+			if not M._blockedLogAt or os.clock() - M._blockedLogAt > 10 then
+				M._blockedLogAt = os.clock()
+				GB.Log.warn("STAT", "paused waiting for retry window")
+			end
+			pdone("Stats.tick", t0)
 			return
 		end
 		M.poll()
 		if M._pending then
+			pdone("Stats.tick", t0)
+			return
+		end
+		local snap = GB.State and GB.State.get and GB.State.get() or nil
+		local snapUnused = tonumber(snap and snap.StatPoints)
+		local snapLevel = tonumber(snap and snap.Level)
+		if snapUnused ~= nil and snapUnused ~= M._lastUnused then
+			M._lastUnused = snapUnused
+			if snapUnused > 0 then
+				M.markDirty("stat_points_changed")
+			end
+		end
+		if snapLevel ~= nil and snapLevel ~= M._lastLevel then
+			M._lastLevel = snapLevel
+			M.markDirty("level_changed")
+		end
+		if M._blocked and os.clock() - (M._blockedAt or 0) >= BLOCK_RETRY_GAP then
+			clearBlocked()
+			M.markDirty("retry_window")
+		end
+		if M._blocked and os.clock() - (M._blockedAt or 0) < BLOCK_RETRY_GAP then
+			if not M._blockedLogAt or os.clock() - M._blockedLogAt > 10 then
+				M._blockedLogAt = os.clock()
+				GB.Log.warn("STAT", "blocked " .. tostring(M._blockedReason or "unknown"))
+			end
+			pdone("Stats.tick", t0)
+			return
+		end
+		if not M._dirty then
+			pdone("Stats.tick", t0)
 			return
 		end
 		local state = M.ReadStatState()
@@ -357,13 +427,8 @@ return function(GB)
 				M._zeroAt = os.clock()
 				GB.Log.log("STAT", "unused=0 (no invest)")
 			end
-			return
-		end
-		if M._blocked and os.clock() - (M._blockedAt or 0) < BLOCK_RETRY_GAP then
-			if not M._blockedLogAt or os.clock() - M._blockedLogAt > 10 then
-				M._blockedLogAt = os.clock()
-				GB.Log.warn("STAT", "blocked " .. tostring(M._blockedReason or "unknown"))
-			end
+			M._dirty = false
+			pdone("Stats.tick", t0)
 			return
 		end
 		local stat = pickNextStat(state)
@@ -371,6 +436,7 @@ return function(GB)
 			stat = "Strength"
 		end
 		if not stat then
+			pdone("Stats.tick", t0)
 			return
 		end
 		local ok, why = beginInvest(stat, 1, "auto")
@@ -378,6 +444,7 @@ return function(GB)
 			markBlocked("send_failed:" .. tostring(why))
 			GB.Log.warn("STAT", "[FAIL] invest send " .. tostring(why))
 		end
+		pdone("Stats.tick", t0)
 	end
 
 	return M

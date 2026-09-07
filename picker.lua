@@ -667,7 +667,7 @@ end
 function P.finished(name)
 	local GB = rawget(getgenv(), "GBKaitun")
 	if GB and GB.PlayerData then
-		return GB.PlayerData.finished(name)
+		return GB.PlayerData.finished(name, true)
 	end
 	return name and P.completedSet()[name] == true
 end

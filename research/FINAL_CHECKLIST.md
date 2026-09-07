@@ -3,38 +3,38 @@
 | Feature | Status | Reason |
 |---|---|---|
 | Fresh bootstrap | PARTIAL | Wait character + StatReplication; live quest via GetData+tracker (1.0.6). Overlay dismiss 1.0.7. Planner 1.1.0. Kill-credit EnemyDrop 1.1.1. Dead-target + UI gates 1.1.2. ContinueOverlay InputBegan 1.1.5. Shoot=Gunshot HOLD 1.1.6. Model position-safe 1.1.7. Prompt-anchor stand 1.1.8. Mine destOk + pickaxe shop 1.1.9. Mining overlay _src 1.1.10. Mining dismiss no UIS walk 1.1.11 |
-| Tutorial | WORKING | Introduction Talk/Dummy/Dash/Block/turn-in; Basics EquipSkill scroll + Cast + Invest + OpenLogbookHelp; Gearing Up EquipFlintlock backpack+SaveOrder; SkillObtained ContinueOverlay via real InputBegan (1.1.5) |
-| Quest | WORKING | Goal+Acquire planner for all 151 QuestInfo stages. Collect KillUntilDrop uses EnemyDrop kill-credit (inventory/quest count; no world drop required). UNKNOWN_OBJECTIVE stops that loop |
-| Auto level | WORKING | Story gates + repeatable `full_until` bands |
-| Island | WORKING | Anchor → Setting Sail 30 → Clown → Journey 70 → Maple. Geometry API type-safe on Folder/Model/BasePart (`World.GetIsland*`) |
+| Tutorial | PARTIAL | Introduction/Basics/GearingUp flows implemented; ContinueOverlay resolver cached, but runtime validation still required per build |
+| Quest | PARTIAL | Goal+Acquire planner for all 151 QuestInfo stages; blocker-aware progression added; runtime matrix still needs continuous re-validation |
+| Auto level | IMPLEMENTED | Story gates + repeatable `full_until` bands |
+| Island | STATIC_VERIFIED | Anchor → Setting Sail 30 → Clown → Journey 70 → Maple. Geometry API type-safe on Folder/Model/BasePart (`World.GetIsland*`) |
 | Travel | PARTIAL | destOk hop; combat tween + floorAt (no roof snap, 1.1.14); island spawn; no invented teleport list |
-| Combat | WORKING | AttackModule.Swing at CanSwing+0.42s; Dead attribute / Health<=0 release; no corpse lock; Dash PressKey Q, Block F |
-| Stats | WORKING | `StatPoints("Invest", name, n)` mid-quest via GetStats unused (1.1.14) |
-| Skills | WORKING | Scroll: ConsumeSkillScroll(nil) + Skill("Equip", name) + hotbar Cast. EquipSkill RF still no invoke |
+| Combat | IMPLEMENTED | AttackModule.Swing at CanSwing+0.42s; dead-target release; quest validation moved to slow path (no frame-driven quest refresh) |
+| Stats | IMPLEMENTED_UNVERIFIED | `StatPoints("Invest", name, n)` path traced; one-point live delta required before marking runtime-verified |
+| Skills | IMPLEMENTED | Scroll: ConsumeSkillScroll(nil) + Skill("Equip", name) + hotbar Cast. EquipSkill RF still no invoke |
 | Inventory | PARTIAL | Classify KEEP/EQUIP/QUEST; UNKNOWN=KEEP; no sell junk auto |
 | Backpack | PARTIAL | Open/select/equip via BackpackToggle + SaveOrder. Slot-upgrade remote still UNRESOLVED |
 | Equipment | PARTIAL | DIRECT_EQUIP HeldItem; UI_EQUIP SaveOrder(Weapon2) for Flintlock quest. Clothing Equip RF UNRESOLVED |
-| Shops | WORKING | Shop/RotatingShop/Ships Purchase + world prices |
+| Shops | IMPLEMENTED | Shop/RotatingShop/Ships Purchase + world prices |
 | Weapons | PARTIAL | Flintlock 150 / Cutlass 200 shop; upgrade Flintlock remote |
 | Fighting Styles | PARTIAL | `ChangeFightingStyle(name)`; unlock/buy style UNRESOLVED |
 | Fruits | PARTIAL | PickupDF + PermanentFruit store/equip; eat disabled (KEEP_CURRENT) |
 | Haki | DISABLED | No trainer/quest/unlock remote |
 | Race/Trait | DISABLED | Odds VERIFIED; AutoRaceTrait false; Race FireServer missing |
 | Bosses | PARTIAL | Named kill targets on live story/repeat; loot tables UNKNOWN |
-| Mining | WORKING | HOLD MouseButton1 through Mining QTE, release in crit zone / bar top (1.1.12) |
+| Mining | IMPLEMENTED | HOLD MouseButton1 through Mining QTE, release in crit zone / bar top (1.1.12) |
 | Fishing | PARTIAL | Move to shop/rod; cast packet UNRESOLVED |
 | Farming | PARTIAL | Move + proximity; grow math UNKNOWN |
 | Cooking | PARTIAL | Move to target; perfect window UNKNOWN |
 | Chest | PARTIAL | Afuaru / nearby prompt; loot UNKNOWN |
 | Treasure | PARTIAL | Move on Finders/Priceless; ShovelHit args UNKNOWN |
-| Codes | WORKING | Codes(code) + CodeProg; states SUCCESS/INVALID/EXPIRED/ALREADY_USED/ERROR |
+| Codes | IMPLEMENTED | Codes(code) + CodeProg; states SUCCESS/INVALID/EXPIRED/ALREADY_USED/ERROR |
 | Daily/rewards | PARTIAL | Easy Pickings / Noise Complaint / Corruption Cleanse only; 4 dailies empty |
-| Recovery | WORKING | Strategy cycle lookup→enemy→diagnostic→blocker then reset; next tick resumes hunt; DumpRuntimeIssue; void rescue on tick |
-| Anti-stuck | WORKING | destOk, groundAt, water/void rescue, task timeout |
-| Logging | WORKING | `[Kaitun][CAT]` rate-limited |
-| Config | WORKING | GBConfig Auto* Build FruitMode Codes NeverSkip |
-| Resolvers | WORKING | DisplayName + alias + DialogueNPCs + tags; skip RS create model; stream-pull; nearby dump after 3 |
+| Recovery | IMPLEMENTED | Strategy cycle lookup→enemy→diagnostic→blocker then reset; fingerprinted diagnostics + scoped cache invalidation |
+| Anti-stuck | IMPLEMENTED | destOk, groundAt, water/void rescue, task timeout |
+| Logging | IMPLEMENTED | `[Kaitun][CAT]` rate-limited + bounded dedupe keys |
+| Config | IMPLEMENTED | GBConfig Auto* Build FruitMode Codes NeverSkip + Perf/Runtime diagnostics knobs |
+| Resolvers | IMPLEMENTED_UNVERIFIED | DisplayName + alias + DialogueNPCs + tags + negative miss cache; runtime verification still required on live servers |
 
-**Counts:** WORKING **12** · PARTIAL **17** · DISABLED **3**.
+**Counts:** IMPLEMENTED **11** · PARTIAL **11** · DISABLED **3** · IMPLEMENTED_UNVERIFIED **2** · STATIC_VERIFIED **1**.
 
 UNRESOLVED (documented, not a 4th feature row): hard level cap, backpack upgrade, Equip RF, EquipSkill RF, Race FireServer, empty dailies ×4, Officer Investigation, Haki trainer, fishing cast, ship spawn index schema.

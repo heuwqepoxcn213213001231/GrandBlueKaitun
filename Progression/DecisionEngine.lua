@@ -8,6 +8,16 @@ return function(GB)
 	}
 	local logDoing
 
+	local function pbegin()
+		return GB.Profiler and GB.Profiler.begin and GB.Profiler.begin() or nil
+	end
+
+	local function pdone(name, t0)
+		if t0 and GB.Profiler and GB.Profiler.done then
+			GB.Profiler.done(name, t0)
+		end
+	end
+
 	local function setTask(name)
 		if GB.State.track.TaskName ~= name then
 			GB.State.track.TaskName = name
@@ -46,7 +56,7 @@ return function(GB)
 		for _, ch in ipairs(GB.QuestData.CHAINS) do
 			if ch.island == island then
 				for _, name in ipairs(ch.order) do
-					if not GB.Config.SkipQuests[name] and not GB.PlayerData.finished(name) then
+					if not GB.Config.SkipQuests[name] and not GB.PlayerData.finished(name, true) then
 						if GB.PlayerData.live(name) then
 							return name
 						end
@@ -211,7 +221,7 @@ return function(GB)
 		if not story then
 			return false
 		end
-		if GB.PlayerData.finished(story) then
+		if GB.PlayerData.finished(story, true) then
 			return false
 		end
 		setTask("story:" .. story)
@@ -224,7 +234,10 @@ return function(GB)
 		if GB.Tutorial and GB.Tutorial.IsBlocking and select(1, GB.Tutorial.IsBlocking()) then
 			return
 		end
-		if name and GB.PlayerData.finished(name) then
+		if name and GB.PlayerData.finished(name, true) then
+			if GB.Stats and GB.Stats.markDirty then
+				GB.Stats.markDirty("quest_complete")
+			end
 			if GB.Combat then
 				GB.Combat.stopLock()
 			end
@@ -242,7 +255,11 @@ return function(GB)
 			logDoing("wait_spawn")
 			return
 		end
+		if GB.PlayerData and GB.PlayerData.refreshLive then
+			GB.PlayerData.refreshLive(false, "engine_cycle")
+		end
 
+		local tutSnap = snap.UI or nil
 		local gate = GB.Tutorial and GB.Tutorial.GetCurrentGate and GB.Tutorial.GetCurrentGate()
 		local continueOverlay = gate and gate.Type == (GB.Tutorial.GateTypes and GB.Tutorial.GateTypes.ContinueOverlay)
 
@@ -251,11 +268,14 @@ return function(GB)
 		if GB.Recovery.stuck() and not continueOverlay then
 			setTask("recovery")
 			GB.Recovery.run("engine")
+			local s2 = GB.State.get and GB.State.get() or nil
+			tutSnap = (s2 and s2.UI) or tutSnap
 			gate = GB.Tutorial and GB.Tutorial.GetCurrentGate and GB.Tutorial.GetCurrentGate()
 			continueOverlay = gate and gate.Type == (GB.Tutorial.GateTypes and GB.Tutorial.GateTypes.ContinueOverlay)
 		end
 
-		local blocking = GB.Tutorial and GB.Tutorial.IsBlocking and select(1, GB.Tutorial.IsBlocking())
+		local blocking = (type(tutSnap) == "table" and (tutSnap.Blocking == true or tutSnap.TutorialActive == true))
+			or (GB.Tutorial and GB.Tutorial.IsBlocking and select(1, GB.Tutorial.IsBlocking()))
 		if GB.Recovery.outcome == "BLOCKING_UI" or GB.Recovery.outcome == "BLOCKING_GATE_UNRESOLVED" or blocking then
 			if GB.Recovery.outcome == "BLOCKING_GATE_UNRESOLVED" and GB.Tutorial and GB.Tutorial.unresolved then
 				return
@@ -277,14 +297,17 @@ return function(GB)
 				if GB.Tutorial.refreshAfterGate then
 					GB.Tutorial.refreshAfterGate()
 				else
-					if GB.PlayerData and GB.PlayerData.refreshLive then
-						GB.PlayerData.refreshLive(true)
+					if GB.PlayerData and GB.PlayerData.forceQuestRefresh then
+						GB.PlayerData.forceQuestRefresh("tutorial_gate")
+					elseif GB.PlayerData and GB.PlayerData.refreshLive then
+						GB.PlayerData.refreshLive(true, "tutorial_gate")
 					end
 					if GB.Planner and GB.Planner.Replan then
 						GB.Planner.Replan()
 					end
 				end
 				snap = GB.State.refresh()
+				tutSnap = snap.UI or tutSnap
 				-- fall through to quest this tick
 			else
 				return
@@ -299,6 +322,10 @@ return function(GB)
 			end
 			GB.World.waitUnpause()
 			return
+		end
+
+		if GB.Stats and GB.Stats.tick then
+			GB.Stats.tick()
 		end
 
 		if GB.Config.AutoCodes then
@@ -389,7 +416,6 @@ return function(GB)
 			GB.Log.warn("STATE", "inventory many items — UNKNOWN kept")
 		end
 
-		GB.Equipment.tick()
 		GB.Skills.tick()
 		GB.Travel.tick()
 		GB.Boat.tick()
@@ -458,6 +484,17 @@ return function(GB)
 		runOptional()
 		setTask("idle")
 		logDoing("idle")
+	end
+
+	local _decideRaw = M.decide
+	function M.decide()
+		local t0 = pbegin()
+		local out = { pcall(_decideRaw) }
+		pdone("DecisionEngine.decide", t0)
+		if not out[1] then
+			error(out[2])
+		end
+		return unpack(out, 2)
 	end
 
 	return M

@@ -10,6 +10,8 @@ return function(GB)
 		lastSig = {},
 		diagByFingerprint = {},
 		detailByFingerprint = {},
+		deferUntil = {},
+		deferReason = {},
 	}
 
 	M.STATUS = {
@@ -25,6 +27,23 @@ return function(GB)
 	local DIAG_DUMP_GAP = 45
 	local TRACK_LIMIT = 96
 	local FAIL_FINGERPRINT_GAP = 1.2
+	local FAIL_DEFER_GAP = 30
+
+	local function pbegin()
+		return GB.Profiler and GB.Profiler.begin and GB.Profiler.begin() or nil
+	end
+
+	local function pdone(name, t0)
+		if t0 and GB.Profiler and GB.Profiler.done then
+			GB.Profiler.done(name, t0)
+		end
+	end
+
+	local function perfCount(name, n)
+		if GB.Profiler and GB.Profiler.count then
+			GB.Profiler.count(name, n or 1)
+		end
+	end
 
 	local DECLINE = {
 		Decline = true,
@@ -402,6 +421,10 @@ return function(GB)
 	end
 
 	function M.deferred(name)
+		local untilAt = M.deferUntil[name]
+		if untilAt and untilAt > os.clock() then
+			return true, M.deferReason[name] or "deferred_after_fail"
+		end
 		if name == "Gate of Authority" then
 			local blocked, why = gateBlocker()
 			if blocked then
@@ -442,7 +465,7 @@ return function(GB)
 		end
 		local blocked, why = M.deferred(name)
 		if blocked then
-			if why == "gate sealed waiting window" then
+			if why == "gate sealed waiting window" or why == "deferred_after_fail" then
 				return M.STATUS.DEFERRED, why
 			end
 			return M.STATUS.BLOCKED_REQUIREMENT, why
@@ -479,6 +502,7 @@ return function(GB)
 		if M._inferName == name and M._inferObj and now - (M._inferAt or 0) < 1.1 then
 			return M._inferObj
 		end
+		perfCount("QuestGuiScan", 1)
 		local pg = GB.lp and GB.lp.PlayerGui
 		if not pg then
 			return nil
@@ -549,13 +573,14 @@ return function(GB)
 	end
 
 	function M.questState(name)
+		local t0 = pbegin()
 		local live = GB.PlayerData.live(name)
 		local island = GB.QuestData.islandOf(name)
 		local npc = GB.QuestData.talkNpc(name)
 		if not live then
 			local inferred = GB.PlayerData.current() == name and inferObjective(name)
 			if inferred then
-				return {
+				local out = {
 					Name = name,
 					IsAccepted = true,
 					IsComplete = false,
@@ -566,11 +591,13 @@ return function(GB)
 					StageIndex = inferred.Type,
 					Objective = inferred,
 				}
+				pdone("Quest.questState", t0)
+				return out
 			end
-			return {
+			local out = {
 				Name = name,
 				IsAccepted = false,
-				IsComplete = GB.PlayerData.finished(name),
+				IsComplete = GB.PlayerData.finished(name, true),
 				CanTurnIn = false,
 				Automatic = GB.QuestData.AUTOMATIC[name] == true,
 				NPC = npc,
@@ -578,6 +605,8 @@ return function(GB)
 				StageIndex = nil,
 				Objective = nil,
 			}
+			pdone("Quest.questState", t0)
+			return out
 		end
 		local si, st = GB.QuestData.currentStage(live)
 		local obj
@@ -612,11 +641,11 @@ return function(GB)
 		if st and not obj then
 			canTurn = true
 		end
-		return {
+		local out = {
 			Name = name,
 			Live = live,
 			IsAccepted = true,
-			IsComplete = GB.PlayerData.finished(name),
+			IsComplete = GB.PlayerData.finished(name, true),
 			CanTurnIn = canTurn,
 			Automatic = GB.QuestData.AUTOMATIC[name] == true,
 			NPC = npc,
@@ -625,6 +654,8 @@ return function(GB)
 			Stage = st,
 			Objective = obj,
 		}
+		pdone("Quest.questState", t0)
+		return out
 	end
 
 	function M.signature(qs)
@@ -680,6 +711,38 @@ return function(GB)
 		M.track[name] = nil
 	end
 
+	local function scopedResolveInvalidate(qs)
+		if not GB.Cache then
+			return
+		end
+		local invalidatePrefix = GB.Cache.invalidatePrefix
+		if type(invalidatePrefix) ~= "function" then
+			if GB.Cache.invalidate then
+				GB.Cache.invalidate()
+			end
+			return
+		end
+		local o = qs and qs.Objective
+		if not o then
+			invalidatePrefix("res:")
+			return
+		end
+		local typ = tostring(o.Type or "")
+		if typ == "Talk" or typ == "Automatic Talk" then
+			invalidatePrefix("res:npc:")
+			return
+		end
+		if typ == "Kill" or typ == "Defeat" or typ == "Hit" or typ == "Shoot" then
+			invalidatePrefix("res:enemy:")
+			return
+		end
+		if typ == "Purchase" or typ == "Sell" then
+			invalidatePrefix("shop:")
+			return
+		end
+		invalidatePrefix("res:any:")
+	end
+
 	function M.noteFail(name, err)
 		local t = M.trackOf(name)
 		local now = os.clock()
@@ -700,7 +763,7 @@ return function(GB)
 		t.NextRetryAt = now + 1.5
 		GB.Log.warn("QUEST", string.format("%s fail #%d %s", name, t.AttemptCount, tostring(err)))
 		if t.AttemptCount == 3 then
-			GB.Cache.invalidate()
+			scopedResolveInvalidate(qs)
 			local target = qs and qs.Objective and qs.Objective.TargetName or (qs and qs.NPC)
 			local lastDetail = M.detailByFingerprint[fp] or 0
 			if now - lastDetail >= DETAIL_DUMP_GAP then
@@ -726,6 +789,8 @@ return function(GB)
 					GB.DumpRuntimeIssue()
 				end
 			end
+			M.deferUntil[name] = now + FAIL_DEFER_GAP
+			M.deferReason[name] = "deferred_after_fail"
 			t.AttemptCount = 0
 			t.NextRetryAt = now + 4
 		end
@@ -736,6 +801,8 @@ return function(GB)
 		if name == "Gate of Authority" then
 			M._gateBlockedKey = nil
 		end
+		M.deferUntil[name] = nil
+		M.deferReason[name] = nil
 		M.clearTrack(name)
 		GB.Recovery.markSuccess()
 	end
@@ -854,7 +921,7 @@ return function(GB)
 		local t0 = os.clock()
 		while os.clock() - t0 < timeout do
 			task.wait(0.2)
-			if GB.PlayerData.finished(name) then
+			if GB.PlayerData.finished(name, true) then
 				return true, "done"
 			end
 			local qs = M.questState(name)
@@ -942,8 +1009,10 @@ return function(GB)
 			local before = M.questState(questName)
 			local beforeCur = before.Objective and before.Objective.Current or 0
 			local ok, why = GB.Combat.shootUntilCredit(target or "Training Dummy", questName, 24)
-			if GB.PlayerData.invalidateLive then
-				GB.PlayerData.invalidateLive()
+			if GB.PlayerData and GB.PlayerData.forceQuestRefresh then
+				GB.PlayerData.forceQuestRefresh("shoot_credit")
+			elseif GB.PlayerData and GB.PlayerData.refreshLive then
+				GB.PlayerData.refreshLive(true, "shoot_credit")
 			end
 			local after = M.questState(questName)
 			if after.IsComplete or (after.Objective and after.Objective.Current and after.Objective.Current > beforeCur) or after.StageIndex ~= before.StageIndex then
@@ -989,8 +1058,10 @@ return function(GB)
 				end
 				return false
 			end
-			if GB.PlayerData.invalidateLive then
-				GB.PlayerData.invalidateLive()
+			if GB.PlayerData and GB.PlayerData.forceQuestRefresh then
+				GB.PlayerData.forceQuestRefresh("kill_credit")
+			elseif GB.PlayerData and GB.PlayerData.refreshLive then
+				GB.PlayerData.refreshLive(true, "kill_credit")
 			end
 			local after = M.questState(questName)
 			if after.IsComplete or (after.Objective and after.Objective.Current and after.Objective.Current > beforeCur) or after.StageIndex ~= before.StageIndex then
@@ -1567,9 +1638,22 @@ return function(GB)
 		return false
 	end
 
+	local _doLiveRaw = M.doLive
+	function M.doLive(name)
+		local t0 = pbegin()
+		local out = { pcall(_doLiveRaw, name) }
+		pdone("Quest.doLive", t0)
+		if not out[1] then
+			error(out[2])
+		end
+		return unpack(out, 2)
+	end
+
 	function M.Refresh()
-		if GB.PlayerData and GB.PlayerData.refreshLive then
-			GB.PlayerData.refreshLive(true)
+		if GB.PlayerData and GB.PlayerData.forceQuestRefresh then
+			GB.PlayerData.forceQuestRefresh("Quest.Refresh")
+		elseif GB.PlayerData and GB.PlayerData.refreshLive then
+			GB.PlayerData.refreshLive(true, "Quest.Refresh")
 		end
 		local cur = GB.PlayerData and GB.PlayerData.current and GB.PlayerData.current()
 		return cur and M.questState(cur) or nil

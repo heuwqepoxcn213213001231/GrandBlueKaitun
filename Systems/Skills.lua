@@ -188,7 +188,6 @@ return function(GB)
 
 		if skillEquipped(name) then
 			GB.Log.log("SKILL", name .. " already equipped")
-			GB.Recovery.markSuccess()
 			return true
 		end
 
@@ -233,7 +232,6 @@ return function(GB)
 
 		task.wait(0.3)
 		if skillEquipped(name) then
-			GB.Recovery.markSuccess()
 			return true
 		end
 		GB.Log.warn("SKILL", "equip not confirmed " .. name)
@@ -466,9 +464,6 @@ return function(GB)
 			pressSlot(idx, false)
 		end
 		GB.Log.log("SKILL", "release " .. name)
-		if GB.Recovery and GB.Recovery.markSuccess then
-			GB.Recovery.markSuccess()
-		end
 		return true
 	end
 
@@ -505,7 +500,6 @@ return function(GB)
 			if tool and tool:IsA("Tool") and tool.Activate then
 				tool:Activate()
 			end
-			GB.Recovery.markSuccess()
 			return true
 		end
 		local ev = game:GetService("ReplicatedStorage"):FindFirstChild("Events")

@@ -2,8 +2,8 @@
   "name": "GrandBlueKaitun",
   "version": "1.1.18",
   "build": {
-    "commit": "unknown",
-    "built_at": "2026-09-08T01:46:00+07:00"
+    "commit": "75ee423",
+    "built_at": "2026-09-08T02:47:11+07:00"
   },
   "entry": "kaitun.lua",
   "files": {
@@ -11,6 +11,7 @@
     "Config.lua": "Config.lua",
     "picker.lua": "picker.lua",
     "Core/Logger.lua": "Core/Logger.lua",
+    "Core/Profiler.lua": "Core/Profiler.lua",
     "Core/Cache.lua": "Core/Cache.lua",
     "Core/Retry.lua": "Core/Retry.lua",
     "Core/Scheduler.lua": "Core/Scheduler.lua",
@@ -46,47 +47,211 @@
     "Systems/Backpack.lua": "Systems/Backpack.lua",
     "Systems/Tutorial.lua": "Systems/Tutorial.lua",
     "Progression/Planner.lua": "Progression/Planner.lua",
-    "Progression/DecisionEngine.lua": "Progression/DecisionEngine.lua"
+    "Progression/DecisionEngine.lua": "Progression/DecisionEngine.lua",
+    "dist/kaitun.lua": "dist/kaitun.lua"
   },
   "order": [
-    { "key": "Config", "path": "Config.lua", "kind": "core" },
-    { "key": "Log", "path": "Core/Logger.lua", "kind": "core" },
-    { "key": "Cache", "path": "Core/Cache.lua", "kind": "core" },
-    { "key": "Retry", "path": "Core/Retry.lua", "kind": "core" },
-    { "key": "Scheduler", "path": "Core/Scheduler.lua", "kind": "core" },
-    { "key": "Persist", "path": "Core/Persist.lua", "kind": "core" },
-    { "key": "State", "path": "Core/State.lua", "kind": "core" },
-    { "key": "Recovery", "path": "Core/Recovery.lua", "kind": "core" },
-    { "key": "Remotes", "path": "Game/Remotes.lua", "kind": "core" },
-    { "key": "Resolver", "path": "Game/Resolver.lua", "kind": "core" },
-    { "key": "PlayerData", "path": "Game/PlayerData.lua", "kind": "core" },
-    { "key": "World", "path": "Game/World.lua", "kind": "core" },
-    { "key": "ItemData", "path": "Game/ItemData.lua", "kind": "core" },
-    { "key": "QuestData", "path": "Game/QuestData.lua", "kind": "core" },
-    { "key": "QuestSpecs", "path": "Game/QuestSpecs.lua", "kind": "core" },
-    { "key": "Inventory", "path": "Game/Inventory.lua", "kind": "core" },
-    { "key": "Combat", "path": "Systems/Combat.lua", "kind": "core" },
-    { "key": "Quest", "path": "Systems/Quest.lua", "kind": "core" },
-    { "key": "Acquire", "path": "Systems/Acquire.lua", "kind": "core" },
-    { "key": "Stats", "path": "Systems/Stats.lua", "kind": "optional" },
-    { "key": "Skills", "path": "Systems/Skills.lua", "kind": "optional" },
-    { "key": "Equipment", "path": "Systems/Equipment.lua", "kind": "optional" },
-    { "key": "Shop", "path": "Systems/Shop.lua", "kind": "optional" },
-    { "key": "Travel", "path": "Systems/Travel.lua", "kind": "optional" },
-    { "key": "Boat", "path": "Systems/Boat.lua", "kind": "optional" },
-    { "key": "Fruit", "path": "Systems/Fruit.lua", "kind": "optional" },
-    { "key": "Haki", "path": "Systems/Haki.lua", "kind": "optional" },
-    { "key": "RaceTrait", "path": "Systems/RaceTrait.lua", "kind": "optional" },
-    { "key": "LifeSkills", "path": "Systems/LifeSkills.lua", "kind": "optional" },
-    { "key": "Chest", "path": "Systems/Chest.lua", "kind": "optional" },
-    { "key": "Treasure", "path": "Systems/Treasure.lua", "kind": "optional" },
-    { "key": "Boss", "path": "Systems/Boss.lua", "kind": "optional" },
-    { "key": "Codes", "path": "Systems/Codes.lua", "kind": "optional" },
-    { "key": "Rewards", "path": "Systems/Rewards.lua", "kind": "optional" },
-    { "key": "Backpack", "path": "Systems/Backpack.lua", "kind": "optional" },
-    { "key": "Tutorial", "path": "Systems/Tutorial.lua", "kind": "core" },
-    { "key": "Planner", "path": "Progression/Planner.lua", "kind": "core" },
-    { "key": "Engine", "path": "Progression/DecisionEngine.lua", "kind": "core" },
-    { "key": "Picker", "path": "picker.lua", "kind": "optional", "factory": false }
-  ]
+    {
+      "key": "Config",
+      "path": "Config.lua",
+      "kind": "core"
+    },
+    {
+      "key": "Log",
+      "path": "Core/Logger.lua",
+      "kind": "core"
+    },
+    {
+      "key": "Profiler",
+      "path": "Core/Profiler.lua",
+      "kind": "core"
+    },
+    {
+      "key": "Cache",
+      "path": "Core/Cache.lua",
+      "kind": "core"
+    },
+    {
+      "key": "Retry",
+      "path": "Core/Retry.lua",
+      "kind": "core"
+    },
+    {
+      "key": "Scheduler",
+      "path": "Core/Scheduler.lua",
+      "kind": "core"
+    },
+    {
+      "key": "Persist",
+      "path": "Core/Persist.lua",
+      "kind": "core"
+    },
+    {
+      "key": "State",
+      "path": "Core/State.lua",
+      "kind": "core"
+    },
+    {
+      "key": "Recovery",
+      "path": "Core/Recovery.lua",
+      "kind": "core"
+    },
+    {
+      "key": "Remotes",
+      "path": "Game/Remotes.lua",
+      "kind": "core"
+    },
+    {
+      "key": "Resolver",
+      "path": "Game/Resolver.lua",
+      "kind": "core"
+    },
+    {
+      "key": "PlayerData",
+      "path": "Game/PlayerData.lua",
+      "kind": "core"
+    },
+    {
+      "key": "World",
+      "path": "Game/World.lua",
+      "kind": "core"
+    },
+    {
+      "key": "ItemData",
+      "path": "Game/ItemData.lua",
+      "kind": "core"
+    },
+    {
+      "key": "QuestData",
+      "path": "Game/QuestData.lua",
+      "kind": "core"
+    },
+    {
+      "key": "QuestSpecs",
+      "path": "Game/QuestSpecs.lua",
+      "kind": "core"
+    },
+    {
+      "key": "Inventory",
+      "path": "Game/Inventory.lua",
+      "kind": "core"
+    },
+    {
+      "key": "Combat",
+      "path": "Systems/Combat.lua",
+      "kind": "core"
+    },
+    {
+      "key": "Quest",
+      "path": "Systems/Quest.lua",
+      "kind": "core"
+    },
+    {
+      "key": "Acquire",
+      "path": "Systems/Acquire.lua",
+      "kind": "core"
+    },
+    {
+      "key": "Stats",
+      "path": "Systems/Stats.lua",
+      "kind": "optional"
+    },
+    {
+      "key": "Skills",
+      "path": "Systems/Skills.lua",
+      "kind": "optional"
+    },
+    {
+      "key": "Equipment",
+      "path": "Systems/Equipment.lua",
+      "kind": "optional"
+    },
+    {
+      "key": "Shop",
+      "path": "Systems/Shop.lua",
+      "kind": "optional"
+    },
+    {
+      "key": "Travel",
+      "path": "Systems/Travel.lua",
+      "kind": "optional"
+    },
+    {
+      "key": "Boat",
+      "path": "Systems/Boat.lua",
+      "kind": "optional"
+    },
+    {
+      "key": "Fruit",
+      "path": "Systems/Fruit.lua",
+      "kind": "optional"
+    },
+    {
+      "key": "Haki",
+      "path": "Systems/Haki.lua",
+      "kind": "optional"
+    },
+    {
+      "key": "RaceTrait",
+      "path": "Systems/RaceTrait.lua",
+      "kind": "optional"
+    },
+    {
+      "key": "LifeSkills",
+      "path": "Systems/LifeSkills.lua",
+      "kind": "optional"
+    },
+    {
+      "key": "Chest",
+      "path": "Systems/Chest.lua",
+      "kind": "optional"
+    },
+    {
+      "key": "Treasure",
+      "path": "Systems/Treasure.lua",
+      "kind": "optional"
+    },
+    {
+      "key": "Boss",
+      "path": "Systems/Boss.lua",
+      "kind": "optional"
+    },
+    {
+      "key": "Codes",
+      "path": "Systems/Codes.lua",
+      "kind": "optional"
+    },
+    {
+      "key": "Rewards",
+      "path": "Systems/Rewards.lua",
+      "kind": "optional"
+    },
+    {
+      "key": "Backpack",
+      "path": "Systems/Backpack.lua",
+      "kind": "optional"
+    },
+    {
+      "key": "Tutorial",
+      "path": "Systems/Tutorial.lua",
+      "kind": "core"
+    },
+    {
+      "key": "Planner",
+      "path": "Progression/Planner.lua",
+      "kind": "core"
+    },
+    {
+      "key": "Engine",
+      "path": "Progression/DecisionEngine.lua",
+      "kind": "core"
+    },
+    {
+      "key": "Picker",
+      "path": "picker.lua",
+      "kind": "optional",
+      "factory": false
+    }
+  ],
+  "bundle": "dist/kaitun.lua"
 }

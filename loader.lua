@@ -122,6 +122,7 @@ local function jsonDecode(s)
 end
 
 local function httpGetOnce(url)
+	getgenv()._GBSourceHttpCount = (tonumber(getgenv()._GBSourceHttpCount) or 0) + 1
 	if typeof(game.HttpGet) == "function" then
 		return game:HttpGet(url)
 	end
@@ -259,8 +260,13 @@ local function fetchRemote(rel)
 	local url = lockUrl(rel, ver)
 	local ok, src = pcall(httpGetRetry, url, rel)
 	if ok then
-		cacheWrite(rel, MANIFEST_VER, src)
+		if rel ~= "VERSION" then
+			cacheWrite(rel, MANIFEST_VER, src)
+		end
 		return src
+	end
+	if rel == "VERSION" then
+		error(src)
 	end
 	local cached = cacheRead(rel, MANIFEST_VER)
 	if cached then
@@ -293,7 +299,11 @@ if type(manifest.version) ~= "string" or type(manifest.files) ~= "table" or type
 	error("[Kaitun][Loader] manifest missing version/files/order")
 end
 if trim(manifest.version) ~= versionText then
-	error("[Kaitun][Loader] VERSION mismatch " .. versionText .. " vs manifest " .. tostring(manifest.version))
+	error(string.format(
+		"[Kaitun][Loader][FATAL] VERSION mismatch file=%s manifest=%s",
+		tostring(versionText),
+		tostring(manifest.version)
+	))
 end
 MANIFEST_VER = trim(manifest.version)
 print("[Kaitun][Loader] Manifest " .. MANIFEST_VER)
@@ -301,34 +311,15 @@ local buildMeta = type(manifest.build) == "table" and manifest.build or {}
 local BUILD_COMMIT = trim(buildMeta.commit or manifest.commit or "")
 local BUILD_AT = trim(buildMeta.built_at or buildMeta.builtAt or manifest.built_at or "")
 
-local function resolveBranchCommit()
-	if MODE ~= "REMOTE" then
-		return nil
-	end
-	local api = string.format("https://api.github.com/repos/%s/%s/commits/%s", OWNER, REPO, BRANCH)
-	local ok, body = pcall(httpGetRetry, api, "branch commit")
-	if not ok or type(body) ~= "string" then
-		return nil
-	end
-	local ok2, t = pcall(jsonDecode, body)
-	if not ok2 or type(t) ~= "table" or type(t.sha) ~= "string" then
-		return nil
-	end
-	return string.sub(t.sha, 1, 7)
-end
-
 if BUILD_COMMIT == "" then
 	BUILD_COMMIT = "unknown"
-end
-if BUILD_COMMIT == "unknown" then
-	local c = resolveBranchCommit()
-	if c and c ~= "" then
-		BUILD_COMMIT = c
-	end
 end
 if BUILD_AT == "" then
 	BUILD_AT = "unknown"
 end
+getgenv().GB_VERSION = MANIFEST_VER
+getgenv().GB_COMMIT = BUILD_COMMIT
+getgenv().GB_BUILD_AT = BUILD_AT
 
 for rel, mapped in pairs(manifest.files) do
 	if type(rel) ~= "string" or type(mapped) ~= "string" or rel ~= mapped then
@@ -348,6 +339,48 @@ for _, row in ipairs(manifest.order) do
 	if not manifest.files[row.path] then
 		error("[Kaitun][Loader] order path not in files: " .. tostring(row.path))
 	end
+end
+
+local BUNDLE_REL = trim(manifest.bundle or "")
+if MODE == "REMOTE" and BUNDLE_REL ~= "" and getgenv().GB_USE_BUNDLE ~= false then
+	ALLOWED[BUNDLE_REL] = true
+	print("[Kaitun][Loader] Bundle " .. BUNDLE_REL)
+	local bundleSrc = fetch(BUNDLE_REL)
+	local fn, err = loadstring(bundleSrc, BUNDLE_REL)
+	if not fn then
+		error("[Kaitun][Loader] bundle compile " .. tostring(err))
+	end
+	local entry = fn()
+	if type(entry) ~= "function" then
+		error("[Kaitun][Loader] bundle must return function")
+	end
+	getgenv()._GBKaitunLoader = {
+		BASE_URL = BASE_URL,
+		VERSION = MANIFEST_VER,
+		COMMIT = BUILD_COMMIT,
+		BUILD_AT = BUILD_AT,
+		SOURCE_MODE = "REMOTE_BUNDLE",
+		OWNER = OWNER,
+		REPO = REPO,
+		BRANCH = BRANCH,
+		BUNDLE = BUNDLE_REL,
+	}
+	getgenv().GB_VERSION = MANIFEST_VER
+	getgenv().GB_COMMIT = BUILD_COMMIT
+	getgenv().GB_BUILD_AT = BUILD_AT
+	local okRun, gb = pcall(entry, {
+		VERSION = MANIFEST_VER,
+		COMMIT = BUILD_COMMIT,
+		BUILD_AT = BUILD_AT,
+		OWNER = OWNER,
+		REPO = REPO,
+		BRANCH = BRANCH,
+		BASE_URL = BASE_URL,
+	})
+	if not okRun then
+		error("[Kaitun][Loader] bundle runtime " .. tostring(gb))
+	end
+	return gb
 end
 
 local chunkCache = {}
@@ -393,6 +426,9 @@ getgenv()._GBKaitunLoader = {
 	REPO = REPO,
 	BRANCH = BRANCH,
 }
+getgenv().GB_VERSION = MANIFEST_VER
+getgenv().GB_COMMIT = BUILD_COMMIT
+getgenv().GB_BUILD_AT = BUILD_AT
 
 local Players = game:GetService("Players")
 local lp = Players.LocalPlayer

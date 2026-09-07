@@ -6,6 +6,13 @@ return function(GB)
 	if type(GB) ~= "table" or type(GB.Config) ~= "table" then
 		error("[Kaitun][BOOT] run loader.lua — modules not injected")
 	end
+	local runtimeEnabled = GB.Config.RuntimeDiagnostics ~= false
+
+	local function perfCount(name, n)
+		if GB.Profiler and GB.Profiler.count then
+			GB.Profiler.count(name, n or 1)
+		end
+	end
 
 	GB.Persist.load()
 	GB.Remotes.statReplicate()
@@ -24,7 +31,7 @@ return function(GB)
 	end
 
 	local function canWrite()
-		return typeof(writefile) == "function"
+		return runtimeEnabled and typeof(writefile) == "function"
 	end
 
 	local function ensureFolder(path)
@@ -34,11 +41,14 @@ return function(GB)
 	end
 
 	local LOG_RING_MAX = 180
-	local LOG_ROTATE_LINES = 260
+	local LOG_ROTATE_BYTES = math.max(32768, math.floor(tonumber(GB.Config.RuntimeLogMaxBytes) or 262144))
+	local LOG_MAX_FILES = math.max(1, math.floor(tonumber(GB.Config.RuntimeLogMaxFiles) or 8))
 	local logRing = {}
 	local rotatePath = nil
 	local rotateIndex = 1
-	local rotateLines = 0
+	local rotateBytes = 0
+	local lastLatestWriteAt = 0
+	local LATEST_WRITE_GAP = 0.8
 
 	local function capNumberMap(map, maxN)
 		local n = 0
@@ -76,28 +86,48 @@ return function(GB)
 		if not canWrite() then
 			return
 		end
+		local now = os.clock()
+		if now - (lastLatestWriteAt or 0) < LATEST_WRITE_GAP then
+			return
+		end
+		lastLatestWriteAt = now
 		local body = table.concat(logRing, "\n")
 		if body ~= "" then
 			body = body .. "\n"
 		end
-		pcall(writefile, "GBKaitun/runtime/latest.jsonl", body)
+		if pcall(writefile, "GBKaitun/runtime/latest.jsonl", body) then
+			perfCount("RuntimeFileWrite", 1)
+		end
 	end
 
 	local function appendRotate(line)
 		if not canWrite() or typeof(appendfile) ~= "function" or typeof(isfile) ~= "function" then
 			return
 		end
-		if rotatePath == nil or rotateLines >= LOG_ROTATE_LINES then
+		local lineText = tostring(line) .. "\n"
+		local lineBytes = #lineText
+		local function nextPath()
 			rotatePath = string.format("%s/runtime_%03d.jsonl", runtimeDir(), rotateIndex)
-			rotateIndex = rotateIndex + 1
-			rotateLines = 0
+			rotateIndex = (rotateIndex % LOG_MAX_FILES) + 1
+			rotateBytes = 0
 		end
-		if isfile(rotatePath) then
-			pcall(appendfile, rotatePath, line .. "\n")
-		else
-			pcall(writefile, rotatePath, line .. "\n")
+		if rotatePath == nil then
+			nextPath()
 		end
-		rotateLines = rotateLines + 1
+		if rotateBytes + lineBytes > LOG_ROTATE_BYTES then
+			nextPath()
+		end
+		if rotateBytes <= 0 or not isfile(rotatePath) then
+			if pcall(writefile, rotatePath, lineText) then
+				rotateBytes = lineBytes
+				perfCount("RuntimeFileWrite", 1)
+			end
+			return
+		end
+		if pcall(appendfile, rotatePath, lineText) then
+			rotateBytes = rotateBytes + lineBytes
+			perfCount("RuntimeFileWrite", 1)
+		end
 	end
 
 	local function appendJsonl(line)
@@ -232,7 +262,9 @@ return function(GB)
 			local sid = GB.Persist.data and GB.Persist.data.session or "session"
 			ensureFolder("runtime_reports")
 			ensureFolder("runtime_reports/" .. sid)
-			writefile("runtime_reports/" .. sid .. "/" .. key .. ".json", encodeDump(dump))
+			if pcall(writefile, "runtime_reports/" .. sid .. "/" .. key .. ".json", encodeDump(dump)) then
+				perfCount("RuntimeFileWrite", 1)
+			end
 		end
 		GB.Log.err("DIAG", "dead-end " .. key)
 		return dump
@@ -256,6 +288,9 @@ return function(GB)
 			end)
 		end
 		GB.conns = {}
+		if GB.Profiler and GB.Profiler.report then
+			GB.Profiler.report(true)
+		end
 		if GB.Persist then
 			GB.Persist.save()
 		end
@@ -276,6 +311,25 @@ return function(GB)
 
 	function GB.unload()
 		return stopAll("unloaded")
+	end
+
+	function GB.ConnectionStats()
+		local total = #GB.conns
+		local connected = 0
+		for _, c in ipairs(GB.conns) do
+			local ok, state = pcall(function()
+				return c and c.Connected == true
+			end)
+			if ok and state then
+				connected = connected + 1
+			end
+		end
+		return {
+			Total = total,
+			Connected = connected,
+			SchedulerRunning = GB.Scheduler and GB.Scheduler._running == true or false,
+			CombatLock = GB.Combat and GB.Combat.lockConn ~= nil or false,
+		}
 	end
 
 	getgenv()._GBKaitunUnload = GB.unload
@@ -306,11 +360,18 @@ return function(GB)
 		GB.Engine.decide()
 	end, 0)
 
-	GB.Scheduler.add("stats", function()
-		if GB.Stats and GB.Stats.tick then
-			GB.Stats.tick()
+	GB.Scheduler.add("perfCounters", function()
+		local cur = tonumber(getgenv()._GBSourceHttpCount) or 0
+		local last = tonumber(GB._sourceHttpLast) or cur
+		if cur > last then
+			perfCount("SourceHttp", cur - last)
 		end
-	end, 0.55)
+		GB._sourceHttpLast = cur
+	end, 1.0)
+
+	GB._sourceHttpBoot = tonumber(getgenv()._GBSourceHttpCount) or 0
+	GB._sourceHttpLast = GB._sourceHttpBoot
+	getgenv()._GBSourceHttpBase = GB._sourceHttpBoot
 
 	GB.Scheduler.start()
 
@@ -344,6 +405,7 @@ return function(GB)
 			tostring(s.Gold)
 		)
 	)
+	GB.Log.log("PERF", "SourceHttpAfterBoot=0")
 	print("[Kaitun][BOOT] starting version " .. ver .. " commit=" .. commit)
 	return GB
 end

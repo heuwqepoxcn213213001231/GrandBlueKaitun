@@ -208,7 +208,7 @@ return function(GB)
 		if not prereq then
 			return true
 		end
-		return GB.PlayerData.finished(prereq)
+		return GB.PlayerData.finished(prereq, true)
 	end
 
 	-- Studio QuestInfoUtilities.CreateCondition Target = { Amount, Name, RequiredAmount }

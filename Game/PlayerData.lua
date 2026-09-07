@@ -15,15 +15,36 @@ return function(GB)
 		_trackerCache = nil,
 		_current = nil,
 		_hooked = false,
+		_questDirty = true,
+		_questDirtyAt = 0,
 		_unusedPts = nil,
+		_unusedPtsAt = 0,
 		_liveStats = nil,
 		_statsSource = nil,
 		_statsAt = 0,
+		_lastQuestFetchAt = 0,
 	}
 
-	local LIVE_TTL = 0.85
-	local TRACKER_TTL = 0.45
+	local LIVE_SAFETY_TTL = 5.4
+	local TRACKER_TTL = 0.75
+	local UNUSED_TTL = 2.8
 	local STAT_NAMES = { "Health", "Strength", "Agility", "Precision", "Energy", "Willpower", "Level" }
+
+	local function pbegin()
+		return GB.Profiler and GB.Profiler.begin and GB.Profiler.begin() or nil
+	end
+
+	local function pdone(name, t0)
+		if t0 and GB.Profiler and GB.Profiler.done then
+			GB.Profiler.done(name, t0)
+		end
+	end
+
+	local function perfCount(name, n)
+		if GB.Profiler and GB.Profiler.count then
+			GB.Profiler.count(name, n or 1)
+		end
+	end
 
 	local STAGE_HINT = {
 		["Equip your new skill"] = "Basics",
@@ -306,17 +327,41 @@ return function(GB)
 		return M._order[1]
 	end
 
-	function M.invalidateLive()
+	local function markQuestDirty(why)
+		M._questDirty = true
+		M._questDirtyAt = os.clock()
 		M._at = 0
+		if why and (not M._dirtyLogAt or os.clock() - M._dirtyLogAt > 1.5) then
+			M._dirtyLogAt = os.clock()
+			GB.Log.log("STATE", "quest dirty " .. tostring(why))
+		end
 	end
 
-	function M.refreshLive(force)
+	function M.invalidateLive(why)
+		markQuestDirty(why or "invalidate")
+	end
+
+	function M.questDirty()
+		return M._questDirty == true
+	end
+
+	function M.forceQuestRefresh(why)
+		markQuestDirty(why or "force")
+		return M.refreshLive(true, why or "force")
+	end
+
+	function M.refreshLive(force, why)
+		local t0 = pbegin()
 		loadMods()
+		local now = os.clock()
 		M._tracker = readTracker()
-		if not force and os.clock() - M._at < LIVE_TTL and (next(M._live) or M._tracker) then
+		local stale = now - (M._lastQuestFetchAt or 0) >= LIVE_SAFETY_TTL
+		if not force and not M._questDirty and not stale and (next(M._live) or M._tracker or M._current) then
 			M._current = pickCurrent()
+			pdone("PlayerData.refreshLive", t0)
 			return M._live
 		end
+		perfCount("PlayerDataRefresh", 1)
 		local quests, done = GB.Remotes.getQuests()
 		if quests == nil and done == nil then
 			local snap = M._cache and M._cache.Data
@@ -325,21 +370,33 @@ return function(GB)
 				done = snap["Completed Quests"] or snap.CompletedQuests
 			end
 		end
-		M._done = completedSet(done)
-		M._live, M._order = ingestList(quests)
-		M._at = os.clock()
-		M._tracker = readTracker() or M._tracker
-		local prev = M._current
-		M._current = pickCurrent()
-		if M._current and M._current ~= prev then
-			GB.Log.log("STATE", "live quest " .. M._current)
-			if GB.Combat and GB.Combat.stopLock then
-				GB.Combat.stopLock()
+		if quests ~= nil or done ~= nil then
+			M._done = completedSet(done)
+			M._live, M._order = ingestList(quests)
+			M._at = now
+			M._lastQuestFetchAt = now
+			M._questDirty = false
+			M._tracker = readTracker() or M._tracker
+			local prev = M._current
+			M._current = pickCurrent()
+			if M._current and M._current ~= prev then
+				GB.Log.log("STATE", "live quest " .. M._current)
+				if GB.Combat and GB.Combat.stopLock then
+					GB.Combat.stopLock()
+				end
+				if GB.Persist and GB.Persist.checkpoint then
+					GB.Persist.checkpoint("quest", M._current)
+				end
 			end
-			if GB.Persist and GB.Persist.checkpoint then
-				GB.Persist.checkpoint("quest", M._current)
+		elseif force or stale then
+			-- Keep dirty=true so next safety poll/event will retry.
+			M._questDirty = true
+			if why and os.clock() - (M._refreshWarnAt or 0) > 6 then
+				M._refreshWarnAt = os.clock()
+				GB.Log.warn("STATE", "quest refresh miss " .. tostring(why))
 			end
 		end
+		pdone("PlayerData.refreshLive", t0)
 		return M._live
 	end
 
@@ -353,14 +410,11 @@ return function(GB)
 			return
 		end
 		local function bump(why)
-			M._at = 0
+			markQuestDirty(why)
 			M._trackerAt = 0
 			M._trackerCache = nil
 			if GB.State and GB.State.track then
 				GB.State.track.StateChange = os.clock()
-			end
-			if why then
-				GB.Log.log("STATE", tostring(why))
 			end
 		end
 		local beginQ = ev:FindFirstChild("BeginQuest")
@@ -373,6 +427,9 @@ return function(GB)
 					M._live[q.Name] = q
 					M._order[#M._order + 1] = q.Name
 					M._current = q.Name
+				end
+				if GB.Stats and GB.Stats.markDirty then
+					GB.Stats.markDirty("quest_begin")
 				end
 			end)
 		end
@@ -387,12 +444,15 @@ return function(GB)
 						M._current = nil
 					end
 				end
+				if GB.Stats and GB.Stats.markDirty then
+					GB.Stats.markDirty("quest_clear")
+				end
 			end)
 		end
 		local prog = ev:FindFirstChild("QuestProgress")
 		if prog then
 			GB.conns[#GB.conns + 1] = prog.OnClientEvent:Connect(function()
-				M._at = 0
+				bump("QuestProgress")
 			end)
 		end
 		local upd = ev:FindFirstChild("UpdateQuestState")
@@ -404,15 +464,18 @@ return function(GB)
 					if M._current == name then
 						M._current = nil
 					end
+					if GB.Stats and GB.Stats.markDirty then
+						GB.Stats.markDirty("quest_complete")
+					end
 				end
-				M._at = 0
+				bump("UpdateQuestState " .. tostring(name))
 			end)
 		end
 		local cc = RS:FindFirstChild("Modules") and RS.Modules:FindFirstChild("ClientCache")
 		local ch = cc and cc:FindFirstChild("QuestsChanged")
 		if ch then
 			GB.conns[#GB.conns + 1] = ch.Event:Connect(function()
-				M._at = 0
+				bump("QuestsChanged")
 			end)
 		end
 		local st = ev:FindFirstChild("StatPoints")
@@ -425,8 +488,12 @@ return function(GB)
 				end
 				if type(pts) == "number" then
 					M._unusedPts = pts
+					M._unusedPtsAt = os.clock()
 					M._statsSource = M._statsSource or "StatPointsEvent"
 					M._statsAt = os.clock()
+					if GB.Stats and GB.Stats.markDirty then
+						GB.Stats.markDirty("stat_points_event")
+					end
 				end
 				if GB.State and GB.State.track then
 					GB.State.track.StateChange = os.clock()
@@ -490,8 +557,10 @@ return function(GB)
 		return out
 	end
 
-	function M.finished(name)
-		M.refreshLive()
+	function M.finished(name, skipRefresh)
+		if not skipRefresh then
+			M.refreshLive()
+		end
 		return name and M._done[name] == true
 	end
 
@@ -555,6 +624,7 @@ return function(GB)
 	end
 
 	function M.pullStats()
+		local t0 = pbegin()
 		local a, b = GB.Remotes.getStats()
 		local stats
 		local pts
@@ -580,14 +650,16 @@ return function(GB)
 		end
 		if type(pts) == "number" then
 			M._unusedPts = pts
+			M._unusedPtsAt = os.clock()
 			M._statsSource = M._statsSource or "GetStats"
 			M._statsAt = os.clock()
 		end
+		pdone("PlayerData.pullStats", t0)
 		return a, b
 	end
 
-	function M.unusedStatPoints()
-		if type(M._unusedPts) ~= "number" then
+	function M.unusedStatPoints(force)
+		if force or type(M._unusedPts) ~= "number" or os.clock() - (M._unusedPtsAt or 0) > UNUSED_TTL then
 			M.pullStats()
 		end
 		return tonumber(M._unusedPts)
