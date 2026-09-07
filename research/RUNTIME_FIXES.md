@@ -1,5 +1,16 @@
 # Runtime Fixes
 
+## 1.1.25 — Accept stay: no re-tele while talking to NPC
+
+Maeve / tree NPCs: bot arrived at talk range then `ToNPC` + `ToInteractable` + `setPos(groundAt+40)` every ~4s, snapping onto canopy then back.
+
+**Fix**
+
+- `atTalk` is planar range only. Already in front of the NPC = stay.
+- `ToNPC` / accept loop do not teleport again while parked. Tree-height snap-down is once per 8s, floor-clamped, no `groundAt(+40)`.
+- `interact` fires the prompt in place; no CFrame snap if planar-near.
+- After Talk remote `sent`, linger and wait for accept/credit before leaving.
+
 ## 1.1.24 — Repeatable accept regression + resolver deep-scan stalls
 
 Farm loop regressed after `342f877`: when `Granny's Nemesis` accept flow stalled, planner forced `farm_direct:Corrupt Guard` and triggered repeated resolver deep scans (~2s spikes) while the correct dialogue accept option was open.

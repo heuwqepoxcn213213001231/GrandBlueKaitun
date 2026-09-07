@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
--- Version: 1.1.24
--- Commit: 5d5c625
--- BuiltAt: 2026-09-08T04:41:09+07:00
+-- Version: 1.1.25
+-- Commit: 854e01b
+-- BuiltAt: 2026-09-08T04:49:08+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -35,9 +35,9 @@ return function(meta)
 
 	stopPreviousInstance()
 
-	local BUILD_VERSION = "1.1.24"
-	local BUILD_COMMIT = "5d5c625"
-	local BUILD_AT = "2026-09-08T04:41:09+07:00"
+	local BUILD_VERSION = "1.1.25"
+	local BUILD_COMMIT = "854e01b"
+	local BUILD_AT = "2026-09-08T04:49:08+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -6634,6 +6634,12 @@ return function(GB)
 		if not M.destOk(pos) then
 			return false
 		end
+		-- NPC/talk dests already floor-snapped. groundAt(+40) hits tree canopy first.
+		if opts.SkipGround then
+			root.CFrame = typeof(cf) == "CFrame" and cf or CFrame.new(pos)
+			M.rememberSafe()
+			return true
+		end
 		local g = M.groundAt(pos)
 		if g and opts.MaxGroundY and g.Y > opts.MaxGroundY then
 			g = nil
@@ -7262,19 +7268,47 @@ return function(GB)
 		return M.moveTo(inst, range or 8)
 	end
 
+	function M.planarDist(a, b)
+		if typeof(a) ~= "Vector3" or typeof(b) ~= "Vector3" then
+			return 1e9
+		end
+		local dx = a.X - b.X
+		local dz = a.Z - b.Z
+		return math.sqrt(dx * dx + dz * dz)
+	end
+
+	function M.atTalk(resolved, range)
+		local inst = type(resolved) == "table" and resolved.Instance or resolved
+		local root = M.hrp()
+		local pos = inst and GB.Resolver and GB.Resolver.positionOf and GB.Resolver.positionOf(inst)
+		if not (root and pos) then
+			return false
+		end
+		range = tonumber(range) or (GB.Config.TalkRange or 14)
+		-- Planar only: Y is ignored so a tree snap still counts as "already talking".
+		return M.planarDist(root.Position, pos) <= range
+	end
+
 	function M.safeOffset(inst, dist)
 		dist = dist or (GB.Config.TalkOffset or 5)
 		local part = GB.Resolver.part(inst)
-		if not part or not part:IsA("BasePart") then
+		local base
+		if part and part:IsA("BasePart") then
+			local look = part.CFrame.LookVector
+			local off = Vector3.new(look.X, 0, look.Z)
+			if off.Magnitude < 0.2 then
+				off = Vector3.new(0, 0, 1)
+			end
+			base = part.Position + off.Unit * dist
+		else
 			local pos = GB.Resolver.positionOf(inst)
-			return pos and (pos + Vector3.new(0, 0, dist))
+			base = pos and (pos + Vector3.new(0, 0, dist))
 		end
-		local look = part.CFrame.LookVector
-		local off = Vector3.new(look.X, 0, look.Z)
-		if off.Magnitude < 0.2 then
-			off = Vector3.new(0, 0, 1)
+		if not base then
+			return nil
 		end
-		return part.Position + off.Unit * dist
+		local npcY = (part and part.Position.Y) or base.Y
+		return M.floorAt(base, npcY) or base
 	end
 
 	function M.ToNPC(resolved, range)
@@ -7282,18 +7316,38 @@ return function(GB)
 		if not inst then
 			return false
 		end
+		local talkRange = GB.Config.TalkRange or 14
+		local npcPos = GB.Resolver.positionOf(inst)
+		local snapOpts = npcPos and { MaxGroundY = npcPos.Y + 4, SkipGround = true } or { SkipGround = true }
+		if M.atTalk(resolved, talkRange) then
+			local root = M.hrp()
+			if root and npcPos and math.abs(root.Position.Y - npcPos.Y) > 6 then
+				local now = os.clock()
+				if now - (M._npcSnapAt or 0) >= 8 then
+					M._npcSnapAt = now
+					local dest = M.floorAt(root.Position, npcPos.Y) or M.safeOffset(inst, range or (GB.Config.TalkOffset or 5))
+					if dest then
+						return M.setPos(dest, snapOpts)
+					end
+				end
+			end
+			return true
+		end
 		local dest = M.safeOffset(inst, range or (GB.Config.TalkOffset or 5))
 		if not dest then
 			return M.moveTo(inst, range or 8)
 		end
 		if not M.destOk(dest) then
-			local g = M.groundAt(dest)
+			local g = npcPos and M.floorAt(dest, npcPos.Y) or M.groundAt(dest)
 			if g then
 				dest = g
 			end
 		end
+		if npcPos then
+			dest = M.floorAt(dest, npcPos.Y) or dest
+		end
 		GB.Log.log("TRAVEL", "Teleport -> " .. (M.displayLabel(resolved) or inst.Name))
-		return M.setPos(dest)
+		return M.setPos(dest, snapOpts)
 	end
 
 	function M.displayLabel(resolved)
@@ -7453,8 +7507,10 @@ return function(GB)
 		if not inst then
 			return false
 		end
-		M.ToInteractable(inst, range or 4)
-		task.wait(0.15)
+		if not M.atTalk(inst, math.max(range or 4, GB.Config.TalkRange or 14)) then
+			M.ToInteractable(inst, range or 4)
+			task.wait(0.15)
+		end
 		local origin, _, pr = nil, nil, nil
 		if GB.Resolver.promptAnchor then
 			origin, _, pr = GB.Resolver.promptAnchor(inst)
@@ -7465,9 +7521,10 @@ return function(GB)
 		end
 		local root = M.hrp()
 		local d = (root and origin) and (root.Position - origin).Magnitude or -1
-		if root and origin and d > 7.5 then
-			root.CFrame = CFrame.new(origin + Vector3.new(0, 0, 3))
-			M.rememberSafe()
+		local planar = (root and origin) and M.planarDist(root.Position, origin) or 1e9
+		if root and origin and planar > (GB.Config.TalkRange or 14) then
+			local dest = M.floorAt(origin + Vector3.new(0, 0, 3), origin.Y) or (origin + Vector3.new(0, 0, 3))
+			M.setPos(dest, { MaxGroundY = origin.Y + 4, SkipGround = true })
 			d = (root.Position - origin).Magnitude
 		end
 		local dur = hold
@@ -12253,7 +12310,7 @@ return function(GB)
 				if cfg then
 					GB.Remotes.dialogueConfig(cfg)
 				end
-				local waitFor = okTalk and 0.85 or ((whyTalk == "rate") and 0.9 or 0.35)
+				local waitFor = okTalk and 1.8 or ((whyTalk == "rate") and 0.9 or 0.45)
 				local untilAt = os.clock() + waitFor
 				while os.clock() < untilAt do
 					if dialogueOpen() then
@@ -12414,18 +12471,36 @@ return function(GB)
 		if pack.Island and island and pack.Island ~= island and GB.Travel then
 			GB.Travel.goIsland(island)
 		end
-		if not GB.World.ToNPC(pack, GB.Config.TalkOffset or 5) then
-			if not GB.World.moveTo(pack.Instance, GB.Config.TalkRange or 14) then
-				return false, "travel"
+		local alreadyThere = GB.World.atTalk and GB.World.atTalk(pack, GB.Config.TalkRange or 14)
+		if not alreadyThere then
+			if not GB.World.ToNPC(pack, GB.Config.TalkOffset or 5) then
+				if not GB.World.moveTo(pack.Instance, GB.Config.TalkRange or 14) then
+					return false, "travel"
+				end
 			end
+			GB.World.waitUnpause()
+			task.wait(0.25)
 		end
-		GB.World.waitUnpause()
-		task.wait(0.2)
 		local cfg = GB.Resolver.dialogueConfig(pack.Instance)
 		local spoken, whyTalk = fireTalkVariants(talkNameList(shown, pack), cfg)
+		if not spoken then
+			local lingerUntil = os.clock() + 2.4
+			while os.clock() < lingerUntil do
+				if dialogueOpen() then
+					spoken = shown
+					break
+				end
+				if clickAccept(opts) then
+					spoken = shown
+					M.lastClick = os.clock()
+					break
+				end
+				task.wait(0.12)
+			end
+		end
 		if not spoken and GB.World and GB.World.interact then
 			GB.World.interact(pack.Instance, GB.Config.TalkRange or 14)
-			task.wait(0.3)
+			task.wait(0.35)
 			spoken, whyTalk = fireTalkVariants(talkNameList(shown, pack), cfg)
 		end
 		if not spoken then
@@ -13246,25 +13321,22 @@ return function(GB)
 				GB.Remotes.beginAutomatic(name)
 			end
 			if qs.NPC then
-				local now = os.clock()
-				if now - (M._acceptMoveAt and M._acceptMoveAt[name] or 0) >= 0.9 then
-					local movePack = GB.Resolver.resolveNPC(qs.NPC, {
-						DisplayName = qs.NPC,
-						QuestName = name,
-						Island = qs.Island,
-						ExpectedRole = "npc",
-						deep = false,
-					}) or GB.Resolver.resolveNPC(qs.NPC, {
-						DisplayName = qs.NPC,
-						QuestName = name,
-						ExpectedRole = "npc",
-						deep = false,
-					})
-					if movePack and GB.World and GB.World.ToNPC then
-						M._acceptMoveAt = M._acceptMoveAt or {}
-						M._acceptMoveAt[name] = now
-						GB.World.ToNPC(movePack, GB.Config.TalkOffset or 5)
-					elseif qs.Island and GB.World and GB.World.pullStream then
+				local movePack = GB.Resolver.resolveNPC(qs.NPC, {
+					DisplayName = qs.NPC,
+					QuestName = name,
+					Island = qs.Island,
+					ExpectedRole = "npc",
+					deep = false,
+				}) or GB.Resolver.resolveNPC(qs.NPC, {
+					DisplayName = qs.NPC,
+					QuestName = name,
+					ExpectedRole = "npc",
+					deep = false,
+				})
+				local atNpc = movePack and GB.World and GB.World.atTalk and GB.World.atTalk(movePack, GB.Config.TalkRange or 14)
+				if (not atNpc) and qs.Island and (not movePack) and GB.World and GB.World.pullStream then
+					if os.clock() - (M._acceptStreamAt or 0) >= 6 then
+						M._acceptStreamAt = os.clock()
 						GB.World.pullStream(qs.Island)
 					end
 				end
@@ -13274,13 +13346,14 @@ return function(GB)
 					GB.Log.log("QUEST", string.format("accepting %s via %s", tostring(name), tostring(qs.NPC)))
 				end
 				setAcceptState(name, "RESOLVE_ACCEPT_NPC", qs.NPC)
+				-- Force only when not already at the NPC; parked = stay and talk, no re-tele.
 				local ok, talkReason = M.talk(qs.NPC, false, {
 					Quest = name,
 					Island = qs.Island,
 					DisplayName = qs.NPC,
 					QuestName = name,
 					Action = "accept",
-					Force = true,
+					Force = not atNpc,
 				})
 				if ok then
 					setAcceptState(name, "WAIT_ACTIVE_VALIDATION", qs.NPC)
@@ -13295,6 +13368,28 @@ return function(GB)
 					return resultRow(name, true, false, "accept_not_active")
 				end
 				local reasonText = tostring(talkReason or "")
+				local parked = atNpc
+					or (movePack and GB.World and GB.World.atTalk and GB.World.atTalk(movePack, GB.Config.TalkRange or 14))
+				if parked
+					or string.find(reasonText, "talk_no_dialogue", 1, true)
+					or reasonText == "rate"
+					or reasonText == "waiting"
+				then
+					setAcceptState(name, "WAIT_ACTIVE_VALIDATION", qs.NPC)
+					local active, reason = waitQuestAccepted(name, 6.2)
+					if active then
+						setAcceptState(name, "ACTIVE", qs.NPC)
+						GB.Log.log("QUEST", tostring(name) .. " ACTIVE")
+						M.noteOk(name)
+						return resultRow(name, true, true, "accepted")
+					end
+					if string.find(reasonText, "resolve", 1, true) or string.find(reasonText, "travel", 1, true) then
+						M.noteFail(name, "accept_" .. tostring(talkReason))
+					elseif reason ~= "timeout" then
+						M.noteFail(name, "accept_" .. tostring(talkReason or reason))
+					end
+					return resultRow(name, true, false, "accept_" .. tostring(talkReason or "pending"))
+				end
 				if string.find(reasonText, "resolve", 1, true)
 					or string.find(reasonText, "travel", 1, true)
 					or string.find(reasonText, "talk_no_dialogue", 1, true)

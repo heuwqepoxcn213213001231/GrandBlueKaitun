@@ -1114,7 +1114,7 @@ return function(GB)
 				if cfg then
 					GB.Remotes.dialogueConfig(cfg)
 				end
-				local waitFor = okTalk and 0.85 or ((whyTalk == "rate") and 0.9 or 0.35)
+				local waitFor = okTalk and 1.8 or ((whyTalk == "rate") and 0.9 or 0.45)
 				local untilAt = os.clock() + waitFor
 				while os.clock() < untilAt do
 					if dialogueOpen() then
@@ -1275,18 +1275,36 @@ return function(GB)
 		if pack.Island and island and pack.Island ~= island and GB.Travel then
 			GB.Travel.goIsland(island)
 		end
-		if not GB.World.ToNPC(pack, GB.Config.TalkOffset or 5) then
-			if not GB.World.moveTo(pack.Instance, GB.Config.TalkRange or 14) then
-				return false, "travel"
+		local alreadyThere = GB.World.atTalk and GB.World.atTalk(pack, GB.Config.TalkRange or 14)
+		if not alreadyThere then
+			if not GB.World.ToNPC(pack, GB.Config.TalkOffset or 5) then
+				if not GB.World.moveTo(pack.Instance, GB.Config.TalkRange or 14) then
+					return false, "travel"
+				end
 			end
+			GB.World.waitUnpause()
+			task.wait(0.25)
 		end
-		GB.World.waitUnpause()
-		task.wait(0.2)
 		local cfg = GB.Resolver.dialogueConfig(pack.Instance)
 		local spoken, whyTalk = fireTalkVariants(talkNameList(shown, pack), cfg)
+		if not spoken then
+			local lingerUntil = os.clock() + 2.4
+			while os.clock() < lingerUntil do
+				if dialogueOpen() then
+					spoken = shown
+					break
+				end
+				if clickAccept(opts) then
+					spoken = shown
+					M.lastClick = os.clock()
+					break
+				end
+				task.wait(0.12)
+			end
+		end
 		if not spoken and GB.World and GB.World.interact then
 			GB.World.interact(pack.Instance, GB.Config.TalkRange or 14)
-			task.wait(0.3)
+			task.wait(0.35)
 			spoken, whyTalk = fireTalkVariants(talkNameList(shown, pack), cfg)
 		end
 		if not spoken then
@@ -2107,25 +2125,22 @@ return function(GB)
 				GB.Remotes.beginAutomatic(name)
 			end
 			if qs.NPC then
-				local now = os.clock()
-				if now - (M._acceptMoveAt and M._acceptMoveAt[name] or 0) >= 0.9 then
-					local movePack = GB.Resolver.resolveNPC(qs.NPC, {
-						DisplayName = qs.NPC,
-						QuestName = name,
-						Island = qs.Island,
-						ExpectedRole = "npc",
-						deep = false,
-					}) or GB.Resolver.resolveNPC(qs.NPC, {
-						DisplayName = qs.NPC,
-						QuestName = name,
-						ExpectedRole = "npc",
-						deep = false,
-					})
-					if movePack and GB.World and GB.World.ToNPC then
-						M._acceptMoveAt = M._acceptMoveAt or {}
-						M._acceptMoveAt[name] = now
-						GB.World.ToNPC(movePack, GB.Config.TalkOffset or 5)
-					elseif qs.Island and GB.World and GB.World.pullStream then
+				local movePack = GB.Resolver.resolveNPC(qs.NPC, {
+					DisplayName = qs.NPC,
+					QuestName = name,
+					Island = qs.Island,
+					ExpectedRole = "npc",
+					deep = false,
+				}) or GB.Resolver.resolveNPC(qs.NPC, {
+					DisplayName = qs.NPC,
+					QuestName = name,
+					ExpectedRole = "npc",
+					deep = false,
+				})
+				local atNpc = movePack and GB.World and GB.World.atTalk and GB.World.atTalk(movePack, GB.Config.TalkRange or 14)
+				if (not atNpc) and qs.Island and (not movePack) and GB.World and GB.World.pullStream then
+					if os.clock() - (M._acceptStreamAt or 0) >= 6 then
+						M._acceptStreamAt = os.clock()
 						GB.World.pullStream(qs.Island)
 					end
 				end
@@ -2135,13 +2150,14 @@ return function(GB)
 					GB.Log.log("QUEST", string.format("accepting %s via %s", tostring(name), tostring(qs.NPC)))
 				end
 				setAcceptState(name, "RESOLVE_ACCEPT_NPC", qs.NPC)
+				-- Force only when not already at the NPC; parked = stay and talk, no re-tele.
 				local ok, talkReason = M.talk(qs.NPC, false, {
 					Quest = name,
 					Island = qs.Island,
 					DisplayName = qs.NPC,
 					QuestName = name,
 					Action = "accept",
-					Force = true,
+					Force = not atNpc,
 				})
 				if ok then
 					setAcceptState(name, "WAIT_ACTIVE_VALIDATION", qs.NPC)
@@ -2156,6 +2172,28 @@ return function(GB)
 					return resultRow(name, true, false, "accept_not_active")
 				end
 				local reasonText = tostring(talkReason or "")
+				local parked = atNpc
+					or (movePack and GB.World and GB.World.atTalk and GB.World.atTalk(movePack, GB.Config.TalkRange or 14))
+				if parked
+					or string.find(reasonText, "talk_no_dialogue", 1, true)
+					or reasonText == "rate"
+					or reasonText == "waiting"
+				then
+					setAcceptState(name, "WAIT_ACTIVE_VALIDATION", qs.NPC)
+					local active, reason = waitQuestAccepted(name, 6.2)
+					if active then
+						setAcceptState(name, "ACTIVE", qs.NPC)
+						GB.Log.log("QUEST", tostring(name) .. " ACTIVE")
+						M.noteOk(name)
+						return resultRow(name, true, true, "accepted")
+					end
+					if string.find(reasonText, "resolve", 1, true) or string.find(reasonText, "travel", 1, true) then
+						M.noteFail(name, "accept_" .. tostring(talkReason))
+					elseif reason ~= "timeout" then
+						M.noteFail(name, "accept_" .. tostring(talkReason or reason))
+					end
+					return resultRow(name, true, false, "accept_" .. tostring(talkReason or "pending"))
+				end
 				if string.find(reasonText, "resolve", 1, true)
 					or string.find(reasonText, "travel", 1, true)
 					or string.find(reasonText, "talk_no_dialogue", 1, true)

@@ -289,6 +289,12 @@ return function(GB)
 		if not M.destOk(pos) then
 			return false
 		end
+		-- NPC/talk dests already floor-snapped. groundAt(+40) hits tree canopy first.
+		if opts.SkipGround then
+			root.CFrame = typeof(cf) == "CFrame" and cf or CFrame.new(pos)
+			M.rememberSafe()
+			return true
+		end
 		local g = M.groundAt(pos)
 		if g and opts.MaxGroundY and g.Y > opts.MaxGroundY then
 			g = nil
@@ -917,19 +923,47 @@ return function(GB)
 		return M.moveTo(inst, range or 8)
 	end
 
+	function M.planarDist(a, b)
+		if typeof(a) ~= "Vector3" or typeof(b) ~= "Vector3" then
+			return 1e9
+		end
+		local dx = a.X - b.X
+		local dz = a.Z - b.Z
+		return math.sqrt(dx * dx + dz * dz)
+	end
+
+	function M.atTalk(resolved, range)
+		local inst = type(resolved) == "table" and resolved.Instance or resolved
+		local root = M.hrp()
+		local pos = inst and GB.Resolver and GB.Resolver.positionOf and GB.Resolver.positionOf(inst)
+		if not (root and pos) then
+			return false
+		end
+		range = tonumber(range) or (GB.Config.TalkRange or 14)
+		-- Planar only: Y is ignored so a tree snap still counts as "already talking".
+		return M.planarDist(root.Position, pos) <= range
+	end
+
 	function M.safeOffset(inst, dist)
 		dist = dist or (GB.Config.TalkOffset or 5)
 		local part = GB.Resolver.part(inst)
-		if not part or not part:IsA("BasePart") then
+		local base
+		if part and part:IsA("BasePart") then
+			local look = part.CFrame.LookVector
+			local off = Vector3.new(look.X, 0, look.Z)
+			if off.Magnitude < 0.2 then
+				off = Vector3.new(0, 0, 1)
+			end
+			base = part.Position + off.Unit * dist
+		else
 			local pos = GB.Resolver.positionOf(inst)
-			return pos and (pos + Vector3.new(0, 0, dist))
+			base = pos and (pos + Vector3.new(0, 0, dist))
 		end
-		local look = part.CFrame.LookVector
-		local off = Vector3.new(look.X, 0, look.Z)
-		if off.Magnitude < 0.2 then
-			off = Vector3.new(0, 0, 1)
+		if not base then
+			return nil
 		end
-		return part.Position + off.Unit * dist
+		local npcY = (part and part.Position.Y) or base.Y
+		return M.floorAt(base, npcY) or base
 	end
 
 	function M.ToNPC(resolved, range)
@@ -937,18 +971,38 @@ return function(GB)
 		if not inst then
 			return false
 		end
+		local talkRange = GB.Config.TalkRange or 14
+		local npcPos = GB.Resolver.positionOf(inst)
+		local snapOpts = npcPos and { MaxGroundY = npcPos.Y + 4, SkipGround = true } or { SkipGround = true }
+		if M.atTalk(resolved, talkRange) then
+			local root = M.hrp()
+			if root and npcPos and math.abs(root.Position.Y - npcPos.Y) > 6 then
+				local now = os.clock()
+				if now - (M._npcSnapAt or 0) >= 8 then
+					M._npcSnapAt = now
+					local dest = M.floorAt(root.Position, npcPos.Y) or M.safeOffset(inst, range or (GB.Config.TalkOffset or 5))
+					if dest then
+						return M.setPos(dest, snapOpts)
+					end
+				end
+			end
+			return true
+		end
 		local dest = M.safeOffset(inst, range or (GB.Config.TalkOffset or 5))
 		if not dest then
 			return M.moveTo(inst, range or 8)
 		end
 		if not M.destOk(dest) then
-			local g = M.groundAt(dest)
+			local g = npcPos and M.floorAt(dest, npcPos.Y) or M.groundAt(dest)
 			if g then
 				dest = g
 			end
 		end
+		if npcPos then
+			dest = M.floorAt(dest, npcPos.Y) or dest
+		end
 		GB.Log.log("TRAVEL", "Teleport -> " .. (M.displayLabel(resolved) or inst.Name))
-		return M.setPos(dest)
+		return M.setPos(dest, snapOpts)
 	end
 
 	function M.displayLabel(resolved)
@@ -1108,8 +1162,10 @@ return function(GB)
 		if not inst then
 			return false
 		end
-		M.ToInteractable(inst, range or 4)
-		task.wait(0.15)
+		if not M.atTalk(inst, math.max(range or 4, GB.Config.TalkRange or 14)) then
+			M.ToInteractable(inst, range or 4)
+			task.wait(0.15)
+		end
 		local origin, _, pr = nil, nil, nil
 		if GB.Resolver.promptAnchor then
 			origin, _, pr = GB.Resolver.promptAnchor(inst)
@@ -1120,9 +1176,10 @@ return function(GB)
 		end
 		local root = M.hrp()
 		local d = (root and origin) and (root.Position - origin).Magnitude or -1
-		if root and origin and d > 7.5 then
-			root.CFrame = CFrame.new(origin + Vector3.new(0, 0, 3))
-			M.rememberSafe()
+		local planar = (root and origin) and M.planarDist(root.Position, origin) or 1e9
+		if root and origin and planar > (GB.Config.TalkRange or 14) then
+			local dest = M.floorAt(origin + Vector3.new(0, 0, 3), origin.Y) or (origin + Vector3.new(0, 0, 3))
+			M.setPos(dest, { MaxGroundY = origin.Y + 4, SkipGround = true })
 			d = (root.Position - origin).Magnitude
 		end
 		local dur = hold
