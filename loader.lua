@@ -4,7 +4,7 @@
 local DEFAULT_OWNER = "heuwqepoxcn213213001231"
 local DEFAULT_REPO = "GrandBlueKaitun"
 local DEFAULT_BRANCH = "main"
-local DEFAULT_BOOTSTRAP_REF = "a28d863"
+local DEFAULT_BOOTSTRAP_REF = "c2165dc"
 
 if type(getgenv) ~= "function" then
 	error("[Kaitun][Loader] getgenv missing")
