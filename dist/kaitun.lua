@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
 -- Version: 1.1.24
--- Commit: 199f6ae
--- BuiltAt: 2026-09-08T04:25:03+07:00
+-- Commit: 4d29960
+-- BuiltAt: 2026-09-08T04:32:58+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -36,8 +36,8 @@ return function(meta)
 	stopPreviousInstance()
 
 	local BUILD_VERSION = "1.1.24"
-	local BUILD_COMMIT = "199f6ae"
-	local BUILD_AT = "2026-09-08T04:25:03+07:00"
+	local BUILD_COMMIT = "4d29960"
+	local BUILD_AT = "2026-09-08T04:32:58+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -7892,6 +7892,11 @@ return function(GB)
 				GB.Log.warn("PLANNER", string.format("farm pending %s reason=%s", tostring(repName), tostring(row.reason)))
 			end
 		end
+		if M._farmReasonKey ~= (repName .. "|" .. tostring(row.reason)) or os.clock() - (M._farmReasonAt or 0) > 2.8 then
+			M._farmReasonKey = repName .. "|" .. tostring(row.reason)
+			M._farmReasonAt = os.clock()
+			GB.Log.log("STATE", string.format("farm_result %s reason=%s", tostring(repName), tostring(row.reason)))
+		end
 		return {
 			attempted = row.attempted ~= false,
 			progressed = row.progressed == true,
@@ -12135,13 +12140,14 @@ return function(GB)
 
 	function M.talk(request, automatic, opts)
 		opts = opts or {}
+		local force = opts.Force == true
 		local qsName = opts.Quest
 		local island = opts.Island or (qsName and GB.QuestData.islandOf(qsName))
 		local key = tostring(request)
 
 		local openRows = dialogueCandidates(opts)
 		if #openRows > 0 then
-			if os.clock() - (M.lastClick or 0) < 0.45 then
+			if (not force) and os.clock() - (M.lastClick or 0) < 0.45 then
 				return false, "rate"
 			end
 			local clicked = clickAccept(opts)
@@ -12160,7 +12166,7 @@ return function(GB)
 			end
 		end
 
-		if os.clock() - (M.lastTalk[key] or 0) < 1.8 then
+		if (not force) and os.clock() - (M.lastTalk[key] or 0) < 1.8 then
 			return false, "rate"
 		end
 
@@ -12200,22 +12206,29 @@ return function(GB)
 		end
 
 		local function fireTalkVariants(names, cfg)
+			local lastWhy = "none"
 			for _, who in ipairs(names or {}) do
 				GB.Log.log("QUEST", "Talking " .. tostring(who))
+				local okTalk, whyTalk
 				if automatic then
-					GB.Remotes.autoTalk(who)
+					okTalk, whyTalk = GB.Remotes.autoTalk(who)
 				else
-					GB.Remotes.talk(who)
+					okTalk, whyTalk = GB.Remotes.talk(who)
 				end
+				lastWhy = tostring(whyTalk or (okTalk and "sent" or "unknown"))
 				if cfg then
 					GB.Remotes.dialogueConfig(cfg)
 				end
-				task.wait(0.22)
-				if dialogueOpen() then
-					return who
+				local waitFor = okTalk and 0.85 or ((whyTalk == "rate") and 0.9 or 0.35)
+				local untilAt = os.clock() + waitFor
+				while os.clock() < untilAt do
+					if dialogueOpen() then
+						return who, lastWhy
+					end
+					task.wait(0.1)
 				end
 			end
-			return nil
+			return nil, lastWhy
 		end
 
 		local function findDialogueNpcPack(name, islandHint)
@@ -12346,7 +12359,7 @@ return function(GB)
 			pack = findDialogueNpcPack(request, island)
 		end
 		if not pack then
-			local spoken = fireTalkVariants(talkNameList(request), nil)
+			local spoken, whyTalk = fireTalkVariants(talkNameList(request), nil)
 			if spoken then
 				task.wait(0.2)
 				if clickAccept(opts) then
@@ -12360,7 +12373,7 @@ return function(GB)
 			else
 				GB.Log.warn("QUEST", "NPC miss " .. tostring(request))
 			end
-			return false, "resolve"
+			return false, "resolve:" .. tostring(whyTalk or "none")
 		end
 
 		local shown = talkName(pack, request)
@@ -12375,15 +12388,15 @@ return function(GB)
 		GB.World.waitUnpause()
 		task.wait(0.2)
 		local cfg = GB.Resolver.dialogueConfig(pack.Instance)
-		local spoken = fireTalkVariants(talkNameList(shown, pack), cfg)
+		local spoken, whyTalk = fireTalkVariants(talkNameList(shown, pack), cfg)
 		if not spoken and GB.World and GB.World.interact then
 			GB.World.interact(pack.Instance, GB.Config.TalkRange or 14)
 			task.wait(0.3)
-			spoken = fireTalkVariants(talkNameList(shown, pack), cfg)
+			spoken, whyTalk = fireTalkVariants(talkNameList(shown, pack), cfg)
 		end
 		if not spoken then
 			M.lastTalk[key] = os.clock()
-			return false, "talk_no_dialogue"
+			return false, "talk_no_dialogue:" .. tostring(whyTalk or "none")
 		end
 		task.wait(0.35)
 		if clickAccept(opts) then
@@ -13173,7 +13186,11 @@ return function(GB)
 		local qs = M.questState(name)
 		local t = M.trackOf(name)
 		if os.clock() < t.NextRetryAt and t.LastError then
-			return resultRow(name, false, false, "retry_window")
+			if qs and not qs.IsAccepted then
+				-- Keep trying acceptance flow; retry-window should not hard-stall accept travel/talk.
+			else
+				return resultRow(name, false, false, "retry_window")
+			end
 		end
 		local blocked, why = M.deferred(name)
 		if blocked then
@@ -13195,6 +13212,28 @@ return function(GB)
 				GB.Remotes.beginAutomatic(name)
 			end
 			if qs.NPC then
+				local now = os.clock()
+				if now - (M._acceptMoveAt and M._acceptMoveAt[name] or 0) >= 0.9 then
+					local movePack = GB.Resolver.resolveNPC(qs.NPC, {
+						DisplayName = qs.NPC,
+						QuestName = name,
+						Island = qs.Island,
+						ExpectedRole = "npc",
+						deep = false,
+					}) or GB.Resolver.resolveNPC(qs.NPC, {
+						DisplayName = qs.NPC,
+						QuestName = name,
+						ExpectedRole = "npc",
+						deep = false,
+					})
+					if movePack and GB.World and GB.World.ToNPC then
+						M._acceptMoveAt = M._acceptMoveAt or {}
+						M._acceptMoveAt[name] = now
+						GB.World.ToNPC(movePack, GB.Config.TalkOffset or 5)
+					elseif qs.Island and GB.World and GB.World.pullStream then
+						GB.World.pullStream(qs.Island)
+					end
+				end
 				if not M._acceptLogAt or os.clock() - M._acceptLogAt > 2 then
 					M._acceptLogAt = os.clock()
 					GB.Log.log("QUEST", "Opening " .. tostring(name))
@@ -13207,6 +13246,7 @@ return function(GB)
 					DisplayName = qs.NPC,
 					QuestName = name,
 					Action = "accept",
+					Force = true,
 				})
 				if ok then
 					setAcceptState(name, "WAIT_ACTIVE_VALIDATION", qs.NPC)
@@ -13220,7 +13260,11 @@ return function(GB)
 					M.noteFail(name, "accept_not_active " .. tostring(reason))
 					return resultRow(name, true, false, "accept_not_active")
 				end
-				if talkReason == "resolve" or talkReason == "travel" or talkReason == "talk_no_dialogue" then
+				local reasonText = tostring(talkReason or "")
+				if string.find(reasonText, "resolve", 1, true)
+					or string.find(reasonText, "travel", 1, true)
+					or string.find(reasonText, "talk_no_dialogue", 1, true)
+				then
 					M.noteFail(name, "accept_" .. tostring(talkReason))
 				end
 				return resultRow(name, true, false, "accept_" .. tostring(talkReason or "pending"))

@@ -338,6 +338,11 @@ return function(GB)
 				GB.Log.warn("PLANNER", string.format("farm pending %s reason=%s", tostring(repName), tostring(row.reason)))
 			end
 		end
+		if M._farmReasonKey ~= (repName .. "|" .. tostring(row.reason)) or os.clock() - (M._farmReasonAt or 0) > 2.8 then
+			M._farmReasonKey = repName .. "|" .. tostring(row.reason)
+			M._farmReasonAt = os.clock()
+			GB.Log.log("STATE", string.format("farm_result %s reason=%s", tostring(repName), tostring(row.reason)))
+		end
 		return {
 			attempted = row.attempted ~= false,
 			progressed = row.progressed == true,
