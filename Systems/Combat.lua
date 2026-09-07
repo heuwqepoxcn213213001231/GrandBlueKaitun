@@ -432,14 +432,10 @@ return function(GB)
 		return nil
 	end
 
-	function M.needReposition(mob)
-		if not M.IsEnemyAlive(mob) then
-			return false
-		end
-		local root = GB.World.hrp()
+	local function standDest(mob)
 		local part = GB.Resolver.part(mob)
-		if not (root and part and part:IsA("BasePart")) then
-			return false
+		if not (part and part:IsA("BasePart")) then
+			return nil
 		end
 		local dest
 		if isDummy(mob.Name) then
@@ -454,8 +450,29 @@ return function(GB)
 			end
 			dest = part.Position + off
 		end
-		local far = (root.Position - dest).Magnitude > REPOS_DIST
+		if not GB.World.destOk(dest) then
+			dest = part.Position + Vector3.new(GB.Config.DummyBeside or 3.2, 0, 0)
+		end
+		if GB.World.floorAt then
+			dest = GB.World.floorAt(dest, part.Position.Y) or Vector3.new(dest.X, part.Position.Y, dest.Z)
+		end
+		return dest, part
+	end
+
+	function M.needReposition(mob)
+		if not M.IsEnemyAlive(mob) then
+			return false
+		end
+		local root = GB.World.hrp()
+		local dest, part = standDest(mob)
+		if not (root and dest and part) then
+			return false
+		end
 		local moved = M.lastTargetPos and (M.lastTargetPos - part.Position).Magnitude or 99
+		if GB.World.tweenPlaying and GB.World.tweenPlaying() then
+			return moved > TARGET_MOVED
+		end
+		local far = (root.Position - dest).Magnitude > REPOS_DIST
 		return far or moved > TARGET_MOVED
 	end
 
@@ -464,36 +481,20 @@ return function(GB)
 			return false
 		end
 		local root = GB.World.hrp()
-		local part = GB.Resolver.part(mob)
-		if not (root and part and part:IsA("BasePart")) then
+		local dest, part = standDest(mob)
+		if not (root and dest and part) then
 			return false
-		end
-		local name = mob.Name
-		local offset
-		if isDummy(name) then
-			offset = Vector3.new(GB.Config.DummyBeside or 3.2, 0, 0)
-		else
-			local look = part.CFrame.LookVector
-			offset = -Vector3.new(look.X, 0, look.Z)
-			if offset.Magnitude < 0.2 then
-				offset = Vector3.new(0, 0, GB.Config.CombatRange or 5.5)
-			else
-				offset = offset.Unit * (GB.Config.CombatRange or 5.5)
-			end
-		end
-		local dest = part.Position + offset
-		if not GB.World.destOk(dest) then
-			dest = part.Position + Vector3.new(GB.Config.DummyBeside or 3.2, 0, 0)
-		end
-		local g = GB.World.groundAt(dest)
-		if g then
-			dest = g
 		end
 		M.lastTargetPos = part.Position
 		M.lastStandAt = os.clock()
-		if (root.Position - dest).Magnitude > 2.2 then
-			root.CFrame = CFrame.new(dest, Vector3.new(part.Position.X, dest.Y, part.Position.Z))
+		if (root.Position - dest).Magnitude <= 2.2 then
+			root.CFrame = CFrame.new(root.Position, Vector3.new(part.Position.X, root.Position.Y, part.Position.Z))
+			return true
 		end
+		if GB.World.tweenTo then
+			return GB.World.tweenTo(dest, part.Position, { wait = false, range = 2.2 })
+		end
+		root.CFrame = CFrame.new(dest, Vector3.new(part.Position.X, dest.Y, part.Position.Z))
 		return true
 	end
 
@@ -668,11 +669,14 @@ return function(GB)
 		if not GB.World.destOk(dest) then
 			dest = part.Position + Vector3.new(range, 0, 0)
 		end
-		local g = GB.World.groundAt(dest)
-		if g then
-			dest = g
+		if GB.World.floorAt then
+			dest = GB.World.floorAt(dest, part.Position.Y) or Vector3.new(dest.X, part.Position.Y, dest.Z)
 		end
-		root.CFrame = CFrame.new(dest, Vector3.new(part.Position.X, dest.Y, part.Position.Z))
+		if GB.World.tweenTo then
+			GB.World.tweenTo(dest, part.Position, { wait = false, range = 2.5 })
+		else
+			root.CFrame = CFrame.new(dest, Vector3.new(part.Position.X, dest.Y, part.Position.Z))
+		end
 		if GB.Skills and GB.Skills.aimAt then
 			GB.Skills.aimAt(mob)
 		end

@@ -37,15 +37,16 @@ return function(GB)
 		if not canWrite() then
 			return
 		end
-		local prev = ""
-		if typeof(isfile) == "function" and isfile(path) and typeof(readfile) == "function" then
-			prev = readfile(path)
-			if type(prev) ~= "string" then
-				prev = ""
-			end
+		-- Never readfile+rewrite. Growing latest.jsonl freezes the client after a long run.
+		if typeof(appendfile) == "function" and typeof(isfile) == "function" and isfile(path) then
+			pcall(appendfile, path, line .. "\n")
+			return
 		end
-		writefile(path, prev .. line .. "\n")
+		pcall(writefile, path, line .. "\n")
 	end
+
+	local lastDumpAt = 0
+	local lastDump = nil
 
 	local function invSummary()
 		local rows = {}
@@ -59,6 +60,10 @@ return function(GB)
 	end
 
 	function GB.DumpRuntimeIssue()
+		if os.clock() - lastDumpAt < 25 and lastDump then
+			return lastDump
+		end
+		lastDumpAt = os.clock()
 		local snap = GB.State.get()
 		local cur = GB.PlayerData.current()
 		local qs = cur and GB.Quest.questState(cur)
@@ -66,7 +71,7 @@ return function(GB)
 		local plan = GB.Planner and GB.Planner.last
 		local obj = qs and qs.Objective
 		local dump = {
-			Version = tostring(getgenv().GB_VERSION or "1.1.13"),
+			Version = tostring(getgenv().GB_VERSION or "1.1.17"),
 			TutorialDump = GB.DumpTutorialState and GB.DumpTutorialState() or nil,
 			PlaceId = game.PlaceId,
 			Level = snap.Level,
@@ -103,13 +108,12 @@ return function(GB)
 			TargetAlive = GB.Combat and GB.Combat.lockMob and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(GB.Combat.lockMob),
 		}
 		GB.Log.warn("DIAG", string.format("DumpRuntimeIssue quest=%s stage=%s", tostring(cur), tostring(dump.Stage)))
+		lastDump = dump
 		local line = encodeDump(dump)
 		if canWrite() then
 			ensureFolder("GBKaitun")
 			ensureFolder("GBKaitun/runtime")
 			appendJsonl("GBKaitun/runtime/latest.jsonl", line)
-			local sid = GB.Persist.data and GB.Persist.data.session or "session"
-			appendJsonl("GBKaitun/runtime/" .. sid .. ".jsonl", line)
 		end
 		return dump
 	end
@@ -181,6 +185,12 @@ return function(GB)
 		GB.Engine.decide()
 	end, 0)
 
+	GB.Scheduler.add("stats", function()
+		if GB.Stats and GB.Stats.tick then
+			GB.Stats.tick()
+		end
+	end, 0.55)
+
 	GB.Scheduler.start()
 
 	function GB.DumpTutorialState()
@@ -195,7 +205,16 @@ return function(GB)
 	getgenv().GB_VERSION = getgenv().GB_VERSION or (getgenv()._GBKaitunLoader and getgenv()._GBKaitunLoader.VERSION)
 
 	local s = GB.State.refresh()
-	GB.Log.log("BOOT", string.format("lv%s island=%s gold=%s", tostring(s.Level), tostring(s.CurrentIsland), tostring(s.Gold)))
-	print("[Kaitun][BOOT] ready — GBKaitun / GBConfig / GB_VERSION")
+	GB.Log.log(
+		"BOOT",
+		string.format(
+			"VERSION %s lv%s island=%s gold=%s",
+			tostring(getgenv().GB_VERSION),
+			tostring(s.Level),
+			tostring(s.CurrentIsland),
+			tostring(s.Gold)
+		)
+	)
+	print("[Kaitun][BOOT] VERSION " .. tostring(getgenv().GB_VERSION))
 	return GB
 end

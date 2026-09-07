@@ -1,5 +1,70 @@
 # Runtime Fixes
 
+## 1.1.17 — Player still on GitHub 1.1.13; Stats never ticked
+
+HttpGet loader default REMOTE. Origin was `ef90654` (1.1.13). Local 1.1.14–1.1.16 never pushed → execute still `resolve miss Marine Gate`, no `[STAT]`, 26 unused.
+
+**Fix:** push. `Stats.tick` on its own 0.55s job. Unused from `Stat Points: N` anywhere in PlayerGui. `StatPoints:FireServer("Invest", name, n)` no shared rate with other remotes. BOOT logs `VERSION 1.1.17`.
+
+```
+[Kaitun][BOOT] VERSION 1.1.17
+[Kaitun][STAT] unused=26
+[Kaitun][STAT] Invest Strength x21 now Str=23 Hp=1 target 8:2
+```
+
+---
+
+## 1.1.16 — Log watcher ≠ game; dump rewrite froze client; defer Gate
+
+`runtime_log_watcher.py` only copies executor JSON from `GBKaitun/runtime` into `runtime_reports/Mac`. It does not run in Roblox. Ctrl+C just stops the copier.
+
+Client freeze after a long run: `DumpRuntimeIssue` did `readfile(entire latest.jsonl)+writefile` every recovery dump. File grew → hitch. Restart script = empty file = smooth. Also `inferObjective` walked all `PlayerGui` descendants. Recovery looped `resolve miss Marine Gate` → diagnostic dump.
+
+Gate of Authority needs Strength 100 to push-open. Below that, defer and do other live (Advanced Training) then farm (`Officer Termination` at lv9).
+
+**Fix:** `appendfile` / overwrite latest only. Dump throttle 25s. Infer only `Quests` GUI. `Quest.deferred` Gate if Str<100. Stats log `unused=N`.
+
+```
+[Kaitun][QUEST] defer Gate of Authority need Strength 100 to push-open
+[Kaitun][STATE] doing=talk target=Officer Graves
+[Kaitun][STATE] task farm:Officer Termination
+[Kaitun][STAT] unused=26
+```
+
+---
+
+## 1.1.15 — Gate of Authority + unused stats still 26
+
+`resolve miss Marine Gate`. Quest target is `Open / Marine Gate`. Live instance is `Workspace.Islands.Anchor Town.Island.Gate` tagged **Marine Metal Gate**, prompt `Pushable Door`. No model named Marine Gate. `byName` miss → recovery loop. Mob-zone `Shell Town Marine Gate` is a 400+ stud volume — not the door.
+
+`Pushable Door` server: Strength ≥ 100 → `Progress(..., "Open")`. Below 100 → fail anim, only `Push`. Tracker text is "Be at the Gate of Authority when it opens" — Open also credits anyone within 150 when the gate opens.
+
+26 unused, no `[STAT]` line. `unused()` trusted GetStats=0 over Radar `Stat Points: 26`.
+
+**Fix:** alias + `taggedAny("Marine Metal Gate")`. Stand on Gate.Anchor, fire prompt, stay (markSuccess). Stats unused = max(GetStats, Radar, cache). `Stats.tick` on first alive tick.
+
+```
+[Kaitun][STAT] Invest Strength xN now Str=.. Hp=.. target 8:2
+[Kaitun][QUEST] at Marine Gate Str=22 need 100 to push-open
+```
+
+---
+
+## 1.1.14 — Stats never spent mid-quest; ToEnemy snaps to roofs
+
+`Stats.tick` lived after `Quest.doLive` `return`. Live story always has a current quest → AutoStats never ran. 20 unused, Strength 2 / Health 1. `GetStats` returns `(stats, unused)` — `invoke` kept only the first value. ClientCache `Data.StatPoints` is 0.
+
+`ToEnemy` / `standPose` used `groundAt` (ray from Y+40). Indoor Marine Snitch → first hit is the roof → `Teleport -> Marine Snitch` onto the house.
+
+**Fix:** `Stats.tick` before the quest return. Cache unused from `GetStats` + `StatPoints.OnClientEvent`. `floorAt` from the mob's Y. Tween HRP to that floor (`Tween -> name`). Reposition does not slam CFrame onto `groundAt`.
+
+```
+[Kaitun][STAT] Invest Strength x16 now Str=18 Hp=1 target 8:2
+[Kaitun][TRAVEL] Tween -> Marine Snitch
+```
+
+---
+
 ## 1.1.13 — Tea Party Crashers: Corrupt Marine Officer is a family name
 
 `Kill Corrupt Marine Officer` 7. Resolver exact-match on `Workspace.Entities` miss. Nearby dump had **Corrupt Swordsman Officer** d=56, Marine Snitch, Maeve. Live models: `Corrupt Swordsman Officer 3017`, `Corrupt Sniper Officer 3015`. Tags: variant name + `Corrupt Marine`. `NPCName` = variant. Mob zone part is named `Corrupt Marine Officer` — not the combatant. Foot soldier `Corrupt Marine N` is a different kill.

@@ -1,9 +1,12 @@
--- Islands, move, destOk, groundAt, water/void rescue.
+-- Islands, move, destOk, floorAt, tweenTo. Combat does not snap to roofs.
 
 return function(GB)
+	local TweenService = game:GetService("TweenService")
 	local M = {
 		lastSafe = nil,
 		anchorSafe = nil,
+		_tween = nil,
+		_tweenDest = nil,
 	}
 
 	local ISLANDS = { "Anchor Town", "Clown Town", "Maple Village" }
@@ -74,6 +77,125 @@ return function(GB)
 		return p
 	end
 
+	-- Floor under the target. groundAt(+40) hits roofs first when the mob is indoors.
+	function M.floorAt(pos, preferY)
+		if typeof(pos) ~= "Vector3" then
+			return nil
+		end
+		preferY = tonumber(preferY) or pos.Y
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		local c = M.char()
+		params.FilterDescendantsInstances = c and { c } or {}
+		for _, lift in ipairs({ 2.4, 5, 9 }) do
+			local origin = Vector3.new(pos.X, preferY + lift, pos.Z)
+			local hit = workspace:Raycast(origin, Vector3.new(0, -(lift + 10), 0), params)
+			if hit and hit.Material ~= Enum.Material.Water then
+				if not (hit.Instance and string.find(string.lower(hit.Instance.Name), "water", 1, true)) then
+					local p = hit.Position + Vector3.new(0, 3, 0)
+					if p.Y <= preferY + 3.5 and M.destOk(p) then
+						return p
+					end
+				end
+			end
+		end
+		local flat = Vector3.new(pos.X, preferY, pos.Z)
+		if M.destOk(flat) then
+			return flat
+		end
+		return nil
+	end
+
+	function M.cancelTween()
+		if M._tween then
+			pcall(function()
+				M._tween:Cancel()
+			end)
+			M._tween = nil
+			M._tweenDest = nil
+		end
+	end
+
+	function M.tweenPlaying()
+		local tw = M._tween
+		if not tw then
+			return false
+		end
+		local ok, st = pcall(function()
+			return tw.PlaybackState
+		end)
+		return ok and st == Enum.PlaybackState.Playing
+	end
+
+	function M.tweenTo(pos, lookAt, opts)
+		opts = opts or {}
+		local root = M.hrp()
+		if not (root and typeof(pos) == "Vector3") then
+			return false
+		end
+		if not M.destOk(pos) then
+			return false
+		end
+		local range = tonumber(opts.range) or 3.5
+		local here = root.Position
+		local dist = (here - pos).Magnitude
+		local function face()
+			if typeof(lookAt) == "Vector3" then
+				root.CFrame = CFrame.new(root.Position, Vector3.new(lookAt.X, root.Position.Y, lookAt.Z))
+			end
+		end
+		if dist <= range then
+			face()
+			return true
+		end
+		if M.tweenPlaying() and M._tweenDest and (M._tweenDest - pos).Magnitude < 2.4 then
+			return (root.Position - pos).Magnitude <= range + 3
+		end
+		M.cancelTween()
+		local speed = tonumber(GB.Config.TweenSpeed) or 95
+		local maxDur = tonumber(opts.maxDur) or tonumber(GB.Config.TweenMaxDur) or 1.8
+		local dur = math.clamp(dist / math.max(speed, 20), 0.08, maxDur)
+		local goal = typeof(lookAt) == "Vector3" and CFrame.new(pos, Vector3.new(lookAt.X, pos.Y, lookAt.Z))
+			or CFrame.new(pos)
+		pcall(function()
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+		end)
+		local tw = TweenService:Create(
+			root,
+			TweenInfo.new(dur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ CFrame = goal }
+		)
+		M._tween = tw
+		M._tweenDest = pos
+		tw:Play()
+		if opts.wait == false then
+			return (root.Position - pos).Magnitude <= range + 6
+		end
+		local t0 = os.clock()
+		while os.clock() - t0 < dur + 0.06 do
+			if not root.Parent then
+				break
+			end
+			if (root.Position - pos).Magnitude <= range then
+				break
+			end
+			task.wait()
+		end
+		if tw.PlaybackState == Enum.PlaybackState.Playing then
+			pcall(function()
+				tw:Cancel()
+			end)
+		end
+		if M._tween == tw then
+			M._tween = nil
+			M._tweenDest = nil
+		end
+		face()
+		M.rememberSafe()
+		return (root.Position - pos).Magnitude <= range + 3
+	end
+
 	function M.rememberSafe()
 		local root = M.hrp()
 		if not root then
@@ -115,6 +237,7 @@ return function(GB)
 		if GB.Combat then
 			pcall(GB.Combat.stopLock)
 		end
+		M.cancelTween()
 		root.AssemblyLinearVelocity = Vector3.zero
 		root.CFrame = dest
 		GB.Log.warn("TRAVEL", "rescue swim/void")
@@ -126,6 +249,7 @@ return function(GB)
 		local root = M.hrp()
 		local dest = M.lastSafe or M.anchorSafe
 		if root and dest then
+			M.cancelTween()
 			root.CFrame = dest
 		end
 	end
@@ -205,13 +329,14 @@ return function(GB)
 			M.setPos(step)
 			return (root.Position - pos).Magnitude <= range
 		end
+		local dest = M.floorAt(pos, pos.Y) or pos
+		if dist > 16 then
+			return M.tweenTo(dest, pos, { wait = true, range = range })
+		end
 		if hum then
-			hum:MoveTo(pos)
+			hum:MoveTo(dest)
 		end
-		if dist > 40 then
-			M.setPos(pos + Vector3.new(0, 0, 0))
-		end
-		return (root.Position - pos).Magnitude <= range + 4
+		return (root.Position - dest).Magnitude <= range + 4
 	end
 
 	local geoCache = {}
@@ -828,18 +953,48 @@ return function(GB)
 		if GB.Resolver.isPet and GB.Resolver.isPet(inst) then
 			return false
 		end
-		local dest = M.safeOffset(inst, range or (GB.Config.CombatRange or 5.5))
-		if not dest then
-			return M.moveTo(inst, range or 8)
+		range = range or (GB.Config.CombatRange or 5.5)
+		local part = GB.Resolver.part(inst)
+		local dest
+		if part and part:IsA("BasePart") then
+			local look = part.CFrame.LookVector
+			local off = -Vector3.new(look.X, 0, look.Z)
+			if off.Magnitude < 0.2 then
+				off = Vector3.new(0, 0, range)
+			else
+				off = off.Unit * range
+			end
+			dest = part.Position + off
+		else
+			dest = M.safeOffset(inst, range)
 		end
+		if not dest then
+			return M.moveTo(inst, range + 2)
+		end
+		local preferY = (part and part:IsA("BasePart") and part.Position.Y) or dest.Y
+		dest = M.floorAt(dest, preferY) or Vector3.new(dest.X, preferY, dest.Z)
 		if not M.destOk(dest) then
-			local g = M.groundAt(dest)
-			if g then
-				dest = g
+			return false
+		end
+		local root = M.hrp()
+		if not root then
+			return false
+		end
+		local look = part and part.Position or dest
+		local dist = (root.Position - dest).Magnitude
+		GB.Log.log("TRAVEL", "Tween -> " .. (GB.Resolver.displayName(inst) or inst.Name))
+		local speed = tonumber(GB.Config.TweenSpeed) or 95
+		local maxDur = tonumber(GB.Config.TweenMaxDur) or 1.8
+		local maxStep = speed * maxDur
+		if dist > maxStep + 10 then
+			local flat = Vector3.new(dest.X - root.Position.X, 0, dest.Z - root.Position.Z)
+			if flat.Magnitude > 1 then
+				local mid = root.Position + flat.Unit * maxStep
+				mid = M.floorAt(mid, preferY) or Vector3.new(mid.X, preferY, mid.Z)
+				M.tweenTo(mid, look, { wait = true, range = 3 })
 			end
 		end
-		GB.Log.log("TRAVEL", "Teleport -> " .. (GB.Resolver.displayName(inst) or inst.Name))
-		return M.setPos(dest)
+		return M.tweenTo(dest, look, { wait = true, range = range + 1.2 })
 	end
 
 	function M.ToInteractable(inst, range)

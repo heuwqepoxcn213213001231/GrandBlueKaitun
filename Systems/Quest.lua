@@ -271,6 +271,51 @@ return function(GB)
 		return true
 	end
 
+	-- Pushable Door: Strength>=100 opens (Open credit). Else stand in 150 until it opens.
+	local function waitAtMarineGate(questName, inst)
+		local qs = M.questState(questName)
+		local before = M.signature(qs)
+		local anchor = inst:FindFirstChild("Anchor")
+		local stand = (anchor and anchor:IsA("BasePart") and anchor.Position)
+			or select(1, GB.Resolver.promptAnchor(inst))
+		if stand and GB.World.tweenTo then
+			GB.World.tweenTo(stand, nil, { wait = true, range = 6 })
+		elseif stand then
+			GB.World.setPos(stand, { MaxGroundY = stand.Y + 8 })
+		else
+			GB.World.ToInteractable(inst, 6)
+		end
+		local str = 0
+		pcall(function()
+			str = tonumber((GB.State.get().Stats or {}).Strength) or 0
+		end)
+		GB.Log.log("QUEST", string.format("at Marine Gate Str=%d need 100 to push-open", str))
+		if GB.World.interact then
+			GB.World.interact(inst, 6)
+		end
+		if GB.Recovery and GB.Recovery.markSuccess then
+			GB.Recovery.markSuccess()
+		end
+		if M.waitProgress(questName, before, str >= 100 and 8 or 3.5) then
+			M.noteOk(questName)
+			return true
+		end
+		return true
+	end
+
+	function M.deferred(name)
+		if name == "Gate of Authority" then
+			local str = 0
+			pcall(function()
+				str = tonumber((GB.State.get().Stats or {}).Strength) or 0
+			end)
+			if str < 100 then
+				return true, "need Strength 100 to push-open"
+			end
+		end
+		return false
+	end
+
 	function M.condProgress(cond)
 		return GB.QuestData.conditionCurrent(cond), GB.QuestData.conditionAmount(cond)
 	end
@@ -280,8 +325,12 @@ return function(GB)
 		if not pg then
 			return nil
 		end
+		local gui = pg:FindFirstChild("Quests")
+		if not gui then
+			return nil
+		end
 		local blob = {}
-		for _, d in ipairs(pg:GetDescendants()) do
+		for _, d in ipairs(gui:GetDescendants()) do
 			if (d:IsA("TextLabel") or d:IsA("TextButton")) and type(d.Text) == "string" and d.Text ~= "" then
 				blob[#blob + 1] = d.Text
 			end
@@ -1053,20 +1102,31 @@ return function(GB)
 			return openLogbook()
 		end
 		if typ == "Open" or typ == "Interact" or typ == "Investigate" or typ == "Wake" or typ == "Check On" or typ == "Free" then
-			local obj = GB.Resolver.byName(target)
-			if obj then
-				if GB.World.interact then
-					GB.World.interact(obj, 8)
-				else
-					GB.World.ToInteractable(obj, 8)
-					local pr = GB.Resolver.prompt(obj)
-					if pr then
-						GB.World.firePrompt(pr)
-					end
-				end
-				return true
+			local spec = GB.QuestSpecs and GB.QuestSpecs.lookup(questName, nil, typ, target)
+			local tag = (spec and (spec.marker or spec.source)) or GB.QuestData.markerOf(typ, target) or target
+			if target == "Marine Gate" or tag == "Marine Gate" or questName == "Gate of Authority" then
+				tag = "Marine Metal Gate"
 			end
-			return false
+			local obj = (GB.Resolver.taggedAny and GB.Resolver.taggedAny(tag))
+				or GB.Resolver.byName(tag)
+				or GB.Resolver.byName(target)
+			if not obj then
+				M.noteFail(questName, "resolve miss " .. tostring(target))
+				return false
+			end
+			if target == "Marine Gate" or questName == "Gate of Authority" then
+				return waitAtMarineGate(questName, obj)
+			end
+			if GB.World.interact then
+				GB.World.interact(obj, 8)
+			else
+				GB.World.ToInteractable(obj, 8)
+				local pr = GB.Resolver.prompt(obj)
+				if pr then
+					GB.World.firePrompt(pr)
+				end
+			end
+			return true
 		end
 		if typ == "Deliver" or typ == "Donate" or typ == "GiveItemTo" then
 			return M.talk(target, false, { Quest = questName, DisplayName = target })

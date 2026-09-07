@@ -43,7 +43,7 @@ Talk remote: `ClientQuest:FireServer("Talk", DisplayName)` + `DialogueBindable:F
 | First Upgrade | 4 | Anchor Town | Talk | Talk | Blacksmith Shinozaki | — | Blacksmith Shinozaki | Anchor Town | The Hoarder | Quest.talk | live Talk Blacksmith Shinozaki count 1 | STATIC_VERIFIED | IMPLEMENTED |
 | First Upgrade | 5 | Anchor Town | Smelt | AcquireItem | Copper Bar | Crafting | Furnace | Anchor Town | The Hoarder | LifeSkills.smeltToward | inventory/quest Copper Bar 2 | STATIC_VERIFIED | IMPLEMENTED |
 | First Upgrade | 6 | Anchor Town | Upgrade | Upgrade | Flintlock | — | Flintlock | Anchor Town | The Hoarder | Equipment.upgradeNamed | live Upgrade Flintlock count 1 | STATIC_VERIFIED | IMPLEMENTED |
-| Gate of Authority | 1 | Anchor Town | Open | Interact | Marine Gate | — | Marine Metal Gate | Anchor Town | Feral Dog | Quest.goTagged | live Open Marine Gate count 1 | STATIC_VERIFIED | IMPLEMENTED |
+| Gate of Authority | 1 | Anchor Town | Open | Interact | Marine Gate | — | Marine Metal Gate | Anchor Town | Feral Dog | Quest.waitAtMarineGate | live Open Marine Gate count 1 | STATIC_VERIFIED | RUNTIME_VERIFIED |
 | Gearing Up | 1 | Anchor Town | Sell | Sell | Stolen Watch | — | Stolen Watch | Anchor Town | Pirate Fan Letter | Shop.sellNamed | live Sell Stolen Watch count 1 | STATIC_VERIFIED | IMPLEMENTED |
 | Gearing Up | 2 | Anchor Town | Purchase | AcquireItem | Flintlock | ShopPurchase | Flintlock | Anchor Town | Pirate Fan Letter | Shop.buy | inventory/quest Flintlock 1 | STATIC_VERIFIED | IMPLEMENTED |
 | Gearing Up | 3 | Anchor Town | Equip | Equip | Flintlock | — | Flintlock | Anchor Town | Pirate Fan Letter | Tutorial + Equipment.equipViaBackpack (SaveOrder Weapon2) | live Equip Flintlock count 1 | STATIC_VERIFIED | IMPLEMENTED |

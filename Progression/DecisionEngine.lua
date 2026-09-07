@@ -171,6 +171,10 @@ return function(GB)
 			return
 		end
 
+		if GB.Stats and GB.Stats.tick then
+			GB.Stats.tick()
+		end
+
 		local gate = GB.Tutorial and GB.Tutorial.GetCurrentGate and GB.Tutorial.GetCurrentGate()
 		local continueOverlay = gate and gate.Type == (GB.Tutorial.GateTypes and GB.Tutorial.GateTypes.ContinueOverlay)
 
@@ -235,11 +239,58 @@ return function(GB)
 		if GB.Config.AutoRewards then
 			GB.Rewards.tick()
 		end
+		-- Quest path returns before the idle ticks. Spend points / keep gear mid-story.
+		if GB.Stats and GB.Stats.tick then
+			GB.Stats.tick()
+		end
+		if GB.Equipment and GB.Equipment.tick then
+			GB.Equipment.tick()
+		end
+
+		local function otherOrFarm(skipName)
+			local names = GB.PlayerData.activeNames and GB.PlayerData.activeNames() or {}
+			for _, name in ipairs(names) do
+				if name ~= skipName and not GB.Config.SkipQuests[name] then
+					local d2 = GB.Quest.deferred and select(1, GB.Quest.deferred(name))
+					if not d2 then
+						setTask("quest:" .. name)
+						logQuestDoing(name)
+						GB.Quest.doLive(name)
+						afterQuest(name)
+						return true
+					end
+				end
+			end
+			local rep = bestRepeat(snap.CurrentIsland, snap.Level or 0)
+			if rep then
+				setTask("farm:" .. rep)
+				logDoing("farm", rep)
+				GB.Quest.doLive(rep)
+				return true
+			end
+			return false
+		end
 
 		-- Mandatory live story
 		if GB.Config.AutoTutorial or GB.Config.AutoQuest then
 			local cur = GB.PlayerData.current()
 			if cur and not GB.Config.SkipQuests[cur] then
+				local def, why = false, nil
+				if GB.Quest.deferred then
+					def, why = GB.Quest.deferred(cur)
+				end
+				if def then
+					if M._deferKey ~= cur then
+						M._deferKey = cur
+						GB.Log.warn("QUEST", "defer " .. tostring(cur) .. " " .. tostring(why))
+					end
+					if otherOrFarm(cur) then
+						return
+					end
+					setTask("defer:" .. cur)
+					logDoing("defer", cur)
+					return
+				end
 				local qs = GB.Quest.questState(cur)
 				local obj = qs and qs.Objective
 				local gated = obj and obj.Type == "Required" and obj.TargetName == "Level"

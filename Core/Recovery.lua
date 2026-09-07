@@ -76,6 +76,12 @@ return function(GB)
 		M.last = os.clock()
 		M.level = M.level + 1
 		M.reason = why
+		local cur0 = GB.PlayerData and GB.PlayerData.current and GB.PlayerData.current()
+		if cur0 and GB.Quest and GB.Quest.deferred and select(1, GB.Quest.deferred(cur0)) then
+			GB.Log.warn("RECOVERY", "defer " .. tostring(cur0))
+			M.markSuccess()
+			return
+		end
 		local strat = M.currentStrategy()
 		if M.level > 1 then
 			strat = M.advanceStrategy()

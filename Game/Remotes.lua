@@ -86,7 +86,23 @@ return function(GB)
 	end
 
 	function M.statInvest(stat, n)
-		return M.fire("StatPoints", 0.45, "Invest", stat, n or 1)
+		local r = ev("StatPoints")
+		if not r then
+			GB.Log.warn("ERROR", "remote missing StatPoints")
+			return false
+		end
+		n = math.max(1, math.floor(tonumber(n) or 1))
+		if not GB.Retry.rateOk("re:StatPoints", 0.2) then
+			return false, "rate"
+		end
+		local ok, err = pcall(function()
+			r:FireServer("Invest", tostring(stat), n)
+		end)
+		if not ok then
+			GB.Log.err("ERROR", "StatPoints FireServer " .. tostring(err))
+			return false, err
+		end
+		return true
 	end
 
 	function M.statReplicate()
@@ -249,7 +265,19 @@ return function(GB)
 	end
 
 	function M.getStats()
-		return M.invoke("GetStats")
+		local r = ev("GetStats")
+		if not r then
+			return nil, nil
+		end
+		if not GB.Retry.rateOk("rf:GetStats", 0.45) then
+			return nil, nil
+		end
+		local ok, a, b = pcall(r.InvokeServer, r)
+		if not ok then
+			GB.Persist.failRemote("GetStats", a)
+			return nil, nil
+		end
+		return a, b
 	end
 
 	function M.getEquip()

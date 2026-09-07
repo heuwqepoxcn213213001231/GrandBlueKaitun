@@ -44,6 +44,12 @@ return function(GB)
 		["Corrupt Sniper Officer"] = { "Corrupt Marine Officer", "Corrupt Swordsman Officer" },
 	}
 
+	-- Quest target "Marine Gate". Live: Model Gate tagged Marine Metal Gate. Not the mob-zone part.
+	M.OBJECT_ALIAS = {
+		["Marine Gate"] = { "Marine Metal Gate", "Gate" },
+		["Marine Metal Gate"] = { "Marine Gate", "Gate" },
+	}
+
 	local missLog = {}
 	local dummyCache = nil
 	local dummyPos = nil
@@ -99,7 +105,7 @@ return function(GB)
 		pushName(list, seen, opts.QuestName)
 		local src = aliases()
 		local function addMapped(key)
-			local v = src[key] or M.NPC_ALIAS[key] or M.ENEMY_ALIAS[key]
+			local v = src[key] or M.NPC_ALIAS[key] or M.ENEMY_ALIAS[key] or M.OBJECT_ALIAS[key]
 			if type(v) == "string" then
 				pushName(list, seen, v)
 			elseif type(v) == "table" then

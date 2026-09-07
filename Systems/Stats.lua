@@ -76,9 +76,58 @@ return function(GB)
 		return alloc
 	end
 
+	local function guiUnused()
+		if M._guiN and os.clock() - (M._guiAt or 0) < 0.45 then
+			return M._guiN
+		end
+		local n
+		pcall(function()
+			local lp = GB.lp
+			local pg = lp and lp.PlayerGui
+			if not pg then
+				return
+			end
+			local menu = pg:FindFirstChild("Menu")
+			local radar = menu and menu:FindFirstChild("Radar", true)
+			local st = radar and radar:FindFirstChild("StatpointText", true)
+			if GB.State and GB.State.guiNum then
+				n = GB.State.guiNum(st)
+			end
+			if not n or n < 1 then
+				for _, d in ipairs(pg:GetDescendants()) do
+					if (d:IsA("TextLabel") or d:IsA("TextButton")) and type(d.Text) == "string" then
+						local v = d.Text:match("Stat Points:%s*(%d+)")
+						if v then
+							n = tonumber(v)
+							break
+						end
+					end
+				end
+			end
+		end)
+		M._guiAt = os.clock()
+		M._guiN = tonumber(n)
+		return M._guiN
+	end
+
 	function M.unused()
+		local best = 0
+		if GB.PlayerData and GB.PlayerData.unusedStatPoints then
+			local n = GB.PlayerData.unusedStatPoints()
+			if type(n) == "number" and n > best then
+				best = n
+			end
+		end
+		local g = guiUnused()
+		if type(g) == "number" and g > best then
+			best = g
+		end
 		local s = GB.State.get()
-		return tonumber(s.StatPoints) or 0
+		local c = tonumber(s and s.StatPoints)
+		if type(c) == "number" and c > best then
+			best = c
+		end
+		return best
 	end
 
 	function M.investMinimum(n)
@@ -97,7 +146,15 @@ return function(GB)
 		end
 		local pts = M.unused()
 		if pts < 1 then
+			if not M._zeroAt or os.clock() - M._zeroAt > 12 then
+				M._zeroAt = os.clock()
+				GB.Log.log("STAT", "unused=0 (no invest)")
+			end
 			return
+		end
+		if not M._usedAt or os.clock() - M._usedAt > 8 then
+			M._usedAt = os.clock()
+			GB.Log.log("STAT", "unused=" .. tostring(pts))
 		end
 		local cur = live()
 		local prof = profile()

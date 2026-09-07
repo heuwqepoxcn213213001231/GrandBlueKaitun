@@ -13,6 +13,8 @@ return function(GB)
 		_tracker = nil,
 		_current = nil,
 		_hooked = false,
+		_unusedPts = nil,
+		_liveStats = nil,
 	}
 
 	local LIVE_TTL = 0.85
@@ -356,6 +358,20 @@ return function(GB)
 				M._at = 0
 			end)
 		end
+		local st = ev:FindFirstChild("StatPoints")
+		if st then
+			GB.conns[#GB.conns + 1] = st.OnClientEvent:Connect(function(stats, pts)
+				if type(stats) == "table" then
+					M._liveStats = stats
+				end
+				if type(pts) == "number" then
+					M._unusedPts = pts
+				end
+			end)
+		end
+		task.spawn(function()
+			M.pullStats()
+		end)
 	end
 
 	function M.raw()
@@ -388,7 +404,10 @@ return function(GB)
 		end
 		out.EXP = tonumber(d.EXP) or tonumber(d.Exp) or 0
 		out.Gold = tonumber(d.Gold) or 0
-		out.StatPoints = tonumber(d.StatPoints) or tonumber(d["Stat Points"]) or tonumber(d.UnusedStatPoints) or 0
+		out.StatPoints = tonumber(M._unusedPts)
+		if out.StatPoints == nil then
+			out.StatPoints = tonumber(d.StatPoints) or tonumber(d["Stat Points"]) or tonumber(d.UnusedStatPoints) or 0
+		end
 		out.Stats = {}
 		if char and M._stat and M._stat.GetBaseValue then
 			for _, n in ipairs({ "Health", "Strength", "Agility", "Precision", "Energy", "Willpower" }) do
@@ -471,9 +490,29 @@ return function(GB)
 		return false, false
 	end
 
+	function M.pullStats()
+		local a, b = GB.Remotes.getStats()
+		if type(a) == "table" then
+			M._liveStats = a
+		end
+		if type(b) == "number" then
+			M._unusedPts = b
+		elseif type(a) == "number" then
+			M._unusedPts = a
+		end
+		return a, b
+	end
+
+	function M.unusedStatPoints()
+		if type(M._unusedPts) ~= "number" then
+			M.pullStats()
+		end
+		return tonumber(M._unusedPts)
+	end
+
 	function M.refreshStats()
 		GB.Remotes.statReplicate()
-		return GB.Remotes.getStats()
+		return M.pullStats()
 	end
 
 	return M

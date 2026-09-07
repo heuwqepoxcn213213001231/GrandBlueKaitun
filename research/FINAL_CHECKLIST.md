@@ -7,9 +7,9 @@
 | Quest | WORKING | Goal+Acquire planner for all 151 QuestInfo stages. Collect KillUntilDrop uses EnemyDrop kill-credit (inventory/quest count; no world drop required). UNKNOWN_OBJECTIVE stops that loop |
 | Auto level | WORKING | Story gates + repeatable `full_until` bands |
 | Island | WORKING | Anchor → Setting Sail 30 → Clown → Journey 70 → Maple. Geometry API type-safe on Folder/Model/BasePart (`World.GetIsland*`) |
-| Travel | PARTIAL | destOk hop/walk; island spawn; no invented teleport list |
+| Travel | PARTIAL | destOk hop; combat tween + floorAt (no roof snap, 1.1.14); island spawn; no invented teleport list |
 | Combat | WORKING | AttackModule.Swing at CanSwing+0.42s; Dead attribute / Health<=0 release; no corpse lock; Dash PressKey Q, Block F |
-| Stats | WORKING | `StatPoints("Invest", name, n)` MenuHandler |
+| Stats | WORKING | `StatPoints("Invest", name, n)` mid-quest via GetStats unused (1.1.14) |
 | Skills | WORKING | Scroll: ConsumeSkillScroll(nil) + Skill("Equip", name) + hotbar Cast. EquipSkill RF still no invoke |
 | Inventory | PARTIAL | Classify KEEP/EQUIP/QUEST; UNKNOWN=KEEP; no sell junk auto |
 | Backpack | PARTIAL | Open/select/equip via BackpackToggle + SaveOrder. Slot-upgrade remote still UNRESOLVED |
