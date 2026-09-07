@@ -1,5 +1,25 @@
 # Runtime Fixes
 
+## 1.1.3 — SkillObtained Gunshot press-anywhere after Equip Flintlock
+
+After backpack + SaveOrder, `PassiveDisplay` queues **Gunshot**. Overlay: `PlayerGui.SkillObtained` — circular icon, "Gunshot", "Active Skill", "PRESS ANYWHERE TO CONTINUE". `ContinueButton` is a **TextLabel**.
+
+`PassiveObtained.Notify`: `task.wait(3)` then `UIS.InputBegan`. `gameProcessed=true` returns unless ButtonX. `Queue` also `BackpackToggle:Fire(false)`.
+
+1.1.2 treated leftover QuestOverlay backpack text as the gate and skipped dismiss. Real clicks on the card set gameProcessed and the handler no-ops. Listener is not connected for the first 3 seconds.
+
+**Fix:** SkillObtained / TutorialScreen always beat backpack coach. Wait 3.15s after first see, then fire InputBegan MouseButton1 + ButtonX with `gameProcessed=false`. Overlay check before GameplayPaused wait.
+
+### Expected log
+
+```
+[Kaitun][GATE] waiting SkillObtained listener SkillObtained Gunshot
+[Kaitun][UI] dismiss overlay SkillObtained Gunshot
+[Kaitun][GATE] Tutorial advanced SkillObtained -> none
+```
+
+---
+
 ## 1.1.2 — Dead combat targets + mandatory tutorial / UI gates
 
 ### Combat: corpse still attacked

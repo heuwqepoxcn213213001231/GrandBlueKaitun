@@ -115,6 +115,14 @@ return function(GB)
 			quest = nil,
 			texts = {},
 		},
+		{
+			id = "SkillObtained",
+			quest = nil,
+			texts = {
+				"PRESS ANYWHERE TO CONTINUE",
+				"Press anywhere to continue",
+			},
+		},
 	}
 
 	local function guiText(inst)
@@ -197,7 +205,11 @@ return function(GB)
 		if dui and dui:IsA("LayerCollector") and dui.Enabled == true then
 			dialogue = true
 		end
-		local overlayVis = GB.State and GB.State.tutorialOverlayVisible and select(1, GB.State.tutorialOverlayVisible())
+		local overlayVis, overlayUi = false, nil
+		if GB.State and GB.State.tutorialOverlayVisible then
+			overlayVis, overlayUi = GB.State.tutorialOverlayVisible()
+		end
+		local modalName = overlayUi and overlayUi.Name or nil
 		local blocking = false
 		if text then
 			local low = string.lower(text)
@@ -219,6 +231,17 @@ return function(GB)
 		end
 		if overlayVis then
 			blocking = true
+			if modalName == "SkillObtained" then
+				row = { id = "SkillObtained" }
+				if (not text or text == "") and overlayUi then
+					local frame = overlayUi:FindFirstChild("Frame")
+					local sn = frame and frame:FindFirstChild("SkillName")
+					text = (GB.State.guiText and GB.State.guiText(sn)) or "PRESS ANYWHERE TO CONTINUE"
+					src = "SkillObtained"
+				end
+			elseif modalName == "TutorialScreen" then
+				row = row or { id = "UnlockSkill" }
+			end
 		end
 		return {
 			Blocking = blocking,
@@ -226,7 +249,7 @@ return function(GB)
 			TutorialText = text,
 			TutorialStep = (row and row.id) or needle,
 			TutorialSource = src,
-			Modal = overlayVis and "TutorialScreen" or nil,
+			Modal = modalName,
 			DialogueActive = dialogue,
 			BackpackOpen = backpackOpen == true,
 			InventoryOpen = backpackOpen == true,
@@ -273,6 +296,14 @@ return function(GB)
 	function M.ValidateTransition(before)
 		local after = M.snapshot()
 		if before and after then
+			if before.Modal and before.Modal ~= after.Modal then
+				GB.Log.log(
+					"GATE",
+					string.format("Tutorial advanced %s -> %s", tostring(before.Modal), tostring(after.Modal or "none"))
+				)
+				M.attempts = 0
+				return true, after
+			end
 			if before.TutorialText ~= after.TutorialText then
 				GB.Log.log(
 					"GATE",
@@ -304,12 +335,13 @@ return function(GB)
 		local low = string.lower(text)
 		local before = s
 
-		-- Press-anywhere / Unlock Skill only. Do not dismiss QuestOverlay backpack coach.
-		if s.Modal and not string.find(low, "backpack", 1, true) and not string.find(low, "weapon slot", 1, true) and not string.find(low, "drag", 1, true) then
+		-- SkillObtained / TutorialScreen always win over backpack coach text.
+		if s.Modal == "SkillObtained" or s.Modal == "TutorialScreen" or s.TutorialStep == "SkillObtained" then
+			M.lastAction = "DismissOverlay"
 			if GB.State.dismissTutorialOverlay then
 				GB.State.dismissTutorialOverlay()
 				task.wait(0.2)
-				return M.ValidateTransition(before)
+				return select(1, M.ValidateTransition(before))
 			end
 		end
 

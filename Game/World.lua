@@ -132,6 +132,9 @@ return function(GB)
 	function M.waitUnpause()
 		local t = os.clock()
 		while GB.lp and GB.lp:GetAttribute("GameplayPaused") and os.clock() - t < 12 do
+			if GB.State and GB.State.dismissTutorialOverlay then
+				GB.State.dismissTutorialOverlay()
+			end
 			task.wait(0.2)
 		end
 	end

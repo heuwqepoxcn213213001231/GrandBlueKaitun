@@ -173,10 +173,13 @@ return function(GB)
 		return fired or ok
 	end
 
-	-- TutorialScreen / SkillObtained: no GuiButton. Client is UIS.InputBegan
-	-- MouseButton1/Touch (Background.Active=false so gameProcessed=false).
-	-- SkillObtained connects the listener only after a 3s delay.
-	local OVERLAY_GUIS = { "TutorialScreen", "SkillObtained" }
+	-- SkillObtained / TutorialScreen: no GuiButton. Client is UIS.InputBegan
+	-- MouseButton1/Touch/ButtonX. gameProcessed=true is ignored unless ButtonX.
+	-- SkillObtained.PassiveObtained connects InputBegan only after task.wait(3).
+	-- ContinueButton is a TextLabel. Prefer SkillObtained over TutorialScreen
+	-- (TutorialLocal WaitForClear waits for SkillObtained to close first).
+	local OVERLAY_GUIS = { "SkillObtained", "TutorialScreen" }
+	local SKILL_OBTAINED_LISTEN = 3.15
 
 	local function layerOn(ui)
 		if not ui then
@@ -243,59 +246,61 @@ return function(GB)
 		return false, nil
 	end
 
-	local function fireInputBegan(inputType, keyCode)
+	local function fireInputObject(fake, processed)
 		local UIS = game:GetService("UserInputService")
-		local fake = {
-			UserInputType = inputType or Enum.UserInputType.MouseButton1,
-			KeyCode = keyCode or Enum.KeyCode.Unknown,
+		local sig = rbxSignal(UIS, "InputBegan")
+		if typeof(sig) ~= "RBXScriptSignal" then
+			return false
+		end
+		if typeof(firesignal) == "function" then
+			if pcall(firesignal, sig, fake, processed) then
+				return true
+			end
+		end
+		if typeof(getconnections) ~= "function" then
+			return false
+		end
+		local ok, conns = pcall(getconnections, sig)
+		if not (ok and type(conns) == "table") then
+			return false
+		end
+		local any = false
+		for _, c in pairs(conns) do
+			local fire
+			pcall(function()
+				fire = c.Fire or c.fire
+			end)
+			if typeof(fire) == "function" and pcall(fire, c, fake, processed) then
+				any = true
+			else
+				local fn
+				pcall(function()
+					fn = c.Function
+				end)
+				if typeof(fn) == "function" and pcall(fn, fake, processed) then
+					any = true
+				end
+			end
+		end
+		return any
+	end
+
+	local function firePressAnywhere()
+		-- gameProcessed must be false. Real GUI click often sets it true and
+		-- PassiveObtained / TutorialLocal return without closing.
+		local mb1 = {
+			UserInputType = Enum.UserInputType.MouseButton1,
+			KeyCode = Enum.KeyCode.Unknown,
 			UserInputState = Enum.UserInputState.Begin,
 		}
-		local sig = rbxSignal(UIS, "InputBegan")
-		if typeof(sig) == "RBXScriptSignal" then
-			if typeof(firesignal) == "function" then
-				local ok = pcall(firesignal, sig, fake, false)
-				if ok then
-					return true
-				end
-			end
-			if typeof(getconnections) == "function" then
-				local ok, conns = pcall(getconnections, sig)
-				if ok and type(conns) == "table" then
-					local any = false
-					for _, c in pairs(conns) do
-						local fire
-						pcall(function()
-							fire = c.Fire or c.fire
-						end)
-						if typeof(fire) == "function" and pcall(fire, c, fake, false) then
-							any = true
-						else
-							local fn
-							pcall(function()
-								fn = c.Function
-							end)
-							if typeof(fn) == "function" and pcall(fn, fake, false) then
-								any = true
-							end
-						end
-					end
-					if any then
-						return true
-					end
-				end
-			end
-		end
-		if typeof(mouse1click) == "function" then
-			mouse1click()
-			return true
-		end
-		local vim = game:GetService("VirtualInputManager")
-		if vim and vim.SendMouseButtonEvent then
-			vim:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-			vim:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-			return true
-		end
-		return false
+		local btnX = {
+			UserInputType = Enum.UserInputType.Keyboard,
+			KeyCode = Enum.KeyCode.ButtonX,
+			UserInputState = Enum.UserInputState.Begin,
+		}
+		local ok = fireInputObject(mb1, false)
+		ok = fireInputObject(btnX, false) or ok
+		return ok
 	end
 
 	local function clickContinueSurface(ui)
@@ -317,20 +322,36 @@ return function(GB)
 		local vis, ui = M.tutorialOverlayVisible()
 		if not vis then
 			M._overlayLog = nil
+			M._soSeen = nil
+			M._soWaitLog = nil
 			return false
 		end
 		local now = os.clock()
+		local label = overlayLabel(ui)
+		if ui.Name == "SkillObtained" then
+			M._soSeen = M._soSeen or now
+			local waited = now - M._soSeen
+			if waited < SKILL_OBTAINED_LISTEN then
+				if M._soWaitLog ~= label then
+					M._soWaitLog = label
+					GB.Log.log("GATE", "waiting SkillObtained listener " .. label)
+				end
+				return true
+			end
+		else
+			M._soSeen = nil
+			M._soWaitLog = nil
+		end
 		if now - (M._overlayAt or 0) < 0.45 then
 			return true
 		end
 		M._overlayAt = now
-		local label = overlayLabel(ui)
 		if M._overlayLog ~= label then
 			M._overlayLog = label
 			GB.Log.log("UI", "dismiss overlay " .. label)
 		end
 		clickContinueSurface(ui)
-		fireInputBegan(Enum.UserInputType.MouseButton1)
+		firePressAnywhere()
 		return true
 	end
 

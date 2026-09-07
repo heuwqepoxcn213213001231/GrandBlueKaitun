@@ -165,12 +165,6 @@ return function(GB)
 			logDoing("wait_spawn")
 			return
 		end
-		if snap.GameplayPaused then
-			setTask("wait_unpause")
-			logDoing("wait_unpause")
-			GB.World.waitUnpause()
-			return
-		end
 
 		-- Recovery dumps / strategy change, then resume story. Do not freeze.
 		if GB.Recovery.stuck() then
@@ -178,6 +172,7 @@ return function(GB)
 			GB.Recovery.run("engine")
 		end
 
+		-- SkillObtained / press-anywhere before GameplayPaused wait.
 		if GB.Recovery.outcome == "BLOCKING_UI" or (GB.Tutorial and GB.Tutorial.IsBlocking and select(1, GB.Tutorial.IsBlocking())) then
 			setTask("tutorial")
 			logDoing("tutorial", snap.UI and snap.UI.TutorialStep)
@@ -190,6 +185,16 @@ return function(GB)
 			if GB.Recovery.outcome == "BLOCKING_UI" and GB.Tutorial and not select(1, GB.Tutorial.IsBlocking()) then
 				GB.Recovery.outcome = nil
 			end
+			return
+		end
+
+		if snap.GameplayPaused then
+			setTask("wait_unpause")
+			logDoing("wait_unpause")
+			if GB.State.dismissTutorialOverlay then
+				GB.State.dismissTutorialOverlay()
+			end
+			GB.World.waitUnpause()
 			return
 		end
 
