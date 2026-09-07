@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
 -- Version: 1.1.23
--- Commit: 1c588ae
--- BuiltAt: 2026-09-08T03:10:02+07:00
+-- Commit: 342f877
+-- BuiltAt: 2026-09-08T03:11:20+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -36,8 +36,8 @@ return function(meta)
 	stopPreviousInstance()
 
 	local BUILD_VERSION = "1.1.23"
-	local BUILD_COMMIT = "1c588ae"
-	local BUILD_AT = "2026-09-08T03:10:02+07:00"
+	local BUILD_COMMIT = "342f877"
+	local BUILD_AT = "2026-09-08T03:11:20+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
