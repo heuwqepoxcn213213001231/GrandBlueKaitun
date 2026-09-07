@@ -1572,12 +1572,19 @@ return function(GB)
 		end
 		if typ == "Kill" or typ == "Defeat" or typ == "Hit" or typ == "Destroy" then
 			if dialogueOpen() then
+				if GB.Combat and GB.Combat.stopLock then
+					GB.Combat.stopLock()
+				end
 				if os.clock() - (M.lastClick or 0) >= 0.45 then
-					if clickAccept({ QuestName = questName, Action = "accept" }) then
+					if clickAccept({ QuestName = questName, Action = "progress" }) then
 						M.lastClick = os.clock()
+						M._afterDialogueAt = os.clock()
 					end
 				end
-				return false
+				return true
+			end
+			if M._afterDialogueAt and os.clock() - M._afterDialogueAt < 1.3 then
+				return true
 			end
 			local before = M.questState(questName)
 			local beforeCur = before.Objective and before.Objective.Current or 0
@@ -1599,11 +1606,18 @@ return function(GB)
 				Stage = before.StageIndex,
 				ObjectiveType = typ,
 				Alternatives = targets,
+				SkipStream = true,
 			}
+			if GB.Combat and GB.Combat.lockMob and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(GB.Combat.lockMob) then
+				if (not GB.Combat.lockMatchesNames) or GB.Combat.lockMatchesNames(targets) or GB.Combat.lockMatchesNames({ targetPlan.Target }) then
+					return true
+				end
+			end
 			local ok, why = false, nil
-			if GB.Combat.huntUntilDead then
-				ok, why = GB.Combat.huntUntilDead(targetPlan.Target, 16, questName, targetPlan)
-			else
+			if GB.Combat.hunt then
+				ok = GB.Combat.hunt(targetPlan.Target, questName, targetPlan)
+				why = ok and "engaged" or "no_enemy"
+			elseif GB.Combat.attack then
 				ok = GB.Combat.attack(targetPlan.Target, questName)
 			end
 			if not ok then
@@ -2263,10 +2277,17 @@ return function(GB)
 		end
 
 		if dialogueOpen() then
+			if GB.Combat and GB.Combat.stopLock then
+				GB.Combat.stopLock()
+			end
 			if os.clock() - (M.lastClick or 0) >= 0.45 and clickAccept({ QuestName = name, Action = "progress" }) then
 				M.lastClick = os.clock()
+				M._afterDialogueAt = os.clock()
 			end
-			return resultRow(name, true, false, "dialogue_open")
+			return resultRow(name, true, true, "dialogue_open")
+		end
+		if M._afterDialogueAt and os.clock() - M._afterDialogueAt < 1.3 then
+			return resultRow(name, true, true, "dialogue_settle")
 		end
 
 		if qs.Objective then

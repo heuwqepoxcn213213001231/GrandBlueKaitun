@@ -392,9 +392,14 @@ return function(GB)
 				sawEnemy = true
 				noEnemy = 0
 				GB.Log.log("STATE", string.format("doing=combat target=%s", mob.Name))
-				local ok, why = GB.Combat.huntUntilDead and GB.Combat.huntUntilDead(source, 12, ctx.Quest)
+				local ok, why = false, nil
+				if GB.Combat.lockMob and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(GB.Combat.lockMob) then
+					ok, why = true, "lock_active"
+				elseif GB.Combat.hunt then
+					ok = GB.Combat.hunt(source, ctx.Quest)
+					why = ok and "engaged" or "no_enemy"
+				end
 				if not ok then
-					GB.Combat.hunt(source, ctx.Quest)
 					task.wait(0.35)
 				end
 				if GB.Combat and GB.Combat.stopLock then

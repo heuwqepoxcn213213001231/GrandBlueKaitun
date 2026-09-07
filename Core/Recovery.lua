@@ -57,6 +57,12 @@ return function(GB)
 		if started == 0 then
 			return false
 		end
+		if GB.Quest and GB.Quest.dialogueOpen and GB.Quest.dialogueOpen() then
+			return false
+		end
+		if GB.Combat and GB.Combat.lockMob and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(GB.Combat.lockMob) then
+			return false
+		end
 		local idle = now - math.max(tr.SuccessfulAction or 0, tr.StateChange or 0, started)
 		return idle >= (cfg.StuckSeconds or 18)
 	end

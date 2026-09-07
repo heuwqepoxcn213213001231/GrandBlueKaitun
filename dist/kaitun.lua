@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
--- Version: 1.1.28
--- Commit: ea1d134
--- BuiltAt: 2026-09-08T05:43:05+07:00
+-- Version: 1.1.29
+-- Commit: 7a2c601
+-- BuiltAt: 2026-09-08T05:47:53+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -35,9 +35,9 @@ return function(meta)
 
 	stopPreviousInstance()
 
-	local BUILD_VERSION = "1.1.28"
-	local BUILD_COMMIT = "ea1d134"
-	local BUILD_AT = "2026-09-08T05:43:05+07:00"
+	local BUILD_VERSION = "1.1.29"
+	local BUILD_COMMIT = "7a2c601"
+	local BUILD_AT = "2026-09-08T05:47:53+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -892,6 +892,12 @@ return function(GB)
 		end
 		local started = tr.TaskStartedAt or 0
 		if started == 0 then
+			return false
+		end
+		if GB.Quest and GB.Quest.dialogueOpen and GB.Quest.dialogueOpen() then
+			return false
+		end
+		if GB.Combat and GB.Combat.lockMob and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(GB.Combat.lockMob) then
 			return false
 		end
 		local idle = now - math.max(tr.SuccessfulAction or 0, tr.StateChange or 0, started)
@@ -8295,8 +8301,8 @@ return function(GB)
 				logDoing("farm_direct", target)
 				setOwner("COMBAT", target)
 				local ok = false
-				if GB.Combat.huntUntilDead then
-					ok = select(1, GB.Combat.huntUntilDead(target, 16))
+				if GB.Combat.hunt then
+					ok = GB.Combat.hunt(target)
 				elseif GB.Combat.attack then
 					ok = GB.Combat.attack(target)
 				end
@@ -9257,9 +9263,14 @@ return function(GB)
 				sawEnemy = true
 				noEnemy = 0
 				GB.Log.log("STATE", string.format("doing=combat target=%s", mob.Name))
-				local ok, why = GB.Combat.huntUntilDead and GB.Combat.huntUntilDead(source, 12, ctx.Quest)
+				local ok, why = false, nil
+				if GB.Combat.lockMob and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(GB.Combat.lockMob) then
+					ok, why = true, "lock_active"
+				elseif GB.Combat.hunt then
+					ok = GB.Combat.hunt(source, ctx.Quest)
+					why = ok and "engaged" or "no_enemy"
+				end
 				if not ok then
-					GB.Combat.hunt(source, ctx.Quest)
 					task.wait(0.35)
 				end
 				if GB.Combat and GB.Combat.stopLock then
@@ -10671,6 +10682,9 @@ return function(GB)
 			local snap = GB.State and GB.State.get and GB.State.get()
 			if snap and snap.Alive == false then
 				M.stopLock()
+				return
+			end
+			if GB.Quest and GB.Quest.dialogueOpen and GB.Quest.dialogueOpen() then
 				return
 			end
 			local mob2 = M.lockMob
@@ -13213,12 +13227,19 @@ return function(GB)
 		end
 		if typ == "Kill" or typ == "Defeat" or typ == "Hit" or typ == "Destroy" then
 			if dialogueOpen() then
+				if GB.Combat and GB.Combat.stopLock then
+					GB.Combat.stopLock()
+				end
 				if os.clock() - (M.lastClick or 0) >= 0.45 then
-					if clickAccept({ QuestName = questName, Action = "accept" }) then
+					if clickAccept({ QuestName = questName, Action = "progress" }) then
 						M.lastClick = os.clock()
+						M._afterDialogueAt = os.clock()
 					end
 				end
-				return false
+				return true
+			end
+			if M._afterDialogueAt and os.clock() - M._afterDialogueAt < 1.3 then
+				return true
 			end
 			local before = M.questState(questName)
 			local beforeCur = before.Objective and before.Objective.Current or 0
@@ -13240,11 +13261,18 @@ return function(GB)
 				Stage = before.StageIndex,
 				ObjectiveType = typ,
 				Alternatives = targets,
+				SkipStream = true,
 			}
+			if GB.Combat and GB.Combat.lockMob and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(GB.Combat.lockMob) then
+				if (not GB.Combat.lockMatchesNames) or GB.Combat.lockMatchesNames(targets) or GB.Combat.lockMatchesNames({ targetPlan.Target }) then
+					return true
+				end
+			end
 			local ok, why = false, nil
-			if GB.Combat.huntUntilDead then
-				ok, why = GB.Combat.huntUntilDead(targetPlan.Target, 16, questName, targetPlan)
-			else
+			if GB.Combat.hunt then
+				ok = GB.Combat.hunt(targetPlan.Target, questName, targetPlan)
+				why = ok and "engaged" or "no_enemy"
+			elseif GB.Combat.attack then
 				ok = GB.Combat.attack(targetPlan.Target, questName)
 			end
 			if not ok then
@@ -13904,10 +13932,17 @@ return function(GB)
 		end
 
 		if dialogueOpen() then
+			if GB.Combat and GB.Combat.stopLock then
+				GB.Combat.stopLock()
+			end
 			if os.clock() - (M.lastClick or 0) >= 0.45 and clickAccept({ QuestName = name, Action = "progress" }) then
 				M.lastClick = os.clock()
+				M._afterDialogueAt = os.clock()
 			end
-			return resultRow(name, true, false, "dialogue_open")
+			return resultRow(name, true, true, "dialogue_open")
+		end
+		if M._afterDialogueAt and os.clock() - M._afterDialogueAt < 1.3 then
+			return resultRow(name, true, true, "dialogue_settle")
 		end
 
 		if qs.Objective then

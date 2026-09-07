@@ -504,8 +504,8 @@ return function(GB)
 				logDoing("farm_direct", target)
 				setOwner("COMBAT", target)
 				local ok = false
-				if GB.Combat.huntUntilDead then
-					ok = select(1, GB.Combat.huntUntilDead(target, 16))
+				if GB.Combat.hunt then
+					ok = GB.Combat.hunt(target)
 				elseif GB.Combat.attack then
 					ok = GB.Combat.attack(target)
 				end

@@ -1,5 +1,15 @@
 # Runtime Fixes
 
+## 1.1.29 — No 16s kill wait; don't tween through dialogue
+
+`A Joke Gone Too Far` kill used `huntUntilDead(16)` so `Quest.doLive` / `Scheduler.step` hung ~16s. Mid-wait Clown dialogue opened; after timeout the bot clicked then immediately Tweened again. Recovery fired `stuck quest`.
+
+**Fix**
+
+- Story/farm kill engages once. Heartbeat swings. Engine does not wait for the corpse.
+- Dialogue open: stop combat lock, click progress, settle 1.3s before the next tween.
+- Recovery ignores live combat lock and open dialogue.
+
 ## 1.1.28 — Stop re-accepting finished story; sides then farm
 
 Lv26 picker looped `Introduction` via Graves flavor / tracker leftover (`Talk to Officer Graves to get started`). Recovery `enemy stuck pick:Introduction` reset accept. Setting Sail is the real next beat (level 30).

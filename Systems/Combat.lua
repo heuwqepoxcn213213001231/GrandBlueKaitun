@@ -765,6 +765,9 @@ return function(GB)
 				M.stopLock()
 				return
 			end
+			if GB.Quest and GB.Quest.dialogueOpen and GB.Quest.dialogueOpen() then
+				return
+			end
 			local mob2 = M.lockMob
 			if not mob2 then
 				M.stopLock()
