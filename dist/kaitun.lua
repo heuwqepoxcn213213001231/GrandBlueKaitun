@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
--- Version: 1.1.20
--- Commit: d2d14c8
--- BuiltAt: 2026-09-08T02:56:29+07:00
+-- Version: 1.1.21
+-- Commit: f4eae37
+-- BuiltAt: 2026-09-08T02:59:38+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -35,9 +35,9 @@ return function(meta)
 
 	stopPreviousInstance()
 
-	local BUILD_VERSION = "1.1.20"
-	local BUILD_COMMIT = "d2d14c8"
-	local BUILD_AT = "2026-09-08T02:56:29+07:00"
+	local BUILD_VERSION = "1.1.21"
+	local BUILD_COMMIT = "f4eae37"
+	local BUILD_AT = "2026-09-08T02:59:38+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -10036,11 +10036,44 @@ return function(GB)
 				end
 			end
 		end
-		local pick
+		local function scoreChoice(c)
+			if not c then
+				return -1
+			end
+			local t = tostring(c.text or "")
+			local score = 0
+			if c.glow then
+				score = score + 500
+			end
+			if string.find(t, "I can help change that", 1, true) then
+				score = score + 280
+			end
+			if string.find(t, "Accept", 1, true) then
+				score = score + 240
+			end
+			if string.find(t, "Thank", 1, true) then
+				score = score + 220
+			end
+			if string.find(t, "Yes", 1, true) then
+				score = score + 180
+			end
+			if string.find(t, "Yeah", 1, true) then
+				score = score + 170
+			end
+			if c.first then
+				score = score + 80
+			end
+			if isAcceptText(t) then
+				score = score + 40
+			end
+			return score
+		end
+		local pick, best = nil, -1
 		for _, c in ipairs(candidates) do
-			if isAcceptText(c.text) or c.glow then
+			local s = scoreChoice(c)
+			if s > best then
+				best = s
 				pick = c
-				break
 			end
 		end
 		if not pick then
@@ -10762,6 +10795,30 @@ return function(GB)
 		return false, "timeout"
 	end
 
+	local function waitTalkProgress(name, beforeSig, timeout)
+		timeout = timeout or 5.6
+		local t0 = os.clock()
+		local lastClick = 0
+		while os.clock() - t0 < timeout do
+			if GB.PlayerData.finished(name, true) then
+				return true, "done"
+			end
+			local qs = M.questState(name)
+			local sig = M.signature(qs)
+			if sig ~= beforeSig then
+				return true, sig
+			end
+			if dialogueOpen() and os.clock() - lastClick >= 0.55 then
+				if clickAccept() then
+					lastClick = os.clock()
+					M.lastClick = lastClick
+				end
+			end
+			task.wait(0.18)
+		end
+		return false, "timeout"
+	end
+
 	function M.ensureItem(name)
 		local spec = GB.QuestData.NEED_ITEM[name]
 		if GB.PlayerData.hasItem(name) then
@@ -10806,7 +10863,7 @@ return function(GB)
 				DisplayName = target,
 			})
 			if ok then
-				local progressed, sig = M.waitProgress(questName, before)
+				local progressed, sig = waitTalkProgress(questName, before)
 				if progressed then
 					local after = M.questState(questName)
 					local prev = qs.Objective
