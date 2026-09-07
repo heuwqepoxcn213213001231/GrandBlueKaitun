@@ -267,7 +267,7 @@ return function(GB)
 			if type(name) ~= "string" or name == "" then
 				return
 			end
-			if M._done[name] then
+			if M._done[name] and not (GB.QuestData and GB.QuestData.isRepeatable and GB.QuestData.isRepeatable(name)) then
 				return
 			end
 			if not questActive(q) then
@@ -569,7 +569,7 @@ return function(GB)
 			return nil
 		end
 		M.refreshLive()
-		if M._done[name] then
+		if M._done[name] and not (GB.QuestData and GB.QuestData.isRepeatable and GB.QuestData.isRepeatable(name)) then
 			return nil
 		end
 		return M._live[name]

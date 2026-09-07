@@ -486,6 +486,10 @@ return function(GB)
 		return nil
 	end
 
+	function M.isRepeatable(name)
+		return M.repeatEntry(name) ~= nil or M.REPEAT_START[name] ~= nil
+	end
+
 	function M.repeatStartSpec(name)
 		local base = copyRow(M.REPEAT_START[name])
 		if not base then

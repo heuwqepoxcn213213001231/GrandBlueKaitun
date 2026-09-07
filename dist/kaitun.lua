@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
 -- Version: 1.1.24
--- Commit: cbccd07
--- BuiltAt: 2026-09-08T04:33:30+07:00
+-- Commit: a6a2a00
+-- BuiltAt: 2026-09-08T04:37:39+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -36,8 +36,8 @@ return function(meta)
 	stopPreviousInstance()
 
 	local BUILD_VERSION = "1.1.24"
-	local BUILD_COMMIT = "cbccd07"
-	local BUILD_AT = "2026-09-08T04:33:30+07:00"
+	local BUILD_COMMIT = "a6a2a00"
+	local BUILD_AT = "2026-09-08T04:37:39+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -2764,7 +2764,7 @@ return function(GB)
 			if type(name) ~= "string" or name == "" then
 				return
 			end
-			if M._done[name] then
+			if M._done[name] and not (GB.QuestData and GB.QuestData.isRepeatable and GB.QuestData.isRepeatable(name)) then
 				return
 			end
 			if not questActive(q) then
@@ -3066,7 +3066,7 @@ return function(GB)
 			return nil
 		end
 		M.refreshLive()
-		if M._done[name] then
+		if M._done[name] and not (GB.QuestData and GB.QuestData.isRepeatable and GB.QuestData.isRepeatable(name)) then
 			return nil
 		end
 		return M._live[name]
@@ -3660,6 +3660,10 @@ return function(GB)
 			end
 		end
 		return nil
+	end
+
+	function M.isRepeatable(name)
+		return M.repeatEntry(name) ~= nil or M.REPEAT_START[name] ~= nil
 	end
 
 	function M.repeatStartSpec(name)
@@ -11768,7 +11772,7 @@ return function(GB)
 		if not qs then
 			return M.STATUS.UNRESOLVED, "missing"
 		end
-		if qs.IsComplete then
+		if qs.IsComplete and not qs.Repeatable then
 			return M.STATUS.COMPLETE, nil
 		end
 		local blocked, why = M.deferred(name)
@@ -11880,11 +11884,16 @@ return function(GB)
 		return nil
 	end
 
+	local function isRepeatable(name)
+		return GB.QuestData and GB.QuestData.isRepeatable and GB.QuestData.isRepeatable(name) == true
+	end
+
 	function M.questState(name)
 		local t0 = pbegin()
 		local live = GB.PlayerData.live(name)
 		local island = GB.QuestData.islandOf(name)
 		local npc = GB.QuestData.talkNpc(name)
+		local repeatable = isRepeatable(name)
 		if not live then
 			local inferred = GB.PlayerData.current() == name and inferObjective(name)
 			if inferred then
@@ -11894,6 +11903,7 @@ return function(GB)
 					IsComplete = false,
 					CanTurnIn = false,
 					Automatic = GB.QuestData.AUTOMATIC[name] == true,
+					Repeatable = repeatable,
 					NPC = npc,
 					Island = island,
 					StageIndex = inferred.Type,
@@ -11905,9 +11915,10 @@ return function(GB)
 			local out = {
 				Name = name,
 				IsAccepted = false,
-				IsComplete = GB.PlayerData.finished(name, true),
+				IsComplete = (not repeatable) and GB.PlayerData.finished(name, true) or false,
 				CanTurnIn = false,
 				Automatic = GB.QuestData.AUTOMATIC[name] == true,
+				Repeatable = repeatable,
 				NPC = npc,
 				Island = island,
 				StageIndex = nil,
@@ -11953,9 +11964,10 @@ return function(GB)
 			Name = name,
 			Live = live,
 			IsAccepted = true,
-			IsComplete = GB.PlayerData.finished(name, true),
+			IsComplete = (not repeatable) and GB.PlayerData.finished(name, true) or false,
 			CanTurnIn = canTurn,
 			Automatic = GB.QuestData.AUTOMATIC[name] == true,
+			Repeatable = repeatable,
 			NPC = npc,
 			Island = island,
 			StageIndex = si,
@@ -13204,7 +13216,7 @@ return function(GB)
 		end
 
 		if not qs.IsAccepted then
-			if qs.IsComplete then
+			if qs.IsComplete and not (qs.Repeatable or isRepeatable(name)) then
 				return resultRow(name, true, true, "already_complete")
 			end
 			if qs.Automatic then

@@ -655,7 +655,7 @@ return function(GB)
 		if not qs then
 			return M.STATUS.UNRESOLVED, "missing"
 		end
-		if qs.IsComplete then
+		if qs.IsComplete and not qs.Repeatable then
 			return M.STATUS.COMPLETE, nil
 		end
 		local blocked, why = M.deferred(name)
@@ -767,11 +767,16 @@ return function(GB)
 		return nil
 	end
 
+	local function isRepeatable(name)
+		return GB.QuestData and GB.QuestData.isRepeatable and GB.QuestData.isRepeatable(name) == true
+	end
+
 	function M.questState(name)
 		local t0 = pbegin()
 		local live = GB.PlayerData.live(name)
 		local island = GB.QuestData.islandOf(name)
 		local npc = GB.QuestData.talkNpc(name)
+		local repeatable = isRepeatable(name)
 		if not live then
 			local inferred = GB.PlayerData.current() == name and inferObjective(name)
 			if inferred then
@@ -781,6 +786,7 @@ return function(GB)
 					IsComplete = false,
 					CanTurnIn = false,
 					Automatic = GB.QuestData.AUTOMATIC[name] == true,
+					Repeatable = repeatable,
 					NPC = npc,
 					Island = island,
 					StageIndex = inferred.Type,
@@ -792,9 +798,10 @@ return function(GB)
 			local out = {
 				Name = name,
 				IsAccepted = false,
-				IsComplete = GB.PlayerData.finished(name, true),
+				IsComplete = (not repeatable) and GB.PlayerData.finished(name, true) or false,
 				CanTurnIn = false,
 				Automatic = GB.QuestData.AUTOMATIC[name] == true,
+				Repeatable = repeatable,
 				NPC = npc,
 				Island = island,
 				StageIndex = nil,
@@ -840,9 +847,10 @@ return function(GB)
 			Name = name,
 			Live = live,
 			IsAccepted = true,
-			IsComplete = GB.PlayerData.finished(name, true),
+			IsComplete = (not repeatable) and GB.PlayerData.finished(name, true) or false,
 			CanTurnIn = canTurn,
 			Automatic = GB.QuestData.AUTOMATIC[name] == true,
+			Repeatable = repeatable,
 			NPC = npc,
 			Island = island,
 			StageIndex = si,
@@ -2091,7 +2099,7 @@ return function(GB)
 		end
 
 		if not qs.IsAccepted then
-			if qs.IsComplete then
+			if qs.IsComplete and not (qs.Repeatable or isRepeatable(name)) then
 				return resultRow(name, true, true, "already_complete")
 			end
 			if qs.Automatic then
@@ -2181,7 +2189,7 @@ return function(GB)
 			end
 		end
 
-		if qs.IsComplete then
+		if qs.IsComplete and not (qs.Repeatable or isRepeatable(name)) then
 			M.noteOk(name)
 			return resultRow(name, true, true, "complete")
 		end
