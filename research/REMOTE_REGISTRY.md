@@ -23,8 +23,10 @@ Rule: args only from Studio call sites / data.rules / StatSystem. FireServer ≠
 | Rowboat buy | `Events.Ships` RE | `("Purchase", {Type="Rowboat"})` | Shop Item Rowboat branch | owned ship | VERIFIED |
 | Ship spawn | `Events.Ships` RE | `("Spawn", index)` | ShipViewer | boat exists | VERIFIED remote; index PARTIAL |
 | Ship despawn | `Events.Ships` RE | `("Despawn")` | ShipViewer | — | VERIFIED |
-| Held equip | `Events.HeldItem` RE | `("Equip", id)` | HeldClient.RequestEquip | Equipped event | VERIFIED |
+| Held equip | `Events.HeldItem` RE | `("Equip", id)` | HeldClient.RequestEquip | Held tool; **not** Gearing Up Equip cond | VERIFIED |
 | Held unequip | `Events.HeldItem` RE | `("Unequip")` | HeldClient | — | VERIFIED |
+| Gear slot bind | `Events.SaveOrder` RE | `(slot, key)` | BackpackLocal.MoveToolToSlot / SaveOrder | Equips.Slots Title / Equip quest | VERIFIED |
+| Open/close backpack | `Events.BackpackToggle` BE | `Fire(true\|false)` | BackpackLocal → TopbarPlus select → OpenStorage | Storage.Visible | VERIFIED |
 | Sell | `Events.SellItem` RE | `(key)` / `(key, amount)` | MerchantHandler + BackpackLocal | Gold up / item down | VERIFIED |
 | Upgrade | `Events.Upgrade` RE | `("Upgrade", key)` | Blacksmith LocalScript | item changed | VERIFIED |
 | Refine/Freeze | `Events.Upgrade` RE | `("Refine"\|"Freeze", key, stat)` | Blacksmith | — | VERIFIED (not used auto) |

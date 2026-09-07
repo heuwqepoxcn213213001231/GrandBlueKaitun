@@ -1,6 +1,6 @@
 # Quest Coverage Report
 
-**Version:** 1.1.1  
+**Version:** 1.1.2  
 **Source:** `research/quests.json` (151 QuestInfo modules) + planner Goal/AcquireMethod.
 
 Quests dumped: **151**

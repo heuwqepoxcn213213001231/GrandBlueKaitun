@@ -1,6 +1,6 @@
 {
   "name": "GrandBlueKaitun",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "entry": "kaitun.lua",
   "files": {
     "kaitun.lua": "kaitun.lua",
@@ -40,6 +40,7 @@
     "Systems/Codes.lua": "Systems/Codes.lua",
     "Systems/Rewards.lua": "Systems/Rewards.lua",
     "Systems/Backpack.lua": "Systems/Backpack.lua",
+    "Systems/Tutorial.lua": "Systems/Tutorial.lua",
     "Progression/Planner.lua": "Progression/Planner.lua",
     "Progression/DecisionEngine.lua": "Progression/DecisionEngine.lua"
   },
@@ -79,6 +80,7 @@
     { "key": "Codes", "path": "Systems/Codes.lua", "kind": "optional" },
     { "key": "Rewards", "path": "Systems/Rewards.lua", "kind": "optional" },
     { "key": "Backpack", "path": "Systems/Backpack.lua", "kind": "optional" },
+    { "key": "Tutorial", "path": "Systems/Tutorial.lua", "kind": "core" },
     { "key": "Planner", "path": "Progression/Planner.lua", "kind": "core" },
     { "key": "Engine", "path": "Progression/DecisionEngine.lua", "kind": "core" },
     { "key": "Picker", "path": "picker.lua", "kind": "optional", "factory": false }

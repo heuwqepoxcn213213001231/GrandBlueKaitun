@@ -24,6 +24,9 @@ return function(GB)
 		local snap = GB.State.get()
 		for name, target in pairs(BOSSES) do
 			if GB.PlayerData.live(name) then
+				if GB.Combat.lockMob and GB.Combat.IsEnemyAlive and not GB.Combat.IsEnemyAlive(GB.Combat.lockMob) then
+					GB.Combat.stopLock()
+				end
 				GB.Combat.attack(target, name)
 				return
 			end

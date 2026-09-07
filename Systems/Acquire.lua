@@ -355,15 +355,20 @@ return function(GB)
 				sawEnemy = true
 				noEnemy = 0
 				GB.Log.log("STATE", string.format("doing=combat target=%s", mob.Name))
-				local ok = GB.Combat.huntUntilDead and GB.Combat.huntUntilDead(source, 12)
+				local ok, why = GB.Combat.huntUntilDead and GB.Combat.huntUntilDead(source, 12, ctx.Quest)
 				if not ok then
-					GB.Combat.hunt(source)
-					task.wait(0.8)
+					GB.Combat.hunt(source, ctx.Quest)
+					task.wait(0.35)
+				end
+				if GB.Combat and GB.Combat.stopLock then
+					if why == "dead" or why == "quest_done" or (GB.Combat.lockMob and GB.Combat.IsEnemyAlive and not GB.Combat.IsEnemyAlive(GB.Combat.lockMob)) then
+						GB.Combat.stopLock()
+					end
 				end
 				if GB.PlayerData.invalidateLive then
 					GB.PlayerData.invalidateLive()
 				end
-				task.wait(0.25)
+				task.wait(0.15)
 				if credited(item, amount, ctx) then
 					if GB.Combat then
 						GB.Combat.stopLock()

@@ -1,5 +1,56 @@
 # Runtime Fixes
 
+## 1.1.2 — Dead combat targets + mandatory tutorial / UI gates
+
+### Combat: corpse still attacked
+
+Resolve + teleport + Swing worked. Enemy died. Model stayed in `Workspace.Entities` several seconds. Kaitun kept locking that instance until `Parent == nil`.
+
+**Death signal (Studio):** `Model:GetAttribute("Dead") == true` — `TelemetryClient` corpse window, `LockOn` reject, `QuestLocal`, `DeathScreen`, `KnockedLocal`. Also `Humanoid.Health <= 0` and `StateService.CheckForState(char, "Dead")`. **Knock is not death.** Parent nil is despawn only.
+
+`aliveEnemy` treated missing Humanoid as alive. Dummy/corpse with Dead flag or stripped Humanoid stayed valid. Resolver cache + closest-name pick re-acquired the same corpse.
+
+**Fix:** `Combat.IsEnemyAlive` / `IsValidTarget` / instance `deadTargets` cache. Heartbeat + Died + Dead-attribute watch. `Resolver.enemies` ranks **alive** only (closest live, never closest corpse). Stop lock + movement the same tick. Quest kill refresh after death. EnemyDrop checks drop immediately (no wait-for-despawn). Dummy Shoot/Hit exits on quest count, not model removal.
+
+### Gearing Up: Equip Flintlock 0/1 + "Open the backpack."
+
+`[EQUIP] HeldItem Equip Flintlock` loop. Quest stayed 0/1. Overlay `QuestOverlay` from `TutorialFolder.EquipFlintlock`.
+
+HeldItem ≠ gear equip. Tutorial completion = Flintlock in `Equips.Slots` (Weapon2). Client bind: `SaveOrder(slot, key)` after `BackpackToggle:Fire(true)` / topbar Backpack.
+
+**Fix:** `Systems/Tutorial.lua` blocking-gate priority. `Equipment` DIRECT_EQUIP vs UI_EQUIP. Equip quest uses backpack + SaveOrder. Action success ≠ quest progress — change strategy, do not spam HeldItem. Recovery diagnostic can set `BLOCKING_UI`.
+
+### Files
+
+- `Systems/Combat.lua`, `Game/Resolver.lua`, `Game/World.lua`, `Systems/Acquire.lua`, `Systems/Boss.lua`
+- `Systems/Tutorial.lua`, `Systems/Equipment.lua`, `Systems/Backpack.lua`, `Game/Remotes.lua`
+- `Core/State.lua`, `Core/Recovery.lua`, `Progression/DecisionEngine.lua`, `Progression/Planner.lua`, `Systems/Quest.lua`
+- `kaitun.lua`, `VERSION` / `manifest.json` / `loader.lua` → **1.1.2**
+
+### Expected log (combat)
+
+```
+[Kaitun][COMBAT] Target Corrupt Marine 2436 hp=120
+[Kaitun][COMBAT] Corrupt Marine 2436 hp=0 — dead
+[Kaitun][COMBAT] Clearing dead target
+[Kaitun][QUEST] Kill credited 2/5 -> 3/5
+[Kaitun][COMBAT] Next target Corrupt Marine
+```
+
+### Expected log (Gearing Up)
+
+```
+[Kaitun][QUEST] Gearing Up stage=3
+[Kaitun][GATE] Tutorial detected EquipFlintlock
+[Kaitun][GATE] Instruction: Open the backpack.
+[Kaitun][UI] Opening backpack
+[Kaitun][EQUIP] Selecting Flintlock
+[Kaitun][EQUIP] Equipping Flintlock slot=Weapon2
+[Kaitun][QUEST] Equip Flintlock 0/1 -> 1/1
+```
+
+---
+
 ## 1.1.1 — Enemy-drop Collect credits on kill, engine froze after STUCK
 
 ### Issue

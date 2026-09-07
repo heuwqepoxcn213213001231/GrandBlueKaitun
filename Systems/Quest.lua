@@ -647,7 +647,13 @@ return function(GB)
 		end
 		if typ == "Kill" or typ == "Defeat" or typ == "Hit" or typ == "Destroy" or typ == "Shoot" then
 			local before = M.questState(questName)
-			local ok = GB.Combat.attack(target or "Training Dummy", questName)
+			local beforeCur = before.Objective and before.Objective.Current or 0
+			local ok, why = false, nil
+			if GB.Combat.huntUntilDead then
+				ok, why = GB.Combat.huntUntilDead(target or "Training Dummy", 16, questName)
+			else
+				ok = GB.Combat.attack(target or "Training Dummy", questName)
+			end
 			if not ok then
 				local pos = GB.Resolver.lastDummyPos and GB.Resolver.lastDummyPos()
 				local misses = GB.Resolver.dummyMissCount and GB.Resolver.dummyMissCount() or 0
@@ -658,17 +664,25 @@ return function(GB)
 						GB.World.pullStream(before.Island)
 					end
 				end
-				M.noteFail(questName, "resolve miss " .. tostring(target))
+				if why ~= "dead" then
+					M.noteFail(questName, "resolve miss " .. tostring(target))
+				end
 				return false
 			end
-			task.wait(0.4)
+			if GB.PlayerData.invalidateLive then
+				GB.PlayerData.invalidateLive()
+			end
 			local after = M.questState(questName)
-			if before.Objective and after.Objective then
-				if after.Objective.Current > before.Objective.Current or after.StageIndex ~= before.StageIndex then
-					M.noteOk(questName)
-				elseif after.IsComplete then
-					M.noteOk(questName)
-				end
+			if after.IsComplete or (after.Objective and after.Objective.Current and after.Objective.Current > beforeCur) or after.StageIndex ~= before.StageIndex then
+				M.noteOk(questName)
+				return true
+			end
+			if why == "quest_done" then
+				M.noteOk(questName)
+				return true
+			end
+			if why == "dead" then
+				return true
 			end
 			return ok
 		end
@@ -682,7 +696,67 @@ return function(GB)
 			if not GB.PlayerData.hasItem(target) then
 				M.ensureItem(target)
 			end
-			return GB.Equipment.equipNamed(target)
+			local qs = M.questState(questName)
+			local before = M.signature(qs)
+			if GB.Tutorial and GB.Tutorial.IsBlocking and select(1, GB.Tutorial.IsBlocking()) then
+				GB.Tutorial.ExecuteCurrentStep()
+				local progressed = M.waitProgress(questName, before, 2.2)
+				if progressed then
+					M.noteOk(questName)
+					return true
+				end
+				return false
+			end
+			local st = GB.Equipment.equipmentState and GB.Equipment.equipmentState(target)
+			if st and (st.Held or st.Equipped) and not st.QuestCredited then
+				GB.Log.log("EQUIP", tostring(target) .. " equipped but quest not credited")
+				GB.Log.log("GATE", "Inspecting tutorial state")
+				if GB.Tutorial and GB.Tutorial.ExecuteCurrentStep then
+					GB.Tutorial.ExecuteCurrentStep()
+				elseif GB.Equipment.equipViaBackpack then
+					GB.Equipment.equipViaBackpack(target)
+				end
+				local progressed = M.waitProgress(questName, before, 2.2)
+				if progressed then
+					M.noteOk(questName)
+					return true
+				end
+				return false
+			end
+			local needUi = GB.Equipment.needsGearSlot and GB.Equipment.needsGearSlot(target)
+			local ok = GB.Equipment.equipNamed(target, { QuestEquip = needUi, Mode = needUi and "UI_EQUIP" or "DIRECT_EQUIP" })
+			if ok then
+				local progressed = M.waitProgress(questName, before, 2.4)
+				if progressed then
+					local after = M.questState(questName)
+					local prev = qs.Objective
+					if prev then
+						local nextCur = prev.Amount
+						if after.StageIndex == qs.StageIndex and after.Objective and not after.IsComplete then
+							nextCur = after.Objective.Current
+						end
+						GB.Log.log(
+							"QUEST",
+							string.format(
+								"Equip %s %s/%s -> %s/%s",
+								tostring(target),
+								tostring(prev.Current),
+								tostring(prev.Amount),
+								tostring(nextCur),
+								tostring(prev.Amount)
+							)
+						)
+					end
+					M.noteOk(questName)
+					return true
+				end
+				GB.Log.log("EQUIP", "action ok quest not credited " .. tostring(target))
+				if GB.Tutorial and GB.Tutorial.IsBlocking and select(1, GB.Tutorial.IsBlocking()) then
+					GB.Log.log("GATE", "Inspecting tutorial state")
+					return false
+				end
+			end
+			return ok
 		end
 		if typ == "Upgrade" then
 			return GB.Equipment.upgradeNamed(target)
@@ -984,6 +1058,9 @@ return function(GB)
 			if GB.State.tutorialOverlayVisible() then
 				GB.State.dismissTutorialOverlay()
 				return false
+			end
+			if GB.Tutorial and GB.Tutorial.IsBlocking and select(1, GB.Tutorial.IsBlocking()) then
+				return GB.Tutorial.ExecuteCurrentStep()
 			end
 			local typ = qs.Objective.Type
 			if typ and not HANDLED[typ] then

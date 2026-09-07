@@ -21,6 +21,13 @@ return function(GB)
 			gap = 1.1
 		elseif cat == "STATE" and string.find(tostring(msg), "doing=", 1, true) then
 			gap = 1.1
+		elseif cat == "GATE" or cat == "UI" then
+			gap = 1.4
+		elseif cat == "COMBAT" then
+			local m = tostring(msg)
+			if string.find(m, "dead", 1, true) or string.find(m, "Clearing", 1, true) or string.find(m, "Target ", 1, true) then
+				gap = 0.8
+			end
 		elseif cat == "QUEST" then
 			local m = tostring(msg)
 			if string.find(m, "not credited", 1, true) or string.find(m, "resolve miss", 1, true) then

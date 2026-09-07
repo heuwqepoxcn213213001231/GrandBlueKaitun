@@ -240,6 +240,23 @@ return function(GB)
 		return false
 	end
 
+	local function enemyAlive(root)
+		if GB.Combat and GB.Combat.IsEnemyAlive then
+			return GB.Combat.IsEnemyAlive(root)
+		end
+		if not (root and root.Parent) then
+			return false
+		end
+		if root:GetAttribute("Dead") == true then
+			return false
+		end
+		local h = root:FindFirstChildOfClass("Humanoid")
+		if h and h.Health <= 0 then
+			return false
+		end
+		return true
+	end
+
 	local function usable(inst, kind)
 		if not (inst and inst.Parent) or inRS(inst) then
 			return false
@@ -252,8 +269,10 @@ return function(GB)
 			return false
 		end
 		if kind == "enemy" then
-			local h = root:FindFirstChildOfClass("Humanoid")
-			if h and h.Health <= 0 then
+			if GB.Combat and GB.Combat.isRecentlyDead and GB.Combat.isRecentlyDead(root) then
+				return false
+			end
+			if not enemyAlive(root) then
 				return false
 			end
 		end
@@ -264,7 +283,7 @@ return function(GB)
 	end
 
 	function M.dummy()
-		if dummyCache and dummyCache.Parent then
+		if dummyCache and dummyCache.Parent and usable(dummyCache, "enemy") then
 			return dummyCache
 		end
 		dummyCache = nil
@@ -562,7 +581,7 @@ return function(GB)
 		local kind = opts.ExpectedRole or opts.kind or "npc"
 		local cacheKey = "res:" .. kind .. ":" .. table.concat(names, "|")
 		local hit = GB.Cache.get(cacheKey, opts.deep and 0.4 or 2.0)
-		if hit and hit.Parent then
+		if hit and hit.Parent and usable(hit, kind) then
 			return M.pack(hit, request)
 		end
 
@@ -664,6 +683,76 @@ return function(GB)
 		return M.resolve(name, opts)
 	end
 
+	function M.enemies(name)
+		local out = {}
+		if name == "\\" or name == "" then
+			return out
+		end
+		if M.isDummyName(name) then
+			local d = M.dummy()
+			if d then
+				out[1] = d
+			end
+			return out
+		end
+		local origin
+		local hrp = GB.World and GB.World.hrp and GB.World.hrp()
+		if hrp then
+			origin = hrp.Position
+		end
+		local seen = {}
+		local names = M.namesFor(name, {})
+		local function consider(inst)
+			if not usable(inst, "enemy") then
+				return
+			end
+			local root = climbRoot(inst) or inst
+			if seen[root] or M.isPet(root) then
+				return
+			end
+			if GB.Combat and GB.Combat.isRecentlyDead and GB.Combat.isRecentlyDead(root) then
+				return
+			end
+			if GB.Combat and GB.Combat.IsEnemyAlive and not GB.Combat.IsEnemyAlive(root) then
+				return
+			end
+			seen[root] = true
+			local pos = M.positionOf(root)
+			local d = (origin and pos) and (pos - origin).Magnitude or 1e9
+			out[#out + 1] = { inst = root, dist = d }
+		end
+		for _, n in ipairs(names) do
+			local ok, tagged = pcall(CS.GetTagged, CS, n)
+			if ok and type(tagged) == "table" then
+				for _, inst in ipairs(tagged) do
+					consider(inst)
+				end
+			end
+		end
+		local ents = workspace:FindFirstChild("Entities")
+		if ents then
+			for _, c in ipairs(ents:GetChildren()) do
+				if nameHit(c, names) then
+					consider(c)
+				end
+			end
+		end
+		if #out == 0 then
+			local pack = M.resolve(name, { kind = "enemy", ExpectedRole = "enemy" })
+			if pack and pack.Instance then
+				consider(pack.Instance)
+			end
+		end
+		table.sort(out, function(a, b)
+			return a.dist < b.dist
+		end)
+		local flat = {}
+		for i, row in ipairs(out) do
+			flat[i] = row.inst
+		end
+		return flat
+	end
+
 	function M.enemy(name)
 		if name == "\\" or name == "" then
 			return nil
@@ -671,32 +760,11 @@ return function(GB)
 		if M.isDummyName(name) then
 			return M.dummy()
 		end
-		local origin
-		local hrp = GB.World and GB.World.hrp and GB.World.hrp()
-		if hrp then
-			origin = hrp.Position
-		end
-		local best, bestD
-		local ok, tagged = pcall(CS.GetTagged, CS, name)
-		if ok and type(tagged) == "table" then
-			for _, inst in ipairs(tagged) do
-				if usable(inst, "enemy") then
-					local root = climbRoot(inst) or inst
-					local pos = M.positionOf(root)
-					local d = (origin and pos) and (pos - origin).Magnitude or 1e9
-					if not bestD or d < bestD then
-						best, bestD = root, d
-					end
-				end
-			end
-		end
+		local list = M.enemies(name)
+		local best = list[1]
 		if best then
 			GB.Log.log("RESOLVE", string.format("%s -> %s", name, best:GetFullName()))
 			return best
-		end
-		local pack = M.resolve(name, { kind = "enemy", ExpectedRole = "enemy" })
-		if pack and pack.Instance and not M.isPet(pack.Instance) then
-			return pack.Instance
 		end
 		return nil
 	end

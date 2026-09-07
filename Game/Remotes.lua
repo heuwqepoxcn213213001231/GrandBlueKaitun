@@ -120,6 +120,31 @@ return function(GB)
 		return M.fire("HeldItem", 0.4, "Equip", id)
 	end
 
+	-- BackpackLocal.MoveToolToSlot → SaveOrder(slot, key)
+	function M.saveOrder(slot, key)
+		return M.fire("SaveOrder", 0.35, slot, key)
+	end
+
+	-- BindableEvent. BackpackLocal: Fire(true) selects topbar → OpenStorage.
+	function M.backpackToggle(open)
+		local ev = RS:FindFirstChild("Events")
+		local b = ev and ev:FindFirstChild("BackpackToggle")
+		if not b then
+			return false
+		end
+		if not GB.Retry.rateOk("be:BackpackToggle", 0.35) then
+			return false
+		end
+		local ok = pcall(function()
+			if open == nil then
+				b:Fire()
+			else
+				b:Fire(open and true or false)
+			end
+		end)
+		return ok
+	end
+
 	function M.heldUnequip()
 		return M.fire("HeldItem", 0.4, "Unequip")
 	end

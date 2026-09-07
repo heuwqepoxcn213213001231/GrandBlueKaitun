@@ -66,7 +66,7 @@ return function(GB)
 		local plan = GB.Planner and GB.Planner.last
 		local obj = qs and qs.Objective
 		local dump = {
-			Version = tostring(getgenv().GB_VERSION or "1.1.1"),
+			Version = tostring(getgenv().GB_VERSION or "1.1.2"),
 			PlaceId = game.PlaceId,
 			Level = snap.Level,
 			Island = snap.CurrentIsland,
@@ -93,6 +93,13 @@ return function(GB)
 			ResolverCandidates = GB.Resolver.lastCandidates,
 			Inventory = invSummary(),
 			Equip = snap.Weapon,
+			EquipmentState = snap.EquipmentState,
+			UI = snap.UI,
+			Tutorial = GB.Tutorial and GB.Tutorial.dump and GB.Tutorial.dump() or nil,
+			BackpackOpen = snap.UI and snap.UI.BackpackOpen,
+			Held = GB.Equipment and GB.Equipment.heldName and GB.Equipment.heldName(),
+			CombatTarget = GB.Combat and GB.Combat.lockMob and GB.Combat.lockMob.Name,
+			TargetAlive = GB.Combat and GB.Combat.lockMob and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(GB.Combat.lockMob),
 		}
 		GB.Log.warn("DIAG", string.format("DumpRuntimeIssue quest=%s stage=%s", tostring(cur), tostring(dump.Stage)))
 		local line = encodeDump(dump)

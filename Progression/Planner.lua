@@ -115,6 +115,12 @@ return function(GB)
 		if not (qs and plan) then
 			return false
 		end
+		if GB.Tutorial and GB.Tutorial.IsBlocking and select(1, GB.Tutorial.IsBlocking()) then
+			return GB.Tutorial.ExecuteCurrentStep()
+		end
+		if plan.Goal == "Equip" and plan.Target then
+			return GB.Quest.handleCondition(qs.Name, qs.Objective.Raw, qs.Stage)
+		end
 		if plan.Goal == "AcquireItem" and plan.Target then
 			if plan.Subgoals and qs.Name == "First Upgrade" then
 				local o = objOf(qs)

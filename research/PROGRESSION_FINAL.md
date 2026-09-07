@@ -14,7 +14,7 @@ Hard level cap: **UNKNOWN**. Soft visual `LEVEL_SOFT_CAP=125` (radar only). Cont
 2. **Basics** — EquipStrongPunch scroll (`ConsumeSkillScroll` + `Skill("Equip","Strong Punch")`); Cast hotbar; `StatPoints Invest` ≥1; ForceOpenLogbook + `OpenLogbookHelp`.
 3. **Pirate Fan Letter** — Talk Graves → Talk Koro → KillUntilDrop **Corrupt Marine** until letter (Stolen Watch side drop) → Talk Koro.
 4. Repeat **Bullies in Suits** (band 5–12) if need EXP.
-5. **Gearing Up** — Sell watch (`SellItem`); buy **Flintlock 150G**; HeldItem Equip; shoot dummy.
+5. **Gearing Up** — Sell watch (`SellItem`); buy **Flintlock 150G**; backpack + `SaveOrder(Weapon2)` (HeldItem does not credit Equip); shoot dummy.
 6. **The Hoarder** (lv7) — Kill Afuaru; key; loot 5 chests.
 
 ## Early (7–30) Anchor

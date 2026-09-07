@@ -8,6 +8,7 @@ return function(GB)
 		reason = nil,
 		si = 1,
 		deadOnce = {},
+		outcome = nil,
 	}
 
 	M.STRATS = { "lookup", "enemy", "diagnostic", "blocker" }
@@ -31,6 +32,7 @@ return function(GB)
 		GB.State.track.SuccessfulAction = os.clock()
 		M.level = 0
 		M.reason = nil
+		M.outcome = nil
 		M.resetStrategy()
 	end
 
@@ -73,6 +75,14 @@ return function(GB)
 		end
 
 		if strat == "diagnostic" then
+			if GB.Tutorial and GB.Tutorial.IsBlocking and select(1, GB.Tutorial.IsBlocking()) then
+				M.outcome = "BLOCKING_UI"
+				local step = GB.Tutorial.GetActiveStep and GB.Tutorial.GetActiveStep()
+				GB.Log.warn("RECOVERY", "BLOCKING_UI " .. tostring(step))
+				M.resetStrategy()
+				GB.State.track.TaskStartedAt = os.clock()
+				return
+			end
 			if GB.DumpRuntimeIssue then
 				GB.DumpRuntimeIssue()
 			end

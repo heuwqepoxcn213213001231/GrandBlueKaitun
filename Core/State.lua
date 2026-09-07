@@ -378,6 +378,44 @@ return function(GB)
 		s.Completed = d.CompletedSet or {}
 		s.CurrentQuest = (GB.PlayerData and GB.PlayerData.current()) or d.CurrentQuest
 		s.CurrentIsland = (GB.World and GB.World.islandFromProgress(s)) or "Anchor Town"
+		local ui = {
+			Blocking = false,
+			TutorialActive = false,
+			TutorialText = nil,
+			TutorialStep = nil,
+			Modal = nil,
+			DialogueActive = false,
+			BackpackOpen = false,
+			InventoryOpen = false,
+		}
+		if GB.Tutorial and GB.Tutorial.snapshot then
+			local snap = GB.Tutorial.snapshot()
+			if type(snap) == "table" then
+				ui.Blocking = snap.Blocking == true
+				ui.TutorialActive = snap.TutorialActive == true
+				ui.TutorialText = snap.TutorialText
+				ui.TutorialStep = snap.TutorialStep
+				ui.Modal = snap.Modal
+				ui.DialogueActive = snap.DialogueActive == true
+				ui.BackpackOpen = snap.BackpackOpen == true
+				ui.InventoryOpen = snap.InventoryOpen == true
+			end
+		else
+			local vis, overlay = M.tutorialOverlayVisible()
+			ui.TutorialActive = vis
+			ui.Modal = vis and overlay and overlay.Name or nil
+			local pg = lp and lp.PlayerGui
+			local dui = pg and pg:FindFirstChild("DialogueUI")
+			ui.DialogueActive = dui and dui:IsA("LayerCollector") and dui.Enabled == true
+		end
+		s.UI = ui
+		s.EquipmentState = nil
+		if GB.Equipment and GB.Equipment.equipmentState and s.CurrentQuest then
+			local qs = GB.Quest and GB.Quest.questState and GB.Quest.questState(s.CurrentQuest)
+			if qs and qs.Objective and qs.Objective.Type == "Equip" then
+				s.EquipmentState = GB.Equipment.equipmentState(qs.Objective.TargetName)
+			end
+		end
 		s.PhysicalIsland = nil
 		if GB.World and s.Position then
 			s.PhysicalIsland = GB.World.GetIslandFromPosition(s.Position)

@@ -46,7 +46,7 @@ Talk remote: `ClientQuest:FireServer("Talk", DisplayName)` + `DialogueBindable:F
 | Gate of Authority | 1 | Anchor Town | Open | Interact | Marine Gate | — | Marine Metal Gate | Anchor Town | Feral Dog | Quest.goTagged | live Open Marine Gate count 1 | STATIC_VERIFIED | IMPLEMENTED |
 | Gearing Up | 1 | Anchor Town | Sell | Sell | Stolen Watch | — | Stolen Watch | Anchor Town | Pirate Fan Letter | Shop.sellNamed | live Sell Stolen Watch count 1 | STATIC_VERIFIED | IMPLEMENTED |
 | Gearing Up | 2 | Anchor Town | Purchase | AcquireItem | Flintlock | ShopPurchase | Flintlock | Anchor Town | Pirate Fan Letter | Shop.buy | inventory/quest Flintlock 1 | STATIC_VERIFIED | IMPLEMENTED |
-| Gearing Up | 3 | Anchor Town | Equip | Equip | Flintlock | — | Flintlock | Anchor Town | Pirate Fan Letter | Equipment.equipNamed | live Equip Flintlock count 1 | STATIC_VERIFIED | IMPLEMENTED |
+| Gearing Up | 3 | Anchor Town | Equip | Equip | Flintlock | — | Flintlock | Anchor Town | Pirate Fan Letter | Tutorial + Equipment.equipViaBackpack (SaveOrder Weapon2) | live Equip Flintlock count 1 | STATIC_VERIFIED | IMPLEMENTED |
 | Gearing Up | 4 | Anchor Town | Shoot | Kill | Training Dummy | — | Training Dummy | Anchor Town | Pirate Fan Letter | Combat.attack | live Shoot Training Dummy count 1 | STATIC_VERIFIED | IMPLEMENTED |
 | Introduction | 1 | Anchor Town | Talk | Talk | Officer Graves | — | Officer Graves | Anchor Town | — | Quest.talk | live Talk Officer Graves count 1 | STATIC_VERIFIED | RUNTIME_VERIFIED |
 | Introduction | 2 | Anchor Town | Hit | Kill | Training Dummy | — | Training Dummy | Anchor Town | — | Combat.attack | live Hit Training Dummy count 4 | STATIC_VERIFIED | RUNTIME_VERIFIED |

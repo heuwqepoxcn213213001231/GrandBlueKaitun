@@ -109,7 +109,7 @@ return function(GB)
 
 	local function logQuestDoing(name)
 		local mob = GB.Combat and GB.Combat.lockMob
-		if mob and mob.Parent then
+		if mob and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(mob) then
 			logDoing("combat", mob.Name)
 			return
 		end
@@ -144,7 +144,13 @@ return function(GB)
 	end
 
 	local function afterQuest(name)
+		if GB.Tutorial and GB.Tutorial.IsBlocking and select(1, GB.Tutorial.IsBlocking()) then
+			return
+		end
 		if name and GB.PlayerData.finished(name) then
+			if GB.Combat then
+				GB.Combat.stopLock()
+			end
 			local snap = GB.State.get()
 			acceptNextStory(snap.CurrentIsland, snap.Level or 0)
 			return
@@ -170,6 +176,21 @@ return function(GB)
 		if GB.Recovery.stuck() then
 			setTask("recovery")
 			GB.Recovery.run("engine")
+		end
+
+		if GB.Recovery.outcome == "BLOCKING_UI" or (GB.Tutorial and GB.Tutorial.IsBlocking and select(1, GB.Tutorial.IsBlocking())) then
+			setTask("tutorial")
+			logDoing("tutorial", snap.UI and snap.UI.TutorialStep)
+			if GB.Combat then
+				GB.Combat.stopLock()
+			end
+			if GB.Tutorial and GB.Tutorial.ExecuteCurrentStep then
+				GB.Tutorial.ExecuteCurrentStep()
+			end
+			if GB.Recovery.outcome == "BLOCKING_UI" and GB.Tutorial and not select(1, GB.Tutorial.IsBlocking()) then
+				GB.Recovery.outcome = nil
+			end
+			return
 		end
 
 		if GB.Config.AutoCodes then

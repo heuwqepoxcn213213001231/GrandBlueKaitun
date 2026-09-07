@@ -30,7 +30,7 @@ return function(GB)
 	def("AutoTravel", true)
 	def("AutoBoat", true)
 	def("AutoInventory", true)
-	def("AutoBackpack", false) -- upgrade path UNRESOLVED
+	def("AutoBackpack", false) -- slot-upgrade UNRESOLVED; Open/Equip still used by Tutorial/Equipment
 	def("AutoFruit", true)
 	def("AutoHaki", false) -- trainer UNRESOLVED
 	def("AutoRaceTrait", false) -- default off; no spam reroll

@@ -815,6 +815,9 @@ return function(GB)
 		if not inst then
 			return false
 		end
+		if GB.Combat and GB.Combat.IsEnemyAlive and not GB.Combat.IsEnemyAlive(inst) then
+			return false
+		end
 		if GB.Resolver.isPet and GB.Resolver.isPet(inst) then
 			return false
 		end
