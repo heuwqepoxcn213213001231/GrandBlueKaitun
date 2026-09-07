@@ -823,11 +823,18 @@ return function(GB)
 		if hit and hit.Parent then
 			return hit
 		end
+		local tagged = M.taggedAny(name)
+		if tagged and (tagged:GetAttribute("Interaction") == "Shop Item" or M.prompt(tagged, "Shop Item")) then
+			local root = M.interactableOf and M.interactableOf(tagged) or tagged
+			GB.Cache.set(cacheKey, root)
+			return root
+		end
 		local function isShop(d)
 			if d:IsA("ProximityPrompt") and d.Name == "Shop Item" then
 				local p = d.Parent
 				local item = p and (p:GetAttribute("Item") or p.Name)
-				return item == name or (p and p.Name == name)
+				local climb = M.interactableOf and M.interactableOf(d)
+				return item == name or (p and p.Name == name) or (climb and climb.Name == name)
 			end
 			if d:GetAttribute("Interaction") == "Shop Item" then
 				return (d:GetAttribute("Item") or d.Name) == name
@@ -838,7 +845,7 @@ return function(GB)
 		if found[1] then
 			local part = found[1]
 			if part:IsA("ProximityPrompt") then
-				part = part.Parent
+				part = (M.interactableOf and M.interactableOf(part)) or part.Parent
 			end
 			GB.Cache.set(cacheKey, part)
 			return part

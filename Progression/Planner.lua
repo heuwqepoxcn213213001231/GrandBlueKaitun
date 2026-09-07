@@ -134,11 +134,8 @@ return function(GB)
 			return GB.Quest.handleCondition(qs.Name, qs.Objective.Raw, qs.Stage)
 		end
 		if plan.Goal == "AcquireItem" and plan.Target then
-			if plan.Subgoals and qs.Name == "First Upgrade" then
-				local o = objOf(qs)
-				if o and (o.Type == "Collect" or o.Type == "Smelt" or o.Type == "Upgrade") then
-					return M.executeSubgoals(qs, plan)
-				end
+			if qs.Name == "First Upgrade" and plan.Type == "Collect" and plan.Target == "Rusty Pickaxe" then
+				return GB.Shop.buy(plan.Target, plan.Amount or 1)
 			end
 			local beforeCur = plan.Current or 0
 			local beforeSig = GB.Quest.signature(qs)

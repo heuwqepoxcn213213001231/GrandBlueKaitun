@@ -109,6 +109,12 @@ return function(GB)
 		if string.find(t, "I can help change that", 1, true) then
 			return true
 		end
+		if string.find(t, "upgrade my flintlock", 1, true) then
+			return true
+		end
+		if string.find(t, "I need you", 1, true) then
+			return true
+		end
 		return false
 	end
 
@@ -885,6 +891,10 @@ return function(GB)
 			return false
 		end
 		if typ == "Collect" or typ == "CollectLocal" or typ == "CollectLocalItem" then
+			local spec = GB.QuestSpecs and GB.QuestSpecs.lookup(questName, nil, typ, target)
+			if spec and spec.acquire == "ShopPurchase" then
+				return GB.Shop.buy(target, GB.QuestData.conditionAmount(cond) or 1)
+			end
 			if GB.Planner and GB.Planner.execute then
 				local qs = M.questState(questName)
 				local plan = GB.Planner.build(qs)

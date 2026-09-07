@@ -1,5 +1,21 @@
 # Runtime Fixes
 
+## 1.1.9 — First Upgrade Collect Rusty Pickaxe: mines are below DestYMin
+
+Unlock credited. Stage 2: **Purchase a pickaxe down in the mines** / Collect Rusty Pickaxe 0/1. Planner looped `Need item Rusty Pickaxe` → `CYCLE First Upgrade AcquireItem|Rusty Pickaxe`.
+
+Verified shop: `Workspace.Islands.Anchor Town.Island.Rusty Pickaxe` Model, Interaction `Shop Item`, Price 25, tag `Rusty Pickaxe`. Pivot **Y=4.04**. Copper Ore **Y=4.67**. `DestYMin` was 8 → `destOk` reject. `rescue` treated `y < DestYMin-2` as void and would yank out of the mines. `Shop.buy` used `moveTo` hop 45 on a 600-stud path, returned false every tick. Subgoal stack incremented `seen` → CYCLE at 12. No `SHOP` log.
+
+**Fix:** DestYMin 0. Rescue only water/high Y. Shop teleports via `ToInteractable` + `Shop:FireServer("Purchase", interactable, qty)`. First Upgrade Collect pickaxe goes `Shop.buy`, not the full subgoal stack. Dialogue accept includes "I need you to upgrade my flintlock".
+
+```
+[Kaitun][TRAVEL] Teleport -> Rusty Pickaxe
+[Kaitun][SHOP] Purchase Rusty Pickaxe x1
+[Kaitun][QUEST] Objective COLLECT Copper Ore
+```
+
+---
+
 ## 1.1.8 — Unlock stands at prompt, not on the gate arch
 
 1.1.7 stopped the Model.Position crash. Live still `unlock not credited Afuaru's Gate` #1–#3. Screenshot: character clipped on the **arch roof**. Quest 0/1. Key is in the hotbar.

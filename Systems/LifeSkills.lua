@@ -29,7 +29,11 @@ return function(GB)
 			GB.Log.warn("MINING", "ore miss " .. tostring(target))
 			return false
 		end
-		GB.World.moveTo(ore, 7)
+		if GB.World.ToInteractable then
+			GB.World.ToInteractable(ore, 6)
+		else
+			GB.World.moveTo(ore, 7)
+		end
 		fireActivate("Pickaxe")
 		GB.Log.log("MINING", "activate at " .. ore.Name)
 		return true

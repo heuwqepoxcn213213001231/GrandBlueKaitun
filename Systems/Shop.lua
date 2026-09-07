@@ -21,19 +21,31 @@ return function(GB)
 			GB.Log.warn("SHOP", "no display " .. tostring(name))
 			return false
 		end
-		if not GB.World.moveTo(part, 12) then
+		local interact = (GB.Resolver.interactableOf and GB.Resolver.interactableOf(part)) or part
+		if GB.World.ToInteractable then
+			GB.World.ToInteractable(interact, 6)
+		elseif not GB.World.moveTo(interact, 12) then
+			GB.Log.warn("SHOP", "travel fail " .. tostring(name))
 			return false
 		end
-		local stock = part:GetAttribute("Stock")
+		task.wait(0.15)
+		local stock = interact:GetAttribute("Stock") or part:GetAttribute("Stock")
 		local before = select(2, GB.PlayerData.hasItem(name))
 		if stock then
-			local idx = tonumber(part.Parent and part.Parent.Name)
+			local idx = tonumber(interact.Parent and interact.Parent.Name)
 			GB.Remotes.rotatingPurchase(idx, qty)
 		else
-			GB.Remotes.shopPurchase(part, qty)
+			GB.Remotes.shopPurchase(interact, qty)
+		end
+		local pr = GB.Resolver.prompt(interact, "Shop Item") or GB.Resolver.prompt(interact)
+		if pr and GB.World.firePrompt then
+			GB.World.firePrompt(pr, pr.HoldDuration or 0, interact)
 		end
 		GB.Log.log("SHOP", "Purchase " .. name .. " x" .. qty)
-		task.wait(0.35)
+		task.wait(0.45)
+		if GB.PlayerData.invalidateLive then
+			GB.PlayerData.invalidateLive()
+		end
 		local _, after = GB.PlayerData.hasItem(name)
 		if after > before then
 			GB.Recovery.markSuccess()

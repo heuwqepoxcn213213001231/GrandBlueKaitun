@@ -41,7 +41,8 @@ return function(GB)
 			return false
 		end
 		local y = pos.Y
-		if y < (GB.Config.DestYMin or 8) or y > (GB.Config.DestYMax or 180) then
+		local yMin = math.max(GB.Config.DestYMin or 0, M.waterY() + 2)
+		if y < yMin or y > (GB.Config.DestYMax or 180) then
 			return false
 		end
 		return true
@@ -101,7 +102,7 @@ return function(GB)
 			return
 		end
 		local y = root.Position.Y
-		local wet = y < M.waterY() + 8 or y < (GB.Config.DestYMin or 8) - 2 or y > 240
+		local wet = y < M.waterY() + 4 or y > 240
 		if not wet then
 			M.rememberSafe()
 			return
