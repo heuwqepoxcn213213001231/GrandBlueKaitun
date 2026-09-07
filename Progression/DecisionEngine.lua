@@ -25,7 +25,7 @@ return function(GB)
 		if string.find(t, "quest_accept:", 1, true) then
 			return "QUEST_ACCEPT"
 		end
-		if string.find(t, "farm_direct:", 1, true) then
+		if string.find(t, "farm_direct:", 1, true) or string.find(t, "farm_pool:", 1, true) then
 			return "COMBAT"
 		end
 		if string.find(t, "tutorial", 1, true) then
@@ -137,42 +137,55 @@ return function(GB)
 		}
 	end
 
-	local function bestRepeat(island, lv)
-		local bestQuest
-		local bestDirect
+	local KILL_TYPES = {
+		Kill = true,
+		Defeat = true,
+		Hit = true,
+		Destroy = true,
+	}
+
+	local function farmPool(island, lv)
+		local jobs = {}
+		if type(island) ~= "string" or island == "" then
+			return jobs
+		end
 		for _, e in ipairs(GB.QuestData.REPEATS) do
-			if e.island == island and lv >= (e.accept or 0) and lv <= (e.full_until or 999) then
-				if GB.QuestData.prereqOk(e.prereq) then
-					local blockedRepeat = false
-					if GB.Quest and GB.Quest.questStatus then
+			if e.island == island and GB.QuestData.prereqOk(e.prereq) then
+				local qs = GB.Quest and GB.Quest.questState and GB.Quest.questState(e.name) or nil
+				local live = qs and qs.IsAccepted == true
+				local inBand = lv >= (e.accept or 0) and lv <= (e.full_until or 999)
+				if not live and not inBand then
+					-- past band and not currently accepted: skip
+				else
+					local blocked = false
+					if (not live) and GB.Quest and GB.Quest.questStatus then
 						local status = GB.Quest.questStatus(e.name)
 						if status == "DEFERRED" or status == "BLOCKED_REQUIREMENT" then
-							blockedRepeat = true
+							blocked = true
 						end
 					end
-					if not blockedRepeat then
-						local eExp = tonumber(e.exp) or 0
+					if not blocked then
 						local start = repeatStartability(e.name)
-						if start.Mode == "quest" then
-							if (not bestQuest) or eExp > (tonumber(bestQuest.Exp) or 0) then
-								bestQuest = {
-									Name = e.name,
-									Mode = "quest",
-									Exp = eExp,
-									Entry = e,
-									StartSpec = start.StartSpec,
-								}
-							end
+						if start.Mode == "quest" or live then
+							jobs[#jobs + 1] = {
+								Name = e.name,
+								Mode = "quest",
+								Exp = tonumber(e.exp) or 0,
+								Entry = e,
+								StartSpec = start.StartSpec,
+								Live = live,
+								qs = qs,
+							}
 						elseif start.Mode == "direct" then
-							if (not bestDirect) or eExp > (tonumber(bestDirect.Exp) or 0) then
-								bestDirect = {
-									Name = e.name,
-									Mode = "direct",
-									Exp = eExp,
-									Entry = e,
-									StartSpec = start.StartSpec,
-								}
-							end
+							jobs[#jobs + 1] = {
+								Name = e.name,
+								Mode = "direct",
+								Exp = tonumber(e.exp) or 0,
+								Entry = e,
+								StartSpec = start.StartSpec,
+								Live = live,
+								qs = qs,
+							}
 						elseif start.Status == "UNRESOLVED_START" then
 							local key = "repeat_unresolved:" .. tostring(e.name)
 							if M._repeatUnresolvedKey ~= key or os.clock() - (M._repeatUnresolvedAt or 0) > 25 then
@@ -185,13 +198,72 @@ return function(GB)
 				end
 			end
 		end
-		if bestQuest then
-			return bestQuest
+		table.sort(jobs, function(a, b)
+			if a.Live ~= b.Live then
+				return a.Live
+			end
+			return (a.Exp or 0) > (b.Exp or 0)
+		end)
+		return jobs
+	end
+
+	local function bestRepeat(island, lv)
+		local jobs = farmPool(island, lv)
+		return jobs[1]
+	end
+
+	local function collectKillPool(jobs)
+		local names, questOf, planOf, seen = {}, {}, {}, {}
+		local function add(job, target)
+			if type(target) ~= "string" or target == "" or seen[target] then
+				return
+			end
+			seen[target] = true
+			names[#names + 1] = target
+			questOf[target] = job.Name
+			planOf[target] = {
+				Quest = job.Name,
+				Target = target,
+				Island = job.qs and job.qs.Island or (job.Entry and job.Entry.island),
+				Marker = GB.QuestData and GB.QuestData.combatMarker and GB.QuestData.combatMarker(
+					job.Name,
+					job.qs and job.qs.StageIndex,
+					job.qs and job.qs.Objective and job.qs.Objective.Type,
+					target
+				) or nil,
+				Stage = job.qs and job.qs.StageIndex,
+				ObjectiveType = job.qs and job.qs.Objective and job.qs.Objective.Type,
+				SkipStream = true,
+			}
 		end
-		if bestDirect then
-			return bestDirect
+		local function addJob(job, requireReady)
+			if requireReady and GB.Quest and GB.Quest.retryOpen and GB.Quest.retryOpen(job.Name) then
+				return
+			end
+			if GB.Quest and GB.Quest.killTargetsFor then
+				for _, target in ipairs(GB.Quest.killTargetsFor(job.Name)) do
+					add(job, target)
+				end
+				return
+			end
+			local o = job.qs and job.qs.Objective
+			if o and KILL_TYPES[o.Type] then
+				add(job, o.TargetName)
+			end
 		end
-		return nil
+		for _, job in ipairs(jobs) do
+			if job.Live then
+				addJob(job, true)
+			end
+		end
+		if #names == 0 then
+			for _, job in ipairs(jobs) do
+				if job.Live then
+					addJob(job, false)
+				end
+			end
+		end
+		return names, questOf, planOf
 	end
 
 	local function activeQuestNames()
@@ -240,59 +312,8 @@ return function(GB)
 		return chosen
 	end
 
-	local function runFarmGoal(snap, why)
-		local rep = bestRepeat(snap.CurrentIsland, snap.Level or 0)
-		if not rep then
-			return {
-				attempted = false,
-				progressed = false,
-				reason = "no_repeat",
-			}
-		end
+	local function runSingleFarm(rep, whyTag)
 		local repName = rep.Name or tostring(rep)
-		local blockers = blockerList()
-		local note = tostring(why or "story_blocked")
-		for _, b in ipairs(blockers) do
-			if b.Type == "STAT_REQUIREMENT" and b.Stat == "Strength" then
-				note = string.format("FarmUntilStrength(%d/%d)", tonumber(b.Current) or 0, tonumber(b.Required) or 0)
-				break
-			end
-		end
-		if M._farmNote ~= (repName .. "|" .. note) then
-			M._farmNote = repName .. "|" .. note
-			GB.Log.log("PLANNER", "farm goal " .. note)
-			GB.Log.log("PLANNER", "next=" .. tostring(repName))
-		end
-		M.goal = { Type = "FARM", Quest = repName, Note = note, Mode = rep.Mode, At = os.clock() }
-		if rep.Mode == "direct" and rep.StartSpec and rep.StartSpec.DirectCombatVerified and GB.Combat then
-			local target = rep.StartSpec.DirectTarget
-			if type(target) ~= "string" or target == "" then
-				return {
-					attempted = false,
-					progressed = false,
-					reason = "direct_target_missing",
-				}
-			end
-			setTask("farm_direct:" .. tostring(target))
-			logDoing("farm_direct", target)
-			setOwner("COMBAT", target)
-			local ok = false
-			if GB.Combat.huntUntilDead then
-				ok = select(1, GB.Combat.huntUntilDead(target, 16))
-			elseif GB.Combat.attack then
-				ok = GB.Combat.attack(target)
-			end
-			if not ok then
-				GB.Log.warn("PLANNER", "direct farm miss " .. tostring(target))
-			end
-			return {
-				attempted = true,
-				progressed = ok == true,
-				reason = ok and "direct_progress" or "direct_miss",
-				quest = repName,
-				target = target,
-			}
-		end
 		if GB.Quest and GB.Quest.dialogueOpen and GB.Quest.dialogueOpen() then
 			local acceptNpc = rep.StartSpec and rep.StartSpec.AcceptNPC or repName
 			setTask("quest_accept:" .. tostring(acceptNpc))
@@ -330,18 +351,12 @@ return function(GB)
 			local ok = GB.Quest.doLive(repName)
 			row = { attempted = true, progressed = ok == true, reason = ok and "quest_progress" or "quest_pending" }
 		end
-		if row.progressed ~= true and rep.StartSpec and rep.StartSpec.Status == "STARTABLE" then
-			GB.Log.warn("PLANNER", "farm quest pending accept/credit " .. tostring(repName))
+		if row.progressed ~= true and whyTag then
 			if M._farmPendingKey ~= (repName .. "|" .. tostring(row.reason)) or os.clock() - (M._farmPendingAt or 0) > 4 then
 				M._farmPendingKey = repName .. "|" .. tostring(row.reason)
 				M._farmPendingAt = os.clock()
 				GB.Log.warn("PLANNER", string.format("farm pending %s reason=%s", tostring(repName), tostring(row.reason)))
 			end
-		end
-		if M._farmReasonKey ~= (repName .. "|" .. tostring(row.reason)) or os.clock() - (M._farmReasonAt or 0) > 2.8 then
-			M._farmReasonKey = repName .. "|" .. tostring(row.reason)
-			M._farmReasonAt = os.clock()
-			GB.Log.log("STATE", string.format("farm_result %s reason=%s", tostring(repName), tostring(row.reason)))
 		end
 		return {
 			attempted = row.attempted ~= false,
@@ -349,6 +364,104 @@ return function(GB)
 			reason = row.reason or (row.progressed and "quest_progress" or "quest_not_progressed"),
 			quest = repName,
 		}
+	end
+
+	local function runFarmGoal(snap, why)
+		local jobs = farmPool(snap.CurrentIsland, snap.Level or 0)
+		if #jobs == 0 then
+			return {
+				attempted = false,
+				progressed = false,
+				reason = "no_repeat",
+			}
+		end
+		local blockers = blockerList()
+		local note = tostring(why or "story_blocked")
+		for _, b in ipairs(blockers) do
+			if b.Type == "STAT_REQUIREMENT" and b.Stat == "Strength" then
+				note = string.format("FarmUntilStrength(%d/%d)", tonumber(b.Current) or 0, tonumber(b.Required) or 0)
+				break
+			end
+		end
+		local labelNames = {}
+		for i, job in ipairs(jobs) do
+			if i <= 3 then
+				labelNames[#labelNames + 1] = job.Name
+			end
+		end
+		local poolLabel = table.concat(labelNames, " + ")
+		if M._farmNote ~= (poolLabel .. "|" .. note) then
+			M._farmNote = poolLabel .. "|" .. note
+			GB.Log.log("PLANNER", "farm goal " .. note)
+			GB.Log.log("PLANNER", "pool=" .. poolLabel)
+		end
+		M.goal = { Type = "FARM", Quest = poolLabel, Note = note, Mode = "pool", At = os.clock() }
+
+		local talkJob, acceptJob, directJob
+		for _, job in ipairs(jobs) do
+			if job.Mode == "direct" and job.StartSpec and job.StartSpec.DirectCombatVerified then
+				directJob = directJob or job
+			elseif job.Live then
+				local o = job.qs and job.qs.Objective
+				if job.qs and (job.qs.CanTurnIn or (o and (o.Type == "Talk" or o.Type == "Automatic Talk"))) then
+					talkJob = talkJob or job
+				end
+			elseif job.StartSpec and type(job.StartSpec.AcceptNPC) == "string" and job.StartSpec.AcceptNPC ~= "" then
+				acceptJob = acceptJob or job
+			end
+		end
+
+		local names, questOf, planOf = collectKillPool(jobs)
+		local locked = GB.Combat and GB.Combat.lockMatchesNames and GB.Combat.lockMatchesNames(names)
+		if (#names > 0 or locked) and GB.Combat and GB.Combat.huntNearestOf then
+			setTask("farm_pool:" .. tostring(snap.CurrentIsland))
+			logDoing("farm_pool", table.concat(names, "+"))
+			setOwner("COMBAT", names[1])
+			local ok, whyHunt = GB.Combat.huntNearestOf(names, 16, questOf, planOf)
+			if M._farmReasonKey ~= (poolLabel .. "|" .. tostring(whyHunt)) or os.clock() - (M._farmReasonAt or 0) > 2.8 then
+				M._farmReasonKey = poolLabel .. "|" .. tostring(whyHunt)
+				M._farmReasonAt = os.clock()
+				GB.Log.log("STATE", string.format("farm_result %s reason=%s", poolLabel, tostring(whyHunt or (ok and "pool_kill" or "pool_miss"))))
+			end
+			if ok then
+				return {
+					attempted = true,
+					progressed = true,
+					reason = tostring(whyHunt or "pool_kill"),
+					quest = poolLabel,
+				}
+			end
+			-- Miss this pack: turn-in / accept instead of idling wait_level.
+		end
+
+		if talkJob then
+			return runSingleFarm(talkJob, "turnin")
+		end
+		if acceptJob then
+			return runSingleFarm(acceptJob, "accept")
+		end
+		if directJob then
+			local target = directJob.StartSpec and directJob.StartSpec.DirectTarget
+			if type(target) == "string" and target ~= "" and GB.Combat then
+				setTask("farm_direct:" .. tostring(target))
+				logDoing("farm_direct", target)
+				setOwner("COMBAT", target)
+				local ok = false
+				if GB.Combat.huntUntilDead then
+					ok = select(1, GB.Combat.huntUntilDead(target, 16))
+				elseif GB.Combat.attack then
+					ok = GB.Combat.attack(target)
+				end
+				return {
+					attempted = true,
+					progressed = ok == true,
+					reason = ok and "direct_progress" or "direct_miss",
+					quest = directJob.Name,
+					target = target,
+				}
+			end
+		end
+		return runSingleFarm(jobs[1], "fallback")
 	end
 
 	local function farmHandled(result)

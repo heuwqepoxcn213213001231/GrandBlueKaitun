@@ -965,7 +965,8 @@ return function(GB)
 		t.LastError = err
 		t.NextRetryAt = now + 1.5
 		GB.Log.warn("QUEST", string.format("%s fail #%d %s", name, t.AttemptCount, tostring(err)))
-		if t.AttemptCount == 3 then
+		local farmMiss = isRepeatable(name) and string.find(tostring(err), "resolve miss", 1, true)
+		if t.AttemptCount == 3 and not farmMiss then
 			scopedResolveInvalidate(qs)
 			local target = qs and qs.Objective and qs.Objective.TargetName or (qs and qs.NPC)
 			local lastDetail = M.detailByFingerprint[fp] or 0
@@ -982,6 +983,11 @@ return function(GB)
 			end
 		end
 		if t.AttemptCount >= 5 then
+			if farmMiss then
+				t.AttemptCount = 0
+				t.NextRetryAt = now + 1.1
+				return t
+			end
 			local lastDiag = M.diagByFingerprint[fp] or 0
 			if now - lastDiag >= DIAG_DUMP_GAP then
 				M.diagByFingerprint[fp] = now
@@ -1456,6 +1462,20 @@ return function(GB)
 			end
 		end
 		return targets[1], targets
+	end
+
+	function M.killTargetsFor(name)
+		local qs = M.questState(name)
+		if not (qs and qs.IsAccepted) then
+			return {}
+		end
+		local preferred = qs.Objective and qs.Objective.TargetName
+		return unfinishedKillTargets(name, qs.Stage, preferred)
+	end
+
+	function M.retryOpen(name)
+		local t = M.track[name]
+		return t ~= nil and t.LastError ~= nil and os.clock() < (t.NextRetryAt or 0)
 	end
 
 	function M.handleCondition(questName, cond, stage)
@@ -2102,7 +2122,8 @@ return function(GB)
 			if qs and not qs.IsAccepted then
 				-- Keep trying acceptance flow; retry-window should not hard-stall accept travel/talk.
 			else
-				return resultRow(name, false, false, "retry_window")
+				-- Keep attempted=true so farm engine does not drop to wait_level/idle.
+				return resultRow(name, true, false, "retry_window")
 			end
 		end
 		local blocked, why = M.deferred(name)

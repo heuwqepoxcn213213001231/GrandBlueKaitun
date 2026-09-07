@@ -63,8 +63,8 @@ return function(GB)
 
 	M.REPEATS = {
 		{ name = "Bullies in Suits", island = "Anchor Town", accept = 0, full_until = 12, exp = 40, prereq = "Pirate Fan Letter" },
-		{ name = "Officer Termination", island = "Anchor Town", accept = 0, full_until = 20, exp = 105, prereq = "Tea Party Crashers" },
-		{ name = "Granny's Nemesis", island = "Anchor Town", accept = 0, full_until = 25, exp = 157, prereq = "Captain's Brat" },
+		{ name = "Officer Termination", island = "Anchor Town", accept = 0, full_until = 30, exp = 105, prereq = "Tea Party Crashers" },
+		{ name = "Granny's Nemesis", island = "Anchor Town", accept = 0, full_until = 30, exp = 157, prereq = "Captain's Brat" },
 		{ name = "Tyrannical Captain", island = "Anchor Town", accept = 0, full_until = 35, exp = 771, prereq = "Axe-Handed Tyrant" },
 		{ name = "This Is Personal", island = "Clown Town", accept = 30, full_until = 45, exp = 268, prereq = "A Joke Gone Too Far" },
 		{ name = "Cat Problem", island = "Clown Town", accept = 30, full_until = 50, exp = 827, prereq = "Lion's Victim" },

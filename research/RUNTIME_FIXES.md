@@ -1,5 +1,16 @@
 # Runtime Fixes
 
+## 1.1.26 — Parallel island farm, no wait_level stall
+
+Live loop quests on the same island (Officer Termination + Granny's Nemesis) were serialized. Miss on `Corrupt Guard` returned `retry_window` (`attempted=false`) and DecisionEngine dropped to `wait_level:Setting Sail`. Recovery/stream-pull after 5 misses teleported away from the pack.
+
+**Fix**
+
+- Farm pool = every live repeat on the island plus in-band startables. Ignore `full_until` while the quest is already accepted.
+- Combat hunts the nearest mob matching any remaining kill target (`Corrupt Guard` or `Corrupt Marine Officer`).
+- `retry_window` stays `attempted=true`. Repeatable resolve-miss does not Recovery/defer/stream-pull.
+- Officer / Granny `full_until` raised to 30 so both stay in the Setting Sail grind.
+
 ## 1.1.25 — Accept stay: no re-tele while talking to NPC
 
 Maeve / tree NPCs: bot arrived at talk range then `ToNPC` + `ToInteractable` + `setPos(groundAt+40)` every ~4s, snapping onto canopy then back.

@@ -515,22 +515,107 @@ return function(GB)
 		if mob and M.IsValidTarget(mob, { Name = name }) then
 			return mob
 		end
-		if streamToMarker(targetPlan, name) then
-			local t0 = os.clock()
-			while os.clock() - t0 < 2.6 do
-				local list = GB.Resolver.enemies and GB.Resolver.enemies(name) or nil
-				if type(list) == "table" then
-					for _, inst in ipairs(list) do
-						if M.IsValidTarget(inst, { Name = name }) then
-							GB.Log.log("COMBAT", tostring(name) .. " loaded")
-							return inst
+		if not (type(targetPlan) == "table" and targetPlan.SkipStream == true) then
+			if streamToMarker(targetPlan, name) then
+				local t0 = os.clock()
+				while os.clock() - t0 < 2.6 do
+					local list = GB.Resolver.enemies and GB.Resolver.enemies(name) or nil
+					if type(list) == "table" then
+						for _, inst in ipairs(list) do
+							if M.IsValidTarget(inst, { Name = name }) then
+								GB.Log.log("COMBAT", tostring(name) .. " loaded")
+								return inst
+							end
 						end
 					end
+					task.wait(0.15)
 				end
-				task.wait(0.15)
 			end
 		end
 		return nil
+	end
+
+	local function nameHits(inst, name)
+		if not (inst and type(name) == "string" and name ~= "") then
+			return false
+		end
+		if GB.Resolver and GB.Resolver.nameMatches and GB.Resolver.namesFor then
+			return GB.Resolver.nameMatches(inst, GB.Resolver.namesFor(name, {})) == true
+		end
+		local n = inst.Name or ""
+		return n == name or string.find(n, name, 1, true) ~= nil
+	end
+
+	function M.findNearestOf(names)
+		if type(names) ~= "table" or #names == 0 then
+			return nil, nil
+		end
+		M.pruneDeadCache()
+		local origin
+		local hrp = GB.World and GB.World.hrp and GB.World.hrp()
+		if hrp then
+			origin = hrp.Position
+		end
+		local best, bestName, bestD
+		for _, raw in ipairs(names) do
+			local name = GB.QuestData and GB.QuestData.killName and GB.QuestData.killName(nil, raw) or raw
+			if type(name) == "string" and name ~= "" then
+				local list = GB.Resolver and GB.Resolver.enemies and GB.Resolver.enemies(name)
+				if type(list) == "table" then
+					for _, inst in ipairs(list) do
+						if M.IsValidTarget(inst, { Name = name }) then
+							local pos = GB.Resolver.positionOf and GB.Resolver.positionOf(inst)
+							local d = (origin and pos) and (pos - origin).Magnitude or 1e9
+							if not bestD or d < bestD then
+								best, bestName, bestD = inst, name, d
+							end
+						end
+					end
+				end
+			end
+		end
+		return best, bestName, bestD
+	end
+
+	function M.lockMatchesNames(names)
+		local mob = M.lockMob
+		if not (mob and M.IsEnemyAlive(mob) and type(names) == "table") then
+			return nil
+		end
+		for _, raw in ipairs(names) do
+			local name = GB.QuestData and GB.QuestData.killName and GB.QuestData.killName(nil, raw) or raw
+			if nameHits(mob, name) then
+				return name
+			end
+		end
+		return nil
+	end
+
+	function M.huntNearestOf(names, timeout, questOf, planOf)
+		if type(names) ~= "table" or #names == 0 then
+			return false, "no_names"
+		end
+		local lockedName = M.lockMatchesNames(names)
+		local mob, name, dist
+		if lockedName and M.lockMob then
+			mob, name = M.lockMob, lockedName
+		else
+			mob, name, dist = M.findNearestOf(names)
+		end
+		if not (mob and name and M.IsEnemyAlive(mob)) then
+			return false, "no_enemy"
+		end
+		local qn = type(questOf) == "table" and questOf[name] or nil
+		if type(dist) == "number" and (not M._nearLog or os.clock() - M._nearLog > 2.4) then
+			M._nearLog = os.clock()
+			GB.Log.log("COMBAT", string.format("nearest %s d=%.0f quest=%s", tostring(name), dist, tostring(qn or "-")))
+		end
+		local plan = (type(planOf) == "table" and planOf[name]) or {}
+		plan.Target = name
+		plan.Quest = qn or plan.Quest
+		plan.Instance = mob
+		plan.SkipStream = true
+		return M.huntUntilDead(name, timeout or 16, qn, plan)
 	end
 
 	local function standDest(mob)
@@ -693,7 +778,8 @@ return function(GB)
 	end
 
 	function M.hunt(name, questName, targetPlan)
-		local mob = M.findTarget(name, questName, targetPlan)
+		local preset = type(targetPlan) == "table" and targetPlan.Instance or nil
+		local mob = (preset and M.IsValidTarget(preset, { Name = name }) and preset) or M.findTarget(name, questName, targetPlan)
 		if not mob then
 			return false
 		end
@@ -737,7 +823,8 @@ return function(GB)
 				StageIndex = qs.StageIndex,
 			} or nil
 		end
-		local mob = M.findTarget(name, questName, targetPlan)
+		local preset = type(targetPlan) == "table" and targetPlan.Instance or nil
+		local mob = (preset and M.IsEnemyAlive(preset) and preset) or M.findTarget(name, questName, targetPlan)
 		if (not M.IsEnemyAlive(mob)) and type(targetPlan) == "table" and type(targetPlan.Alternatives) == "table" then
 			for _, alt in ipairs(targetPlan.Alternatives) do
 				if type(alt) == "string" and alt ~= "" and alt ~= name then
