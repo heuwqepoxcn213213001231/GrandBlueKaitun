@@ -581,28 +581,11 @@ return function(GB)
 			or (GB.QuestData and GB.QuestData.isObjectTarget and GB.QuestData.isObjectTarget(name))
 		local skipBlock = type(targetPlan) == "table" and targetPlan.SkipStream == true
 		if wantObject or not skipBlock then
-			if M.approachMarker(targetPlan, name) then
-				local t0 = os.clock()
-				local waitFor = skipBlock and 0.35 or 2.2
-				while os.clock() - t0 < waitFor do
-					local again = findWorldTarget(name, targetPlan)
-					if again then
-						GB.Log.log("COMBAT", tostring(name) .. " loaded")
-						return again
-					end
-					if GB.Resolver.enemies then
-						local list = GB.Resolver.enemies(name)
-						if type(list) == "table" then
-							for _, inst in ipairs(list) do
-								if M.IsValidTarget(inst, { Name = name }) then
-									GB.Log.log("COMBAT", tostring(name) .. " loaded")
-									return inst
-								end
-							end
-						end
-					end
-					task.wait(0.15)
-				end
+			M.approachMarker(targetPlan, name)
+			local again = findWorldTarget(name, targetPlan)
+			if again then
+				GB.Log.log("COMBAT", tostring(name) .. " loaded")
+				return again
 			end
 		end
 		return nil

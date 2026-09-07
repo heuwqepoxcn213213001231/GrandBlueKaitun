@@ -1,5 +1,16 @@
 # Runtime Fixes
 
+## 1.1.31 — Never defer live Destroy; no findTarget wait
+
+Reload of 1.1.30 still logged `defer Sabotage The Cannon deferred_after_fail`. After boot, live quest payload can be empty so `Objective.Type` was not `Destroy` and `noteFail` still deferred 30s. Engine then `otherOrFarm` — tele away. `findTarget` also `task.wait` 0.35–2.2s (`Quest.doLive` 271ms).
+
+**Fix**
+
+- `keepTrying`: any quest with a Destroy stage (or object target) never defers, even if live/objective is missing.
+- Existing defer is cleared. DecisionEngine does not farm-away from those quests.
+- Tracker text `Destroy Muggy Cannon (0/1)` infers the Destroy objective after empty GetData.
+- `findTarget` approaches the marker once and returns. No wait-loop on the scheduler.
+
 ## 1.1.30 — Destroy objects (Muggy Cannon): stay at marker, no stream-pull loop
 
 `Sabotage The Cannon` / Destroy Muggy Cannon treated the cannon as an `Entities` enemy. It is a CollectionService tag / world object. `findTarget` missed, `streamToMarker` called `pullStream(Clown Town)`, then `noteFail` deferred after 5 misses. Teleport loop + `Quest.doLive` 3s spikes. Deep scan saw Benny / barrels, never the cannon.

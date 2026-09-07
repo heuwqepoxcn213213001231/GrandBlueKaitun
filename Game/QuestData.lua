@@ -551,6 +551,29 @@ return function(GB)
 		return type(target) == "string" and M.OBJECT_TARGETS[target] ~= nil
 	end
 
+	function M.hasDestroyStage(name)
+		if type(name) ~= "string" or name == "" then
+			return false
+		end
+		if not M._destroyQuestReady then
+			if not (GB.QuestSpecs and GB.QuestSpecs.STAGES) then
+				return name == "Sabotage The Cannon"
+					or name == "Undermine The Circus 1"
+					or name == "Revenge of the Nibblebottom"
+					or name == "Destroy the Signalers"
+					or name == "Something Isn't Right"
+			end
+			M._destroyQuest = {}
+			for _, spec in pairs(GB.QuestSpecs.STAGES) do
+				if type(spec) == "table" and spec.quest and spec.objective == "Destroy" then
+					M._destroyQuest[spec.quest] = true
+				end
+			end
+			M._destroyQuestReady = true
+		end
+		return M._destroyQuest[name] == true
+	end
+
 	function M.questRequirement(name)
 		return M.QUEST_REQUIREMENTS[name]
 	end

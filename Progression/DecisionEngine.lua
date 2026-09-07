@@ -746,13 +746,17 @@ return function(GB)
 			if cur and not GB.Config.SkipQuests[cur] then
 				local status, why = questStatus(cur)
 				if status == "BLOCKED_REQUIREMENT" or status == "DEFERRED" then
-					logBlockedQuest(cur, why)
-					if otherOrFarm(cur, why) then
+					if GB.Quest and GB.Quest.keepTrying and GB.Quest.keepTrying(cur) then
+						status = "IN_PROGRESS"
+					else
+						logBlockedQuest(cur, why)
+						if otherOrFarm(cur, why) then
+							return
+						end
+						setTask("defer:" .. cur)
+						logDoing("defer", cur)
 						return
 					end
-					setTask("defer:" .. cur)
-					logDoing("defer", cur)
-					return
 				end
 				local qs = GB.Quest.questState(cur)
 				local obj = qs and qs.Objective

@@ -615,9 +615,40 @@ return function(GB)
 		return false
 	end
 
+	function M.keepTrying(name, err)
+		if type(name) ~= "string" or name == "" then
+			return false
+		end
+		if GB.QuestData and GB.QuestData.isRepeatable and GB.QuestData.isRepeatable(name) then
+			return true
+		end
+		if GB.QuestData and GB.QuestData.hasDestroyStage and GB.QuestData.hasDestroyStage(name) then
+			return true
+		end
+		local qs = M.questState(name)
+		local o = qs and qs.Objective
+		if o and o.Type == "Destroy" then
+			return true
+		end
+		if o and o.TargetName and GB.QuestData and GB.QuestData.isObjectTarget and GB.QuestData.isObjectTarget(o.TargetName) then
+			return true
+		end
+		local miss = string.find(tostring(err or ""), "resolve miss", 1, true)
+		if miss and GB.PlayerData and GB.PlayerData.live and GB.PlayerData.live(name) then
+			return true
+		end
+		return false
+	end
+
 	function M.deferred(name)
 		local untilAt = M.deferUntil[name]
 		if untilAt and untilAt > os.clock() then
+			local lastErr = M.track[name] and M.track[name].LastError
+			if M.keepTrying(name, lastErr) then
+				M.deferUntil[name] = nil
+				M.deferReason[name] = nil
+				return false
+			end
 			return true, M.deferReason[name] or "deferred_after_fail"
 		end
 		if name == "Gate of Authority" then
@@ -758,6 +789,23 @@ return function(GB)
 				M._inferName = name
 				M._inferAt = now
 				M._inferObj = { Type = "Hit", TargetName = "Training Dummy", Current = 0, Amount = 4, Complete = false, Raw = { Type = "Hit", Target = { Name = "Training Dummy", Amount = 0, RequiredAmount = 4 } } }
+				return M._inferObj
+			end
+		end
+		local dest = string.match(text, "Destroy%s+([%w %'%-%\"]+)%s*%(")
+		if dest then
+			dest = string.gsub(dest, "%s+$", "")
+			if dest ~= "" then
+				M._inferName = name
+				M._inferAt = now
+				M._inferObj = {
+					Type = "Destroy",
+					TargetName = dest,
+					Current = 0,
+					Amount = 1,
+					Complete = false,
+					Raw = { Type = "Destroy", Target = { Name = dest, Amount = 0, RequiredAmount = 1 } },
+				}
 				return M._inferObj
 			end
 		end
@@ -965,12 +1013,8 @@ return function(GB)
 		t.LastError = err
 		t.NextRetryAt = now + 1.5
 		GB.Log.warn("QUEST", string.format("%s fail #%d %s", name, t.AttemptCount, tostring(err)))
-		local farmMiss = isRepeatable(name) and string.find(tostring(err), "resolve miss", 1, true)
-		local destroyMiss = qs
-			and qs.Objective
-			and qs.Objective.Type == "Destroy"
-			and string.find(tostring(err), "resolve miss", 1, true)
-		if t.AttemptCount == 3 and not farmMiss and not destroyMiss then
+		local stay = M.keepTrying(name, err)
+		if t.AttemptCount == 3 and not stay then
 			scopedResolveInvalidate(qs)
 			local target = qs and qs.Objective and qs.Objective.TargetName or (qs and qs.NPC)
 			local lastDetail = M.detailByFingerprint[fp] or 0
@@ -986,27 +1030,35 @@ return function(GB)
 				end
 			end
 		end
-		if destroyMiss and GB.Combat and GB.Combat.approachMarker then
-			GB.Combat.approachMarker({
-				Marker = GB.QuestData and GB.QuestData.combatMarker and GB.QuestData.combatMarker(
-					name,
-					qs and qs.StageIndex,
-					"Destroy",
-					qs.Objective.TargetName
-				) or qs.Objective.TargetName,
-				Island = qs and qs.Island,
-			}, qs.Objective.TargetName)
+		if stay and GB.Combat and GB.Combat.approachMarker then
+			local target = qs and qs.Objective and qs.Objective.TargetName
+			if target then
+				GB.Combat.approachMarker({
+					Marker = GB.QuestData and GB.QuestData.combatMarker and GB.QuestData.combatMarker(
+						name,
+						qs and qs.StageIndex,
+						qs.Objective.Type,
+						target
+					) or target,
+					Island = qs and qs.Island,
+				}, target)
+			end
 		end
-		if t.AttemptCount >= 2 and not isRepeatable(name) then
+		if t.AttemptCount >= 2 and not isRepeatable(name) and not stay then
 			local live = GB.PlayerData and GB.PlayerData.live and GB.PlayerData.live(name)
 			if not live and GB.PlayerData and GB.PlayerData.markLocalDone then
 				GB.PlayerData.markLocalDone(name, err)
 			end
 		end
 		if t.AttemptCount >= 5 then
-			if farmMiss or destroyMiss then
+			if stay then
 				t.AttemptCount = 0
 				t.NextRetryAt = now + 1.1
+				if not M._stayLog or M._stayLog ~= name or now - (M._stayAt or 0) > 8 then
+					M._stayLog = name
+					M._stayAt = now
+					GB.Log.log("QUEST", "stay " .. tostring(name))
+				end
 				return t
 			end
 			local lastDiag = M.diagByFingerprint[fp] or 0
@@ -2168,6 +2220,11 @@ return function(GB)
 			end
 		end
 		local blocked, why = M.deferred(name)
+		if blocked and M.keepTrying(name, t.LastError) then
+			M.deferUntil[name] = nil
+			M.deferReason[name] = nil
+			blocked = false
+		end
 		if blocked then
 			if M._deferQuest ~= name or os.clock() - (M._deferAt or 0) > 8 then
 				M._deferQuest = name
