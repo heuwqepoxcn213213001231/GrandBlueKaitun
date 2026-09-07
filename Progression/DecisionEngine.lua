@@ -143,45 +143,47 @@ return function(GB)
 		for _, e in ipairs(GB.QuestData.REPEATS) do
 			if e.island == island and lv >= (e.accept or 0) and lv <= (e.full_until or 999) then
 				if GB.QuestData.prereqOk(e.prereq) then
+					local blockedRepeat = false
 					if GB.Quest and GB.Quest.questStatus then
 						local status = GB.Quest.questStatus(e.name)
 						if status == "DEFERRED" or status == "BLOCKED_REQUIREMENT" then
-							goto continue_repeat
+							blockedRepeat = true
 						end
 					end
-					local eExp = tonumber(e.exp) or 0
-					local start = repeatStartability(e.name)
-					if start.Mode == "quest" then
-						if (not bestQuest) or eExp > (tonumber(bestQuest.Exp) or 0) then
-							bestQuest = {
-								Name = e.name,
-								Mode = "quest",
-								Exp = eExp,
-								Entry = e,
-								StartSpec = start.StartSpec,
-							}
-						end
-					elseif start.Mode == "direct" then
-						if (not bestDirect) or eExp > (tonumber(bestDirect.Exp) or 0) then
-							bestDirect = {
-								Name = e.name,
-								Mode = "direct",
-								Exp = eExp,
-								Entry = e,
-								StartSpec = start.StartSpec,
-							}
-						end
-					elseif start.Status == "UNRESOLVED_START" then
-						local key = "repeat_unresolved:" .. tostring(e.name)
-						if M._repeatUnresolvedKey ~= key or os.clock() - (M._repeatUnresolvedAt or 0) > 25 then
-							M._repeatUnresolvedKey = key
-							M._repeatUnresolvedAt = os.clock()
-							GB.Log.warn("PLANNER", "UNRESOLVED_START " .. tostring(e.name))
+					if not blockedRepeat then
+						local eExp = tonumber(e.exp) or 0
+						local start = repeatStartability(e.name)
+						if start.Mode == "quest" then
+							if (not bestQuest) or eExp > (tonumber(bestQuest.Exp) or 0) then
+								bestQuest = {
+									Name = e.name,
+									Mode = "quest",
+									Exp = eExp,
+									Entry = e,
+									StartSpec = start.StartSpec,
+								}
+							end
+						elseif start.Mode == "direct" then
+							if (not bestDirect) or eExp > (tonumber(bestDirect.Exp) or 0) then
+								bestDirect = {
+									Name = e.name,
+									Mode = "direct",
+									Exp = eExp,
+									Entry = e,
+									StartSpec = start.StartSpec,
+								}
+							end
+						elseif start.Status == "UNRESOLVED_START" then
+							local key = "repeat_unresolved:" .. tostring(e.name)
+							if M._repeatUnresolvedKey ~= key or os.clock() - (M._repeatUnresolvedAt or 0) > 25 then
+								M._repeatUnresolvedKey = key
+								M._repeatUnresolvedAt = os.clock()
+								GB.Log.warn("PLANNER", "UNRESOLVED_START " .. tostring(e.name))
+							end
 						end
 					end
 				end
 			end
-			::continue_repeat::
 		end
 		if bestQuest then
 			return bestQuest
