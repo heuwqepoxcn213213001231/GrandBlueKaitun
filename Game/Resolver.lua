@@ -521,7 +521,13 @@ return function(GB)
 		if type(s) ~= "string" then
 			return ""
 		end
-		return (string.gsub(s, " %d+$", ""))
+		local out = s
+		out = string.gsub(out, " %d+$", "")
+		out = string.gsub(out, " %[%d+%]$", "")
+		out = string.gsub(out, "%s+", " ")
+		out = string.gsub(out, "^%s+", "")
+		out = string.gsub(out, "%s+$", "")
+		return out
 	end
 
 	local function addIndexKey(ix, key, inst)
@@ -893,15 +899,11 @@ return function(GB)
 		local dlg = (aa and aa:FindFirstChild("DialogueNPCs")) or workspace:FindFirstChild("DialogueNPCs")
 		indexes.npc.root = dlg
 		if dlg then
-			for _, island in ipairs(dlg:GetChildren()) do
-				if island:IsA("Folder") then
-					for _, npc in ipairs(island:GetChildren()) do
-						indexAddInstance("npc", npc)
-					end
-				else
-					indexAddInstance("npc", island)
+			walkDepth(dlg, 4, function(inst)
+				if inst:IsA("Model") or inst:IsA("Folder") or inst:IsA("BasePart") then
+					indexAddInstance("npc", inst)
 				end
-			end
+			end)
 		end
 		indexes.npc.built = true
 		perfCount("NPCIndexBuild", 1)

@@ -143,6 +143,12 @@ return function(GB)
 		for _, e in ipairs(GB.QuestData.REPEATS) do
 			if e.island == island and lv >= (e.accept or 0) and lv <= (e.full_until or 999) then
 				if GB.QuestData.prereqOk(e.prereq) then
+					if GB.Quest and GB.Quest.questStatus then
+						local status = GB.Quest.questStatus(e.name)
+						if status == "DEFERRED" or status == "BLOCKED_REQUIREMENT" then
+							goto continue_repeat
+						end
+					end
 					local eExp = tonumber(e.exp) or 0
 					local start = repeatStartability(e.name)
 					if start.Mode == "quest" then
@@ -175,6 +181,7 @@ return function(GB)
 					end
 				end
 			end
+			::continue_repeat::
 		end
 		if bestQuest then
 			return bestQuest
@@ -323,6 +330,11 @@ return function(GB)
 		end
 		if row.progressed ~= true and rep.StartSpec and rep.StartSpec.Status == "STARTABLE" then
 			GB.Log.warn("PLANNER", "farm quest pending accept/credit " .. tostring(repName))
+			if M._farmPendingKey ~= (repName .. "|" .. tostring(row.reason)) or os.clock() - (M._farmPendingAt or 0) > 4 then
+				M._farmPendingKey = repName .. "|" .. tostring(row.reason)
+				M._farmPendingAt = os.clock()
+				GB.Log.warn("PLANNER", string.format("farm pending %s reason=%s", tostring(repName), tostring(row.reason)))
+			end
 		end
 		return {
 			attempted = row.attempted ~= false,

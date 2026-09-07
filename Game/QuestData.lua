@@ -172,6 +172,9 @@ return function(GB)
 		["Officer Graves"] = { "Officer Graves [2]", "Graves" },
 		["Officer Graves [2]"] = { "Officer Graves", "Graves" },
 		["Graves"] = { "Officer Graves", "Officer Graves [2]" },
+		["Granny Todo"] = { "Granny Todo [1]", "Granny Todo [2]" },
+		["Granny Todo [1]"] = { "Granny Todo", "Granny Todo [2]" },
+		["Granny Todo [2]"] = { "Granny Todo", "Granny Todo [1]" },
 	}
 
 	M.TALK_NPC = {

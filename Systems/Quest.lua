@@ -1064,6 +1064,25 @@ return function(GB)
 				end
 			end
 		end
+		if not pack and island and GB.Resolver and GB.World then
+			local markerName = GB.QuestData and GB.QuestData.markerOf and GB.QuestData.markerOf("Talk", request) or request
+			local marker = GB.Resolver.marker and GB.Resolver.marker(markerName, { Island = island }) or nil
+			if marker then
+				GB.Log.log("TRAVEL", "marker " .. tostring(markerName))
+				GB.World.moveTo(marker, 10)
+				if GB.World.pullStream then
+					GB.World.pullStream(island)
+				end
+				pack = GB.Resolver.resolveNPC(request, {
+					DisplayName = opts.DisplayName or request,
+					InternalName = opts.InternalName,
+					QuestName = qsName,
+					Island = island,
+					ExpectedRole = "npc",
+					deep = false,
+				})
+			end
+		end
 		if not pack then
 			if qsName then
 				M.noteFail(qsName, "NPC miss " .. tostring(request))
@@ -1911,7 +1930,7 @@ return function(GB)
 					GB.Log.log("QUEST", string.format("accepting %s via %s", tostring(name), tostring(qs.NPC)))
 				end
 				setAcceptState(name, "RESOLVE_ACCEPT_NPC", qs.NPC)
-				local ok = M.talk(qs.NPC, false, {
+				local ok, talkReason = M.talk(qs.NPC, false, {
 					Quest = name,
 					Island = qs.Island,
 					DisplayName = qs.NPC,
@@ -1930,7 +1949,10 @@ return function(GB)
 					M.noteFail(name, "accept_not_active " .. tostring(reason))
 					return resultRow(name, true, false, "accept_not_active")
 				end
-				return resultRow(name, true, false, "accept_pending")
+				if talkReason == "resolve" or talkReason == "travel" then
+					M.noteFail(name, "accept_" .. tostring(talkReason))
+				end
+				return resultRow(name, true, false, "accept_" .. tostring(talkReason or "pending"))
 			end
 			setAcceptState(name, "UNRESOLVED_START")
 			return resultRow(name, true, false, "unresolved_start")

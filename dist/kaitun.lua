@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
 -- Version: 1.1.24
--- Commit: ad440a5
--- BuiltAt: 2026-09-08T03:58:56+07:00
+-- Commit: 1152234
+-- BuiltAt: 2026-09-08T04:04:48+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -36,8 +36,8 @@ return function(meta)
 	stopPreviousInstance()
 
 	local BUILD_VERSION = "1.1.24"
-	local BUILD_COMMIT = "ad440a5"
-	local BUILD_AT = "2026-09-08T03:58:56+07:00"
+	local BUILD_COMMIT = "1152234"
+	local BUILD_AT = "2026-09-08T04:04:48+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -3348,6 +3348,9 @@ return function(GB)
 		["Officer Graves"] = { "Officer Graves [2]", "Graves" },
 		["Officer Graves [2]"] = { "Officer Graves", "Graves" },
 		["Graves"] = { "Officer Graves", "Officer Graves [2]" },
+		["Granny Todo"] = { "Granny Todo [1]", "Granny Todo [2]" },
+		["Granny Todo [1]"] = { "Granny Todo", "Granny Todo [2]" },
+		["Granny Todo [2]"] = { "Granny Todo", "Granny Todo [1]" },
 	}
 
 	M.TALK_NPC = {
@@ -5104,7 +5107,13 @@ return function(GB)
 		if type(s) ~= "string" then
 			return ""
 		end
-		return (string.gsub(s, " %d+$", ""))
+		local out = s
+		out = string.gsub(out, " %d+$", "")
+		out = string.gsub(out, " %[%d+%]$", "")
+		out = string.gsub(out, "%s+", " ")
+		out = string.gsub(out, "^%s+", "")
+		out = string.gsub(out, "%s+$", "")
+		return out
 	end
 
 	local function addIndexKey(ix, key, inst)
@@ -5476,15 +5485,11 @@ return function(GB)
 		local dlg = (aa and aa:FindFirstChild("DialogueNPCs")) or workspace:FindFirstChild("DialogueNPCs")
 		indexes.npc.root = dlg
 		if dlg then
-			for _, island in ipairs(dlg:GetChildren()) do
-				if island:IsA("Folder") then
-					for _, npc in ipairs(island:GetChildren()) do
-						indexAddInstance("npc", npc)
-					end
-				else
-					indexAddInstance("npc", island)
+			walkDepth(dlg, 4, function(inst)
+				if inst:IsA("Model") or inst:IsA("Folder") or inst:IsA("BasePart") then
+					indexAddInstance("npc", inst)
 				end
-			end
+			end)
 		end
 		indexes.npc.built = true
 		perfCount("NPCIndexBuild", 1)
@@ -7692,6 +7697,12 @@ return function(GB)
 		for _, e in ipairs(GB.QuestData.REPEATS) do
 			if e.island == island and lv >= (e.accept or 0) and lv <= (e.full_until or 999) then
 				if GB.QuestData.prereqOk(e.prereq) then
+					if GB.Quest and GB.Quest.questStatus then
+						local status = GB.Quest.questStatus(e.name)
+						if status == "DEFERRED" or status == "BLOCKED_REQUIREMENT" then
+							goto continue_repeat
+						end
+					end
 					local eExp = tonumber(e.exp) or 0
 					local start = repeatStartability(e.name)
 					if start.Mode == "quest" then
@@ -7724,6 +7735,7 @@ return function(GB)
 					end
 				end
 			end
+			::continue_repeat::
 		end
 		if bestQuest then
 			return bestQuest
@@ -7872,6 +7884,11 @@ return function(GB)
 		end
 		if row.progressed ~= true and rep.StartSpec and rep.StartSpec.Status == "STARTABLE" then
 			GB.Log.warn("PLANNER", "farm quest pending accept/credit " .. tostring(repName))
+			if M._farmPendingKey ~= (repName .. "|" .. tostring(row.reason)) or os.clock() - (M._farmPendingAt or 0) > 4 then
+				M._farmPendingKey = repName .. "|" .. tostring(row.reason)
+				M._farmPendingAt = os.clock()
+				GB.Log.warn("PLANNER", string.format("farm pending %s reason=%s", tostring(repName), tostring(row.reason)))
+			end
 		end
 		return {
 			attempted = row.attempted ~= false,
@@ -12153,6 +12170,25 @@ return function(GB)
 				end
 			end
 		end
+		if not pack and island and GB.Resolver and GB.World then
+			local markerName = GB.QuestData and GB.QuestData.markerOf and GB.QuestData.markerOf("Talk", request) or request
+			local marker = GB.Resolver.marker and GB.Resolver.marker(markerName, { Island = island }) or nil
+			if marker then
+				GB.Log.log("TRAVEL", "marker " .. tostring(markerName))
+				GB.World.moveTo(marker, 10)
+				if GB.World.pullStream then
+					GB.World.pullStream(island)
+				end
+				pack = GB.Resolver.resolveNPC(request, {
+					DisplayName = opts.DisplayName or request,
+					InternalName = opts.InternalName,
+					QuestName = qsName,
+					Island = island,
+					ExpectedRole = "npc",
+					deep = false,
+				})
+			end
+		end
 		if not pack then
 			if qsName then
 				M.noteFail(qsName, "NPC miss " .. tostring(request))
@@ -13000,7 +13036,7 @@ return function(GB)
 					GB.Log.log("QUEST", string.format("accepting %s via %s", tostring(name), tostring(qs.NPC)))
 				end
 				setAcceptState(name, "RESOLVE_ACCEPT_NPC", qs.NPC)
-				local ok = M.talk(qs.NPC, false, {
+				local ok, talkReason = M.talk(qs.NPC, false, {
 					Quest = name,
 					Island = qs.Island,
 					DisplayName = qs.NPC,
@@ -13019,7 +13055,10 @@ return function(GB)
 					M.noteFail(name, "accept_not_active " .. tostring(reason))
 					return resultRow(name, true, false, "accept_not_active")
 				end
-				return resultRow(name, true, false, "accept_pending")
+				if talkReason == "resolve" or talkReason == "travel" then
+					M.noteFail(name, "accept_" .. tostring(talkReason))
+				end
+				return resultRow(name, true, false, "accept_" .. tostring(talkReason or "pending"))
 			end
 			setAcceptState(name, "UNRESOLVED_START")
 			return resultRow(name, true, false, "unresolved_start")
