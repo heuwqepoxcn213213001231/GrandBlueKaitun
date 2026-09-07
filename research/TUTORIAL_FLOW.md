@@ -22,7 +22,7 @@ Internal ID = module name. Visible text is fallback only.
 | Pets | (button) | pet tutorial | TutorialEvent FireServer("Pets") | TutorialsCompleted | Pets UI | TutorialEvent | — | UNRESOLVED |
 | Mining | TutorialScreen Mining | first pickaxe equip | TutorialEvent client "Mining" | Data.TutorialsCompleted.Mining | TutorialScreen | TutorialLocal CloseGUI → FireServer | First Upgrade | dismiss overlay only |
 | Unlock Skill | PRESS ANYWHERE / Unlock Skill | skill unlock | UIS.InputBegan click | TutorialEvent FireServer("Unlock Skill") | TutorialScreen / SkillObtained | dismissTutorialOverlay | Basics | RUNTIME_VERIFIED 1.0.7 |
-| SkillObtained | PRESS ANYWHERE TO CONTINUE / Gunshot Active Skill | first Flintlock gear / any PassiveDisplay | wait 3s then UIS.InputBegan MouseButton1 gameProcessed=false (or ButtonX) | SkillObtained.Enabled=false; PromptSkillEquip if Tool | `PlayerGui.SkillObtained` (`RS.ScreenGuis.SkillObtained`) | PassiveObtained InputBegan | Gearing Up after Equip | IMPLEMENTED 1.1.3 |
+| SkillObtained | PRESS ANYWHERE TO CONTINUE / Gunshot Active Skill | first Flintlock gear / any PassiveDisplay | wait 3s InputBegan; if still open run PassiveObtained close + PromptSkillEquip | SkillObtained.Enabled=false; PromptSkillEquip if Tool | `PlayerGui.SkillObtained` (`RS.ScreenGuis.SkillObtained`) | PassiveObtained InputBegan / completeSkillObtained | Gearing Up after Equip | IMPLEMENTED 1.1.4 |
 
 ## Gearing Up Equip — runtime evidence (1.1.2)
 

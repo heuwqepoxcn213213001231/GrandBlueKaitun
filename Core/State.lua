@@ -212,7 +212,9 @@ return function(GB)
 		if type(t) ~= "string" or t == "" then
 			return false
 		end
-		return string.find(string.lower(t), "press anywhere", 1, true) ~= nil
+		local low = string.lower(t)
+		return string.find(low, "press anywhere", 1, true) ~= nil
+			or string.find(low, "click anywhere", 1, true) ~= nil
 	end
 
 	function M.tutorialOverlayVisible()
@@ -246,39 +248,59 @@ return function(GB)
 		return false, nil
 	end
 
+	local function invokeConn(c, fake, processed)
+		if c == nil then
+			return false
+		end
+		pcall(function()
+			if c.Enabled == false then
+				c.Enabled = true
+			end
+		end)
+		local fire
+		pcall(function()
+			fire = c.Fire or c.fire
+		end)
+		if typeof(fire) == "function" then
+			if pcall(fire, c, fake, processed) then
+				return true
+			end
+			if pcall(function()
+				c:Fire(fake, processed)
+			end) then
+				return true
+			end
+		end
+		local fn
+		pcall(function()
+			fn = c.Function
+		end)
+		if typeof(fn) == "function" and pcall(fn, fake, processed) then
+			return true
+		end
+		return false
+	end
+
 	local function fireInputObject(fake, processed)
 		local UIS = game:GetService("UserInputService")
 		local sig = rbxSignal(UIS, "InputBegan")
 		if typeof(sig) ~= "RBXScriptSignal" then
 			return false
 		end
-		if typeof(firesignal) == "function" then
-			if pcall(firesignal, sig, fake, processed) then
-				return true
+		-- Do not trust firesignal success — it often does not reach PassiveObtained.
+		pcall(function()
+			if typeof(firesignal) == "function" then
+				firesignal(sig, fake, processed)
 			end
-		end
-		if typeof(getconnections) ~= "function" then
-			return false
-		end
-		local ok, conns = pcall(getconnections, sig)
-		if not (ok and type(conns) == "table") then
-			return false
-		end
+		end)
 		local any = false
-		for _, c in pairs(conns) do
-			local fire
-			pcall(function()
-				fire = c.Fire or c.fire
-			end)
-			if typeof(fire) == "function" and pcall(fire, c, fake, processed) then
-				any = true
-			else
-				local fn
-				pcall(function()
-					fn = c.Function
-				end)
-				if typeof(fn) == "function" and pcall(fn, fake, processed) then
-					any = true
+		if typeof(getconnections) == "function" then
+			local ok, conns = pcall(getconnections, sig)
+			if ok and type(conns) == "table" then
+				for _, c in pairs(conns) do
+					if invokeConn(c, fake, processed) then
+						any = true
+					end
 				end
 			end
 		end
@@ -286,21 +308,100 @@ return function(GB)
 	end
 
 	local function firePressAnywhere()
-		-- gameProcessed must be false. Real GUI click often sets it true and
-		-- PassiveObtained / TutorialLocal return without closing.
+		-- gameProcessed must be false. ButtonX is accepted even when processed.
 		local mb1 = {
 			UserInputType = Enum.UserInputType.MouseButton1,
 			KeyCode = Enum.KeyCode.Unknown,
 			UserInputState = Enum.UserInputState.Begin,
 		}
 		local btnX = {
-			UserInputType = Enum.UserInputType.Keyboard,
+			UserInputType = Enum.UserInputType.Gamepad1,
 			KeyCode = Enum.KeyCode.ButtonX,
 			UserInputState = Enum.UserInputState.Begin,
 		}
 		local ok = fireInputObject(mb1, false)
 		ok = fireInputObject(btnX, false) or ok
+		if typeof(mouse1click) == "function" then
+			pcall(mouse1click)
+			ok = true
+		end
+		if typeof(mouse1press) == "function" then
+			pcall(mouse1press)
+			if typeof(mouse1release) == "function" then
+				pcall(mouse1release)
+			end
+			ok = true
+		end
 		return ok
+	end
+
+	local function skillNameOf(ui)
+		if not ui then
+			return nil
+		end
+		local frame = ui:FindFirstChild("Frame")
+		local sn = frame and frame:FindFirstChild("SkillName")
+		return sn and guiText(sn)
+	end
+
+	-- Same side-effects as PassiveObtained InputBegan after the 3s connect.
+	local function completeSkillObtained(ui)
+		if not ui then
+			return false
+		end
+		local name = skillNameOf(ui) or "Gunshot"
+		local ev = ui:FindFirstChild("Event")
+		if ev and ev.Fire then
+			pcall(function()
+				ev:Fire(true)
+			end)
+		end
+		pcall(function()
+			local RS = game:GetService("ReplicatedStorage")
+			local SI = require(RS.Modules.SkillInformation)
+			local info = SI.GetSkillInfo and SI.GetSkillInfo(name)
+			if not info or info.ModuleType == "Tool" then
+				local rem = RS:FindFirstChild("Events") and RS.Events:FindFirstChild("PromptSkillEquip")
+				if rem then
+					rem:FireServer(name)
+				end
+			end
+		end)
+		pcall(function()
+			local SS = require(game:GetService("ReplicatedStorage").Modules.StateService)
+			local char = GB.World and GB.World.char and GB.World.char()
+			if char and SS.CheckForState then
+				local _, tag = SS.CheckForState(char, "CantAttack")
+				if tag then
+					if tag.Debris then
+						tag:Debris(0.2)
+					elseif tag.Destroy then
+						tag:Destroy()
+					end
+				end
+			end
+		end)
+		pcall(function()
+			local UIU = require(game:GetService("ReplicatedStorage").Modules.UI_Utilities)
+			if typeof(debug) == "table" and typeof(debug.getupvalue) == "function" then
+				local rows = debug.getupvalue(UIU.Unhide, 1)
+				if type(rows) == "table" then
+					for _, row in pairs(rows) do
+						if type(row) == "table" and row.ids then
+							table.clear(row.ids)
+							if row.hidden and typeof(row.Show) == "function" then
+								row.hidden = false
+								task.spawn(row.Show)
+							end
+						end
+					end
+				end
+			end
+		end)
+		ui.Enabled = false
+		ui:SetAttribute("Enabled", false)
+		GB.Log.log("UI", "closed SkillObtained " .. tostring(name))
+		return true
 	end
 
 	local function clickContinueSurface(ui)
@@ -324,6 +425,7 @@ return function(GB)
 			M._overlayLog = nil
 			M._soSeen = nil
 			M._soWaitLog = nil
+			M._soTries = 0
 			return false
 		end
 		local now = os.clock()
@@ -352,6 +454,17 @@ return function(GB)
 		end
 		clickContinueSurface(ui)
 		firePressAnywhere()
+		if ui.Name == "SkillObtained" then
+			M._soTries = (M._soTries or 0) + 1
+			task.wait(0.08)
+			if layerOn(ui) and M._soTries >= 1 then
+				completeSkillObtained(ui)
+				M._soTries = 0
+				M._soSeen = nil
+			end
+		else
+			M._soTries = 0
+		end
 		return true
 	end
 

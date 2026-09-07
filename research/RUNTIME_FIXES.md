@@ -1,5 +1,18 @@
 # Runtime Fixes
 
+## 1.1.4 — SkillObtained dismiss actually closes the card
+
+1.1.3 logged `dismiss overlay SkillObtained Gunshot` then looped. `firesignal(UIS.InputBegan, fake, false)` returned success without running `PassiveObtained` (listener uses InputObject + `gameProcessed`). Card stayed up.
+
+**Fix:** invoke `getconnections` on InputBegan (do not trust firesignal). If the GUI is still Enabled after that, run the same client close as the handler: `Event:Fire(true)`, `PromptSkillEquip:FireServer(skillName)` (Gunshot `ModuleType` default `Tool`), Debris `CantAttack`, `Enabled=false`. Unhide Menu tokens via `UI_Utilities.Unhide` upvalue if `debug.getupvalue` exists.
+
+```
+[Kaitun][UI] dismiss overlay SkillObtained Gunshot
+[Kaitun][UI] closed SkillObtained Gunshot
+```
+
+---
+
 ## 1.1.3 — SkillObtained Gunshot press-anywhere after Equip Flintlock
 
 After backpack + SaveOrder, `PassiveDisplay` queues **Gunshot**. Overlay: `PlayerGui.SkillObtained` — circular icon, "Gunshot", "Active Skill", "PRESS ANYWHERE TO CONTINUE". `ContinueButton` is a **TextLabel**.
