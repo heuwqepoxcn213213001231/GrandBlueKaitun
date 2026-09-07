@@ -881,6 +881,41 @@ return function(GB)
 		return nil
 	end
 
+	function M.interactableOf(inst)
+		local cur = inst
+		while cur do
+			if cur:HasTag("Interactable") or cur:HasTag("ClientInteractable") then
+				return cur
+			end
+			cur = cur.Parent
+		end
+		return inst
+	end
+
+	function M.promptAnchor(inst)
+		if not inst then
+			return nil, nil
+		end
+		local pr = inst:IsA("ProximityPrompt") and inst or M.prompt(inst)
+		if pr then
+			local p = pr.Parent
+			if p and p:IsA("Attachment") then
+				return p.WorldPosition, p.WorldCFrame.LookVector, pr
+			end
+			if p and p:IsA("BasePart") then
+				return p.Position, p.CFrame.LookVector, pr
+			end
+		end
+		local hrp = inst:FindFirstChild("HumanoidRootPart", true)
+		if hrp and hrp:IsA("Attachment") then
+			return hrp.WorldPosition, hrp.WorldCFrame.LookVector, pr
+		end
+		if hrp and hrp:IsA("BasePart") then
+			return hrp.Position, hrp.CFrame.LookVector, pr
+		end
+		return M.positionOf(inst), nil, pr
+	end
+
 	function M.ore()
 		return M.byName("Copper Ore", "ore")
 			or M.byName("Iron Ore", "ore")

@@ -139,7 +139,8 @@ return function(GB)
 		end
 	end
 
-	function M.setPos(cf)
+	function M.setPos(cf, opts)
+		opts = opts or {}
 		local root = M.hrp()
 		if not root then
 			return false
@@ -149,6 +150,9 @@ return function(GB)
 			return false
 		end
 		local g = M.groundAt(pos)
+		if g and opts.MaxGroundY and g.Y > opts.MaxGroundY then
+			g = nil
+		end
 		if g then
 			root.CFrame = CFrame.new(g)
 		else
@@ -838,20 +842,60 @@ return function(GB)
 	end
 
 	function M.ToInteractable(inst, range)
-		range = range or 6
-		local pos = GB.Resolver.positionOf(inst)
-		if not pos then
+		range = range or 4
+		local origin, look = nil, nil
+		if GB.Resolver.promptAnchor then
+			origin, look = GB.Resolver.promptAnchor(inst)
+		end
+		origin = origin or GB.Resolver.positionOf(inst)
+		if not origin then
 			return M.moveTo(inst, range)
 		end
-		local dest = pos + Vector3.new(0, 0, math.clamp(range, 4, 6))
-		if not M.destOk(dest) then
-			dest = M.groundAt(pos) or pos
+		local xz = look and Vector3.new(look.X, 0, look.Z)
+		if not xz or xz.Magnitude < 0.2 then
+			xz = Vector3.new(0, 0, 1)
+		else
+			xz = xz.Unit
 		end
+		local perp = Vector3.new(-xz.Z, 0, xz.X)
+		local dist = math.clamp(range, 3, 6)
+		local cands = {
+			origin + xz * dist,
+			origin - xz * dist,
+			origin + perp * dist,
+			origin - perp * dist,
+		}
+		local dest
+		local best
+		for i = 1, #cands do
+			local c = cands[i]
+			local g = M.groundAt(c)
+			if g and g.Y > origin.Y + 4 then
+				g = Vector3.new(c.X, origin.Y, c.Z)
+			end
+			local use = g or Vector3.new(c.X, origin.Y, c.Z)
+			if M.destOk(use) then
+				local dPrompt = (use - origin).Magnitude
+				local lift = math.abs(use.Y - origin.Y)
+				if dPrompt <= 7.6 and (not best or lift < best) then
+					best = lift
+					dest = use
+				end
+			end
+		end
+		dest = dest or Vector3.new(origin.X + xz.X * dist, origin.Y, origin.Z + xz.Z * dist)
 		GB.Log.log("TRAVEL", "Teleport -> " .. (GB.Resolver.displayName(inst) or inst.Name))
-		return M.setPos(dest)
+		local ok = M.setPos(dest, { MaxGroundY = origin.Y + 4 })
+		local root = M.hrp()
+		if root and (root.Position - origin).Magnitude > 7.5 then
+			root.CFrame = CFrame.new(dest)
+			M.rememberSafe()
+			ok = true
+		end
+		return ok
 	end
 
-	function M.firePrompt(pr, hold)
+	function M.firePrompt(pr, hold, inst)
 		if not pr then
 			return false
 		end
@@ -873,6 +917,16 @@ return function(GB)
 			end
 		end)
 		task.wait(dur > 0 and (dur + 0.12) or 0.12)
+		local target = inst or (GB.Resolver.interactableOf and GB.Resolver.interactableOf(pr))
+		local ev = game.ReplicatedStorage:FindFirstChild("Events")
+		local r = ev and ev:FindFirstChild("ProximityPrompt")
+		if r then
+			pcall(function()
+				r:FireServer(pr, pr.Name, {
+					ObjectName = target and target.Name or pr.Name,
+				})
+			end)
+		end
 		return ok
 	end
 
@@ -880,11 +934,22 @@ return function(GB)
 		if not inst then
 			return false
 		end
-		M.ToInteractable(inst, range or 6)
+		M.ToInteractable(inst, range or 4)
 		task.wait(0.15)
-		local pr = GB.Resolver.prompt(inst)
+		local origin, _, pr = nil, nil, nil
+		if GB.Resolver.promptAnchor then
+			origin, _, pr = GB.Resolver.promptAnchor(inst)
+		end
+		pr = pr or GB.Resolver.prompt(inst)
 		if not pr then
 			return false
+		end
+		local root = M.hrp()
+		local d = (root and origin) and (root.Position - origin).Magnitude or -1
+		if root and origin and d > 7.5 then
+			root.CFrame = CFrame.new(origin + Vector3.new(0, 0, 3))
+			M.rememberSafe()
+			d = (root.Position - origin).Magnitude
 		end
 		local dur = hold
 		if dur == nil then
@@ -892,12 +957,9 @@ return function(GB)
 				return pr.HoldDuration
 			end)
 			dur = (ok and type(hd) == "number" and hd) or 0
-			if dur <= 0 and (pr.Name == "Locked Door" or inst:GetAttribute("Interaction") == "Locked Door") then
-				dur = 0.8
-			end
 		end
-		GB.Log.log("UI", (dur and dur > 0 and "hold prompt " or "prompt ") .. (inst.Name or pr.Name))
-		return M.firePrompt(pr, dur)
+		GB.Log.log("UI", string.format("%s %s d=%.1f", (dur and dur > 0) and "hold prompt" or "prompt", inst.Name or pr.Name, d))
+		return M.firePrompt(pr, dur, inst)
 	end
 
 	function M.sameIsland(a, b)

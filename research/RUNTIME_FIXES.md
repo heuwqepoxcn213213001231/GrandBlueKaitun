@@ -1,5 +1,23 @@
 # Runtime Fixes
 
+## 1.1.8 — Unlock stands at prompt, not on the gate arch
+
+1.1.7 stopped the Model.Position crash. Live still `unlock not credited Afuaru's Gate` #1–#3. Screenshot: character clipped on the **arch roof**. Quest 0/1. Key is in the hotbar.
+
+Verified: prompt `Locked Door` parent is Attachment `HumanoidRootPart` at **(69.1, 77.4, 548.7)**. Model pivot / first BasePart is **Y=85.5**. `ToInteractable` used pivot+(0,0,6) then `groundAt` snapped onto the arch. Server `ProximityPrompt.Triggered` rejects if HRP is farther than `MaxActivationDistance` **8** from the attachment. Roof is already ~8 studs vertical. `fireproximityprompt` ran; server dropped the packet.
+
+Client packet is `Events.ProximityPrompt:FireServer(prompt, prompt.Name, { ObjectName = interactable.Name })`. `HoldDuration` is **0** — do not invent a 0.8s hold.
+
+**Fix:** `Resolver.promptAnchor` = prompt WorldPosition. `ToInteractable` stands 3–6 studs beside that point, rejects ground hits >4 above the prompt (no roof). `firePrompt` uses real HoldDuration and the 3-arg FireServer.
+
+```
+[Kaitun][TRAVEL] Teleport -> Afuaru's Gate
+[Kaitun][UI] prompt Afuaru's Gate d=4.1
+[Kaitun][QUEST] Unlock credited 0/1 -> 1/1
+```
+
+---
+
 ## 1.1.7 — Model.Position crash class + Unlock Afuaru's Gate + loot chests
 
 Live **The Hoarder** stage 4: `Unlock Afuaru's Gate (0/1)`. Engine loop:

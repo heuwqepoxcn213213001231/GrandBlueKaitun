@@ -977,24 +977,20 @@ return function(GB)
 				return false
 			end
 			GB.Log.log("QUEST", "Unlock " .. tostring(target))
-			local fired = GB.World.interact and GB.World.interact(inst, 6)
+			local fired = GB.World.interact and GB.World.interact(inst, 4)
 			if not fired then
-				GB.World.ToInteractable(inst, 6)
+				GB.World.ToInteractable(inst, 4)
 				local pr = GB.Resolver.prompt(inst)
 				if pr then
-					GB.World.firePrompt(pr, (pr.HoldDuration and pr.HoldDuration > 0) and pr.HoldDuration or 0.8)
+					GB.World.firePrompt(pr, pr.HoldDuration or 0, inst)
 					fired = true
 				end
 			end
 			local progressed = M.waitProgress(questName, before, 2.8)
 			if not progressed then
 				local pr = GB.Resolver.prompt(inst)
-				local ev = game.ReplicatedStorage:FindFirstChild("Events")
-				local r = ev and ev:FindFirstChild("ProximityPrompt")
-				if pr and r then
-					pcall(function()
-						r:FireServer(pr, pr.Name)
-					end)
+				if pr then
+					GB.World.firePrompt(pr, pr.HoldDuration or 0, inst)
 					progressed = M.waitProgress(questName, before, 1.6)
 				end
 			end
