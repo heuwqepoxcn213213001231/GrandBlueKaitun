@@ -1,0 +1,1347 @@
+[
+  {
+    "item": "Transponder Snail",
+    "item_type": "condition:Purchase",
+    "source_quest": "A Voice in a Shell",
+    "source_type": "Story",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Axe-Handed Tyrant"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Transponder Snail",
+    "item_type": "condition:Equip",
+    "source_quest": "A Voice in a Shell",
+    "source_type": "Story",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Axe-Handed Tyrant"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Logbook",
+    "item_type": "condition:Open",
+    "source_quest": "Basics",
+    "source_type": "Story",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Introduction"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Captive Swordsman's Swords",
+    "item_type": "condition:CollectLocalItem",
+    "source_quest": "Captive Swordsman",
+    "source_type": "Story",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Gate of Authority"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Rusty Pickaxe",
+    "item_type": "condition:Collect",
+    "source_quest": "First Upgrade",
+    "source_type": "Story",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "The Hoarder"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Copper Ore",
+    "item_type": "condition:Collect",
+    "source_quest": "First Upgrade",
+    "source_type": "Story",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "The Hoarder"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 2
+  },
+  {
+    "item": "Copper Bar",
+    "item_type": "condition:Smelt",
+    "source_quest": "First Upgrade",
+    "source_type": "Story",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "The Hoarder"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 2
+  },
+  {
+    "item": "Flintlock",
+    "item_type": "condition:Upgrade",
+    "source_quest": "First Upgrade",
+    "source_type": "Story",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "The Hoarder"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Marine Gate",
+    "item_type": "condition:Open",
+    "source_quest": "Gate of Authority",
+    "source_type": "Story",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Feral Dog"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Stolen Watch",
+    "item_type": "condition:Sell",
+    "source_quest": "Gearing Up",
+    "source_type": "Story",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Pirate Fan Letter"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Flintlock",
+    "item_type": "condition:Purchase",
+    "source_quest": "Gearing Up",
+    "source_type": "Story",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Pirate Fan Letter"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Flintlock",
+    "item_type": "condition:Equip",
+    "source_quest": "Gearing Up",
+    "source_type": "Story",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Pirate Fan Letter"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Strong Punch",
+    "item_type": "Skill",
+    "source_quest": "Introduction",
+    "source_type": "Story",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 10,
+    "quest_gold": 8
+  },
+  {
+    "item": "Stolen Watch",
+    "item_type": "Drop",
+    "source_quest": "Pirate Fan Letter",
+    "source_type": "Story",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Basics"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 31,
+    "quest_gold": 8
+  },
+  {
+    "item": "Pirate Fan Letter",
+    "item_type": "condition:Collect",
+    "source_quest": "Pirate Fan Letter",
+    "source_type": "Story",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Basics"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Rowboat",
+    "item_type": "condition:Purchase",
+    "source_quest": "Setting Sail",
+    "source_type": "Story",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "A Voice in a Shell"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Afuaru's Key",
+    "item_type": "condition:Collect",
+    "source_quest": "The Hoarder",
+    "source_type": "Story",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Gearing Up"
+    ],
+    "accept_level": 0,
+    "level_gates": [
+      7
+    ],
+    "amount": 1
+  },
+  {
+    "item": "Afuaru's Chests",
+    "item_type": "condition:Loot",
+    "source_quest": "The Hoarder",
+    "source_type": "Story",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Gearing Up"
+    ],
+    "accept_level": 0,
+    "level_gates": [
+      7
+    ],
+    "amount": 5
+  },
+  {
+    "item": "Sturdy Stick",
+    "item_type": "condition:CollectLocalItem",
+    "source_quest": "Clown Town's Militia",
+    "source_type": "Story",
+    "island": "Clown Town",
+    "prerequisites": [
+      "Mayor's Stache"
+    ],
+    "accept_level": 30,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Tomato Crate",
+    "item_type": "condition:CollectLocalItem",
+    "source_quest": "Clown Town's Militia",
+    "source_type": "Story",
+    "island": "Clown Town",
+    "prerequisites": [
+      "Mayor's Stache"
+    ],
+    "accept_level": 30,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Fist Wraps",
+    "item_type": "condition:CollectLocalItem",
+    "source_quest": "Clown Town's Militia",
+    "source_type": "Story",
+    "island": "Clown Town",
+    "prerequisites": [
+      "Mayor's Stache"
+    ],
+    "accept_level": 30,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Mayor's Mustache",
+    "item_type": "condition:CollectLocalItem",
+    "source_quest": "Mayor's Stache",
+    "source_type": "Story",
+    "island": "Clown Town",
+    "prerequisites": [
+      "Escort The Mayor"
+    ],
+    "accept_level": 30,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Servant's Journal",
+    "item_type": "condition:CollectLocalItem",
+    "source_quest": "Missing Servants",
+    "source_type": "Story",
+    "island": "Maple Village",
+    "prerequisites": [
+      "The Beast of Maple Village"
+    ],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Pirate Instructions",
+    "item_type": "condition:Collect",
+    "source_quest": "Pirate Instructions",
+    "source_type": "Story",
+    "island": "Maple Village",
+    "prerequisites": [
+      "Something Isn't Right"
+    ],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Lead Ore",
+    "item_type": "condition:Collect",
+    "source_quest": "Raid Preparations",
+    "source_type": "Story",
+    "island": "Maple Village",
+    "prerequisites": [
+      "Expose the Butler"
+    ],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 6
+  },
+  {
+    "item": "Bucket of Water",
+    "item_type": "condition:CollectLocalItem",
+    "source_quest": "The Wandering Hypnotist",
+    "source_type": "Story",
+    "island": "Maple Village",
+    "prerequisites": [
+      "Pirate Instructions"
+    ],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Apple",
+    "item_type": "condition:Collect",
+    "source_quest": "Apple Pot Pie",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 5
+  },
+  {
+    "item": "Apple Pot Pie",
+    "item_type": "condition:Collect",
+    "source_quest": "Apple Pot Pie",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Sealed Satchel",
+    "item_type": "condition:CollectLocalItem",
+    "source_quest": "Courier's Test",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Collections"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Iron Ore",
+    "item_type": "condition:Collect",
+    "source_quest": "Dwindling Iron Supply",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 3
+  },
+  {
+    "item": "Apple",
+    "item_type": "condition:Collect",
+    "source_quest": "Feed The Hungry",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Carrot",
+    "item_type": "condition:Collect",
+    "source_quest": "Feed The Hungry",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Lemon",
+    "item_type": "condition:Collect",
+    "source_quest": "Feed The Hungry",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Banana",
+    "item_type": "condition:Collect",
+    "source_quest": "Feed The Hungry",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Treasure Map (Easy)",
+    "item_type": "Drop",
+    "source_quest": "Finders Keepers",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 8,
+    "level_gates": [],
+    "quest_exp": 115,
+    "quest_gold": 282
+  },
+  {
+    "item": "Wade's Belongings",
+    "item_type": "condition:Collect",
+    "source_quest": "Finders Keepers",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 8,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Pirate's Ruby",
+    "item_type": "Drop",
+    "source_quest": "Finding Denver",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Overdue Payment"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 69,
+    "quest_gold": 240
+  },
+  {
+    "item": "Denver The Dog",
+    "item_type": "condition:CollectLocalItem",
+    "source_quest": "Finding Denver",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Overdue Payment"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Carbon Rod",
+    "item_type": "Drop",
+    "source_quest": "Fisherman Jack's Challenge",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 136,
+    "quest_gold": 300
+  },
+  {
+    "item": "Carp",
+    "item_type": "condition:Fish",
+    "source_quest": "Fisherman Jack's Challenge",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Handle",
+    "item_type": "Recipe",
+    "source_quest": "Handle Recipe",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 136,
+    "quest_gold": 300
+  },
+  {
+    "item": "Stick",
+    "item_type": "condition:Collect",
+    "source_quest": "Handle Recipe",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 2
+  },
+  {
+    "item": "Cloth",
+    "item_type": "condition:Collect",
+    "source_quest": "Handle Recipe",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Telescope",
+    "item_type": "Drop",
+    "source_quest": "Keeper of the Flame",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 136,
+    "quest_gold": 300
+  },
+  {
+    "item": "Lamp Oil",
+    "item_type": "condition:CollectLocalItem",
+    "source_quest": "Keeper of the Flame",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Stone Ring",
+    "item_type": "Recipe",
+    "source_quest": "Miners Bracelet",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 136,
+    "quest_gold": 300
+  },
+  {
+    "item": "Silver Miners Bracelet",
+    "item_type": "condition:CollectLocalItem",
+    "source_quest": "Miners Bracelet",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Stone Ring",
+    "item_type": "condition:Craft",
+    "source_quest": "Miners Stone Ring",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "[50%] Smuggler's Coupon",
+    "item_type": "Drop",
+    "source_quest": "Overdue Payment",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 136,
+    "quest_gold": 300
+  },
+  {
+    "item": "Pirate's Ruby",
+    "item_type": "condition:Collect",
+    "source_quest": "Overdue Payment",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "100 Rep Punch",
+    "item_type": "Passive",
+    "source_quest": "Sushi's Training 1",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 20,
+    "quest_gold": 192
+  },
+  {
+    "item": "1,000 Rep Punch",
+    "item_type": "Passive",
+    "source_quest": "Sushi's Training 2",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Sushi's Training 1"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 136,
+    "quest_gold": 300
+  },
+  {
+    "item": "100 Rep Punch",
+    "item_type": "RemovePassive",
+    "source_quest": "Sushi's Training 2",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Sushi's Training 1"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 136,
+    "quest_gold": 300
+  },
+  {
+    "item": "10,000 Rep Punch",
+    "item_type": "Passive",
+    "source_quest": "Sushi's Training 3",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Sushi's Training 2"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 280,
+    "quest_gold": 420
+  },
+  {
+    "item": "1,000 Rep Punch",
+    "item_type": "RemovePassive",
+    "source_quest": "Sushi's Training 3",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Sushi's Training 2"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 280,
+    "quest_gold": 420
+  },
+  {
+    "item": "100,000 Rep Punch",
+    "item_type": "Passive",
+    "source_quest": "Sushi's Training 4",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Sushi's Training 3"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 588,
+    "quest_gold": 660
+  },
+  {
+    "item": "10,000 Rep Punch",
+    "item_type": "RemovePassive",
+    "source_quest": "Sushi's Training 4",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Sushi's Training 3"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 588,
+    "quest_gold": 660
+  },
+  {
+    "item": "1,000,000 Rep Punch",
+    "item_type": "Passive",
+    "source_quest": "Sushi's Training 5",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Sushi's Training 4"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 914,
+    "quest_gold": 900
+  },
+  {
+    "item": "100,000 Rep Punch",
+    "item_type": "RemovePassive",
+    "source_quest": "Sushi's Training 5",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Sushi's Training 4"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 914,
+    "quest_gold": 900
+  },
+  {
+    "item": "King's Punch",
+    "item_type": "Skill",
+    "source_quest": "Sushi's Training 5",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Sushi's Training 4"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 914,
+    "quest_gold": 900
+  },
+  {
+    "item": "10,000,000 Rep Punch",
+    "item_type": "Passive",
+    "source_quest": "Sushi's Training 6",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Sushi's Training 5"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 1250,
+    "quest_gold": 1140
+  },
+  {
+    "item": "1,000,000 Rep Punch",
+    "item_type": "RemovePassive",
+    "source_quest": "Sushi's Training 6",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Sushi's Training 5"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 1250,
+    "quest_gold": 1140
+  },
+  {
+    "item": "100,000,000 Rep Punch",
+    "item_type": "Passive",
+    "source_quest": "Sushi's Training 7",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Sushi's Training 6"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 1595,
+    "quest_gold": 1380
+  },
+  {
+    "item": "10,000,000 Rep Punch",
+    "item_type": "RemovePassive",
+    "source_quest": "Sushi's Training 7",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Sushi's Training 6"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 1595,
+    "quest_gold": 1380
+  },
+  {
+    "item": "1,000,000,000 Rep Punch",
+    "item_type": "Passive",
+    "source_quest": "Sushi's Training 8",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Sushi's Training 7"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 2305,
+    "quest_gold": 1860
+  },
+  {
+    "item": "100,000,000 Rep Punch",
+    "item_type": "RemovePassive",
+    "source_quest": "Sushi's Training 8",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Sushi's Training 7"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 2305,
+    "quest_gold": 1860
+  },
+  {
+    "item": "Terry's Ring",
+    "item_type": "Recipe",
+    "source_quest": "Terry vs. The Tide",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Wormless Terry"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 95,
+    "quest_gold": 264
+  },
+  {
+    "item": "Terry's Hat",
+    "item_type": "Drop",
+    "source_quest": "Terry's White Whale",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Terry vs. The Tide"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 280,
+    "quest_gold": 420
+  },
+  {
+    "item": "Mythic+ Fish",
+    "item_type": "condition:Fish",
+    "source_quest": "Terry's White Whale",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Terry vs. The Tide"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Soggy Boot",
+    "item_type": "condition:Collect",
+    "source_quest": "The 'Priceless' Haul",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [
+      "Finders Keepers"
+    ],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 3
+  },
+  {
+    "item": "Calvin's Treasure",
+    "item_type": "Drop",
+    "source_quest": "Wizards Apprentice",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "quest_exp": 108,
+    "quest_gold": 276
+  },
+  {
+    "item": "Red Shell",
+    "item_type": "condition:CollectLocalItem",
+    "source_quest": "Wizards Apprentice",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Yellow Shell",
+    "item_type": "condition:CollectLocalItem",
+    "source_quest": "Wizards Apprentice",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "White Shell",
+    "item_type": "condition:CollectLocalItem",
+    "source_quest": "Wizards Apprentice",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Black Shell",
+    "item_type": "condition:CollectLocalItem",
+    "source_quest": "Wizards Apprentice",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Worm",
+    "item_type": "condition:Collect",
+    "source_quest": "Wormless Terry",
+    "source_type": "Side",
+    "island": "Anchor Town",
+    "prerequisites": [],
+    "accept_level": 0,
+    "level_gates": [],
+    "amount": 20
+  },
+  {
+    "item": "Arm Wrestle",
+    "item_type": "Emote",
+    "source_quest": "Arm Wrestling 3",
+    "source_type": "Side",
+    "island": "Clown Town",
+    "prerequisites": [
+      "Arm Wrestling 2"
+    ],
+    "accept_level": 30,
+    "level_gates": [],
+    "quest_exp": 831,
+    "quest_gold": 840
+  },
+  {
+    "item": "Clown Propaganda Poster",
+    "item_type": "condition:CollectLocalItem",
+    "source_quest": "Clown Propaganda",
+    "source_type": "Side",
+    "island": "Clown Town",
+    "prerequisites": [],
+    "accept_level": 30,
+    "level_gates": [],
+    "amount": 10
+  },
+  {
+    "item": "Clown Cannon Ball",
+    "item_type": "condition:Collect",
+    "source_quest": "Explosive Research 2",
+    "source_type": "Side",
+    "island": "Clown Town",
+    "prerequisites": [
+      "Explosive Research 1"
+    ],
+    "accept_level": 30,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Muggy Ball",
+    "item_type": "Recipe",
+    "source_quest": "Explosive Research 3",
+    "source_type": "Side",
+    "island": "Clown Town",
+    "prerequisites": [
+      "Explosive Research 2"
+    ],
+    "accept_level": 30,
+    "level_gates": [],
+    "quest_exp": 457,
+    "quest_gold": 450
+  },
+  {
+    "item": "Gunpowder",
+    "item_type": "condition:Collect",
+    "source_quest": "Explosive Research 3",
+    "source_type": "Side",
+    "island": "Clown Town",
+    "prerequisites": [
+      "Explosive Research 2"
+    ],
+    "accept_level": 30,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Dumbbell",
+    "item_type": "condition:CollectLocalItem",
+    "source_quest": "Militia Powerup 1",
+    "source_type": "Side",
+    "island": "Clown Town",
+    "prerequisites": [
+      "Clown Town's Militia"
+    ],
+    "accept_level": 30,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Clown Laughter",
+    "item_type": "Emote",
+    "source_quest": "Tightrope Trouble",
+    "source_type": "Side",
+    "island": "Clown Town",
+    "prerequisites": [],
+    "accept_level": 30,
+    "level_gates": [],
+    "quest_exp": 668,
+    "quest_gold": 720
+  },
+  {
+    "item": "Tomato",
+    "item_type": "condition:Harvest",
+    "source_quest": "A Balanced Field",
+    "source_type": "Side",
+    "island": "Maple Village",
+    "prerequisites": [
+      "Green Thumb"
+    ],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Carrot",
+    "item_type": "condition:Harvest",
+    "source_quest": "A Balanced Field",
+    "source_type": "Side",
+    "island": "Maple Village",
+    "prerequisites": [
+      "Green Thumb"
+    ],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Cabbage",
+    "item_type": "condition:Harvest",
+    "source_quest": "A Balanced Field",
+    "source_type": "Side",
+    "island": "Maple Village",
+    "prerequisites": [
+      "Green Thumb"
+    ],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Wheat",
+    "item_type": "condition:Harvest",
+    "source_quest": "A Balanced Field",
+    "source_type": "Side",
+    "island": "Maple Village",
+    "prerequisites": [
+      "Green Thumb"
+    ],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Egg",
+    "item_type": "condition:Collect",
+    "source_quest": "A Balanced Field",
+    "source_type": "Side",
+    "island": "Maple Village",
+    "prerequisites": [
+      "Green Thumb"
+    ],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 2
+  },
+  {
+    "item": "Lead",
+    "item_type": "condition:Collect",
+    "source_quest": "Big Shot 1",
+    "source_type": "Side",
+    "island": "Maple Village",
+    "prerequisites": [
+      "The Island's Protector"
+    ],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 2
+  },
+  {
+    "item": "Lead Ball",
+    "item_type": "condition:Collect",
+    "source_quest": "Big Shot 2",
+    "source_type": "Side",
+    "island": "Maple Village",
+    "prerequisites": [
+      "Big Shot 1"
+    ],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Pepper",
+    "item_type": "condition:Collect",
+    "source_quest": "Big Shot 2",
+    "source_type": "Side",
+    "island": "Maple Village",
+    "prerequisites": [
+      "Big Shot 1"
+    ],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 10
+  },
+  {
+    "item": "Lead Ball",
+    "item_type": "condition:Collect",
+    "source_quest": "Big Shot 3",
+    "source_type": "Side",
+    "island": "Maple Village",
+    "prerequisites": [
+      "Big Shot 2"
+    ],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Oil",
+    "item_type": "condition:Collect",
+    "source_quest": "Big Shot 3",
+    "source_type": "Side",
+    "island": "Maple Village",
+    "prerequisites": [
+      "Big Shot 2"
+    ],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 3
+  },
+  {
+    "item": "Lead Ball",
+    "item_type": "condition:Collect",
+    "source_quest": "Big Shot 4",
+    "source_type": "Side",
+    "island": "Maple Village",
+    "prerequisites": [
+      "Big Shot 3"
+    ],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Gunpowder",
+    "item_type": "condition:Collect",
+    "source_quest": "Big Shot 4",
+    "source_type": "Side",
+    "island": "Maple Village",
+    "prerequisites": [
+      "Big Shot 3"
+    ],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 2
+  },
+  {
+    "item": "Egg",
+    "item_type": "condition:Collect",
+    "source_quest": "Fresh From the Farm",
+    "source_type": "Side",
+    "island": "Maple Village",
+    "prerequisites": [
+      "Kitchen Helper"
+    ],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 2
+  },
+  {
+    "item": "Raw Chicken",
+    "item_type": "condition:Collect",
+    "source_quest": "Fresh From the Farm",
+    "source_type": "Side",
+    "island": "Maple Village",
+    "prerequisites": [
+      "Kitchen Helper"
+    ],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Omelette",
+    "item_type": "condition:Cook",
+    "source_quest": "Fresh From the Farm",
+    "source_type": "Side",
+    "island": "Maple Village",
+    "prerequisites": [
+      "Kitchen Helper"
+    ],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Roast Chicken",
+    "item_type": "condition:Cook",
+    "source_quest": "Fresh From the Farm",
+    "source_type": "Side",
+    "island": "Maple Village",
+    "prerequisites": [
+      "Kitchen Helper"
+    ],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Crop",
+    "item_type": "condition:Harvest",
+    "source_quest": "Green Thumb",
+    "source_type": "Side",
+    "island": "Maple Village",
+    "prerequisites": [],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 4
+  },
+  {
+    "item": "Grilled Fish",
+    "item_type": "condition:Cook",
+    "source_quest": "Kitchen Helper",
+    "source_type": "Side",
+    "island": "Maple Village",
+    "prerequisites": [],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Chicken Pet",
+    "item_type": "condition:Obtain",
+    "source_quest": "Pecking Order",
+    "source_type": "Side",
+    "island": "Maple Village",
+    "prerequisites": [],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 1
+  },
+  {
+    "item": "Joe's Overalls (Outfit)",
+    "item_type": "Drop",
+    "source_quest": "The Full Harvest",
+    "source_type": "Side",
+    "island": "Maple Village",
+    "prerequisites": [
+      "A Balanced Field"
+    ],
+    "accept_level": 70,
+    "level_gates": [],
+    "quest_exp": 574,
+    "quest_gold": 534
+  },
+  {
+    "item": "Crop",
+    "item_type": "condition:Harvest",
+    "source_quest": "The Full Harvest",
+    "source_type": "Side",
+    "island": "Maple Village",
+    "prerequisites": [
+      "A Balanced Field"
+    ],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 12
+  },
+  {
+    "item": "Chef Apron (Outfit)",
+    "item_type": "Drop",
+    "source_quest": "The Perfect Dish",
+    "source_type": "Side",
+    "island": "Maple Village",
+    "prerequisites": [
+      "Fresh From the Farm"
+    ],
+    "accept_level": 70,
+    "level_gates": [],
+    "quest_exp": 574,
+    "quest_gold": 534
+  },
+  {
+    "item": "Henrietta",
+    "item_type": "condition:CollectLocalItem",
+    "source_quest": "Trouble Down the Well",
+    "source_type": "Side",
+    "island": "Maple Village",
+    "prerequisites": [],
+    "accept_level": 70,
+    "level_gates": [],
+    "amount": 1
+  }
+]

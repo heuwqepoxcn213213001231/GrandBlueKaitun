@@ -1,0 +1,15 @@
+.DS_Store
+.env
+.env.*
+*.env
+*.pem
+*.key
+*.token
+*.cookie
+*credentials*
+secrets/
+GBKaitun_persist.json
+GBKaitun_cache/
+*.log
+.idea/
+.vscode/

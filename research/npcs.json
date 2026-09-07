@@ -1,0 +1,2250 @@
+{
+  "Adult Captive": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Clown Captives"
+    ],
+    "islands": []
+  },
+  "Afuaru's Gate": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "The Hoarder"
+    ],
+    "islands": []
+  },
+  "Afuaru, The Hoarder": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Corruption Cleanse",
+      "The Hoarder"
+    ],
+    "islands": []
+  },
+  "Almighty Calvin": {
+    "accept_quests": [
+      "Wizards Apprentice"
+    ],
+    "turnin_quests": [
+      "Wizards Apprentice"
+    ],
+    "talk_in_stages": [
+      "Wizards Apprentice"
+    ],
+    "marker_quests": [
+      "Wizards Apprentice"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "Anchor Town Fishing Shop": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Mina's Request"
+    ],
+    "islands": []
+  },
+  "Anchor Town Food Foo": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Mina's Request"
+    ],
+    "islands": []
+  },
+  "Anchor Town Plaza": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Mina's Request"
+    ],
+    "islands": []
+  },
+  "Anchor Town Pond Marker": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Fisherman Jack's Challenge"
+    ],
+    "islands": []
+  },
+  "Anvil": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "First Upgrade"
+    ],
+    "islands": []
+  },
+  "Apple Seller": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Apple Pot Pie"
+    ],
+    "islands": []
+  },
+  "AppleForSale": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Feed The Hungry"
+    ],
+    "islands": []
+  },
+  "Aria": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [
+      "Guest List"
+    ],
+    "marker_quests": [
+      "Guest List"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "Arm Wrestling Champion": {
+    "accept_quests": [
+      "Arm Wrestling 3"
+    ],
+    "turnin_quests": [
+      "Arm Wrestling 3"
+    ],
+    "talk_in_stages": [
+      "Arm Wrestling 3"
+    ],
+    "marker_quests": [],
+    "islands": [
+      "Clown Town"
+    ]
+  },
+  "Augustine": {
+    "accept_quests": [
+      "Tightrope Trouble"
+    ],
+    "turnin_quests": [],
+    "talk_in_stages": [
+      "Tightrope Trouble"
+    ],
+    "marker_quests": [],
+    "islands": [
+      "Clown Town"
+    ]
+  },
+  "Augustine [2]": {
+    "accept_quests": [],
+    "turnin_quests": [
+      "Tightrope Trouble"
+    ],
+    "talk_in_stages": [
+      "Tightrope Trouble"
+    ],
+    "marker_quests": [
+      "Tightrope Trouble"
+    ],
+    "islands": [
+      "Clown Town"
+    ]
+  },
+  "Axe-Hand Logan": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Axe-Handed Tyrant",
+      "Corruption Cleanse"
+    ],
+    "islands": []
+  },
+  "Axe-Hand Logan Marker": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Tyrannical Captain"
+    ],
+    "islands": []
+  },
+  "BananaForSale": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Feed The Hungry"
+    ],
+    "islands": []
+  },
+  "Barry": {
+    "accept_quests": [
+      "The Beast of Maple Village"
+    ],
+    "turnin_quests": [],
+    "talk_in_stages": [
+      "The Beast of Maple Village"
+    ],
+    "marker_quests": [
+      "The Beast of Maple Village"
+    ],
+    "islands": [
+      "Maple Village"
+    ]
+  },
+  "Beast Den Marker": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "The Beast of Maple Village"
+    ],
+    "islands": []
+  },
+  "Beast Tamer Marker": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Cat Problem",
+      "Lion's Victim"
+    ],
+    "islands": []
+  },
+  "Beast Wreckage Marker": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "The Beast of Maple Village"
+    ],
+    "islands": []
+  },
+  "Beginner Arm Wrestler": {
+    "accept_quests": [
+      "Arm Wrestling 1"
+    ],
+    "turnin_quests": [
+      "Arm Wrestling 1"
+    ],
+    "talk_in_stages": [
+      "Arm Wrestling 1"
+    ],
+    "marker_quests": [],
+    "islands": [
+      "Clown Town"
+    ]
+  },
+  "Benny": {
+    "accept_quests": [
+      "Clown Propaganda"
+    ],
+    "turnin_quests": [
+      "Clown Propaganda"
+    ],
+    "talk_in_stages": [
+      "Clown Propaganda"
+    ],
+    "marker_quests": [
+      "Clown Propaganda"
+    ],
+    "islands": [
+      "Clown Town"
+    ]
+  },
+  "Billy B.": {
+    "accept_quests": [
+      "Butcher's Business",
+      "Billy's Business"
+    ],
+    "turnin_quests": [
+      "Butcher's Business",
+      "Emergency Deliveries",
+      "Billy's Business"
+    ],
+    "talk_in_stages": [
+      "Butcher's Business",
+      "Butcher's Business",
+      "Paper Route",
+      "Emergency Deliveries",
+      "Billy's Business"
+    ],
+    "marker_quests": [
+      "Billy's Business",
+      "Butcher's Business",
+      "Emergency Deliveries",
+      "Paper Route"
+    ],
+    "islands": [
+      "Anchor Town",
+      "Clown Town"
+    ]
+  },
+  "Billy's Customer 1": {
+    "accept_quests": [
+      "Emergency Deliveries"
+    ],
+    "turnin_quests": [],
+    "talk_in_stages": [
+      "Emergency Deliveries"
+    ],
+    "marker_quests": [
+      "Emergency Deliveries"
+    ],
+    "islands": [
+      "Clown Town"
+    ]
+  },
+  "Billy's Customer 2": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [
+      "Emergency Deliveries"
+    ],
+    "marker_quests": [
+      "Emergency Deliveries"
+    ],
+    "islands": [
+      "Clown Town"
+    ]
+  },
+  "Billy's Customer 3": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [
+      "Emergency Deliveries"
+    ],
+    "marker_quests": [
+      "Emergency Deliveries"
+    ],
+    "islands": [
+      "Clown Town"
+    ]
+  },
+  "Black Noir Campsite 1": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Something Isn't Right"
+    ],
+    "islands": []
+  },
+  "Black Noir Campsite 2": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Something Isn't Right"
+    ],
+    "islands": []
+  },
+  "Black Noir Officer Marker": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Peace of Mind",
+      "Pirate Instructions"
+    ],
+    "islands": []
+  },
+  "Black Noir Pirate Marker": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Clear the Road",
+      "Proof of Pirates"
+    ],
+    "islands": []
+  },
+  "Black Shell Spawn": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Wizards Apprentice"
+    ],
+    "islands": []
+  },
+  "Blacksmith Shinozaki": {
+    "accept_quests": [
+      "First Upgrade"
+    ],
+    "turnin_quests": [
+      "First Upgrade"
+    ],
+    "talk_in_stages": [
+      "First Upgrade",
+      "First Upgrade"
+    ],
+    "marker_quests": [
+      "First Upgrade"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "Bucket of Water Spawn": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "The Wandering Hypnotist"
+    ],
+    "islands": []
+  },
+  "Campsite Footsteps Marker": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Something Isn't Right"
+    ],
+    "islands": []
+  },
+  "Captain Arashi": {
+    "accept_quests": [
+      "Message for the Strongbox"
+    ],
+    "turnin_quests": [],
+    "talk_in_stages": [
+      "Message for the Strongbox"
+    ],
+    "marker_quests": [
+      "Message for the Strongbox"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "Captain Esopo": {
+    "accept_quests": [
+      "Destroy the Signalers",
+      "Pirate Instructions",
+      "Proof of Pirates",
+      "Stocked for a Siege",
+      "The Island's Protector",
+      "The Wandering Hypnotist",
+      "Marksman 1",
+      "Marksman 2",
+      "Marksman 3",
+      "Marksman 4"
+    ],
+    "turnin_quests": [
+      "Destroy the Signalers",
+      "Expose the Butler",
+      "Missing Servants",
+      "Pirate Instructions",
+      "Proof of Pirates",
+      "Raid Preparations",
+      "Something Isn't Right",
+      "Stocked for a Siege",
+      "The Beast of Maple Village",
+      "The Island's Protector",
+      "The Wandering Hypnotist",
+      "Marksman 1",
+      "Marksman 2",
+      "Marksman 3",
+      "Marksman 4"
+    ],
+    "talk_in_stages": [
+      "Destroy the Signalers",
+      "Expose the Butler",
+      "Missing Servants",
+      "Pirate Instructions",
+      "Proof of Pirates",
+      "Raid Preparations",
+      "Something Isn't Right",
+      "Stocked for a Siege",
+      "The Beast of Maple Village",
+      "The Island's Protector",
+      "The Wandering Hypnotist",
+      "Marksman 1",
+      "Marksman 2",
+      "Marksman 3",
+      "Marksman 4"
+    ],
+    "marker_quests": [],
+    "islands": [
+      "Fighting Style",
+      "Maple Village"
+    ]
+  },
+  "Captain Esopo (Dialogue)": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Destroy the Signalers",
+      "Expose the Butler",
+      "Marksman 1",
+      "Marksman 2",
+      "Marksman 3",
+      "Marksman 4",
+      "Missing Servants",
+      "Pirate Instructions",
+      "Proof of Pirates",
+      "Raid Preparations",
+      "Something Isn't Right",
+      "Stocked for a Siege",
+      "The Beast of Maple Village",
+      "The Black Noir Raid",
+      "The Island's Protector",
+      "The Wandering Hypnotist"
+    ],
+    "islands": []
+  },
+  "Captain Esopo (NPC)": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "The Island's Protector"
+    ],
+    "islands": []
+  },
+  "Captain Jones": {
+    "accept_quests": [],
+    "turnin_quests": [
+      "Message for the Strongbox"
+    ],
+    "talk_in_stages": [
+      "Message for the Strongbox"
+    ],
+    "marker_quests": [
+      "Message for the Strongbox"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "Captive Swordsman": {
+    "accept_quests": [
+      "Captive Swordsman"
+    ],
+    "turnin_quests": [
+      "Captive Swordsman"
+    ],
+    "talk_in_stages": [
+      "Captive Swordsman",
+      "Captive Swordsman"
+    ],
+    "marker_quests": [
+      "Captive Swordsman"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "Captive Swordsman's Swords": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Captive Swordsman"
+    ],
+    "islands": []
+  },
+  "CarrotForSale": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Feed The Hungry"
+    ],
+    "islands": []
+  },
+  "Chicken Hank": {
+    "accept_quests": [
+      "Pecking Order"
+    ],
+    "turnin_quests": [
+      "Pecking Order"
+    ],
+    "talk_in_stages": [
+      "Pecking Order"
+    ],
+    "marker_quests": [
+      "Pecking Order"
+    ],
+    "islands": [
+      "Maple Village"
+    ]
+  },
+  "Child Captive": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Clown Captives"
+    ],
+    "islands": []
+  },
+  "Choppy The Clown Marker": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Choppy The Clown",
+      "The Ringmaster",
+      "Undermine The Circus 3"
+    ],
+    "islands": []
+  },
+  "Closet": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "[TUTORIAL] Fruit/Style Storage"
+    ],
+    "islands": []
+  },
+  "Clown Marker": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "A Joke Gone Too Far",
+      "This Is Personal"
+    ],
+    "islands": []
+  },
+  "Clown Propaganda Poster": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Clown Propaganda"
+    ],
+    "islands": []
+  },
+  "Clown Town Angry Civilian 1": {
+    "accept_quests": [
+      "Militia Powerup 1"
+    ],
+    "turnin_quests": [
+      "Militia Powerup 1"
+    ],
+    "talk_in_stages": [
+      "Clown Town's Militia",
+      "Militia Powerup 1"
+    ],
+    "marker_quests": [
+      "Clown Town's Militia",
+      "Militia Powerup 1"
+    ],
+    "islands": [
+      "Clown Town"
+    ]
+  },
+  "Clown Town Angry Civilian 2": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [
+      "Clown Town's Militia"
+    ],
+    "marker_quests": [
+      "Clown Town's Militia"
+    ],
+    "islands": [
+      "Clown Town"
+    ]
+  },
+  "Clown Town Angry Civilian 3": {
+    "accept_quests": [],
+    "turnin_quests": [
+      "Clown Town's Militia"
+    ],
+    "talk_in_stages": [
+      "Clown Town's Militia"
+    ],
+    "marker_quests": [
+      "Clown Town's Militia"
+    ],
+    "islands": [
+      "Clown Town"
+    ]
+  },
+  "Clowny D. Clown": {
+    "accept_quests": [
+      "A Joke Gone Too Far",
+      "Sabotage The Cannon",
+      "This Is Personal"
+    ],
+    "turnin_quests": [
+      "A Joke Gone Too Far",
+      "Sabotage The Cannon",
+      "This Is Personal"
+    ],
+    "talk_in_stages": [
+      "A Joke Gone Too Far",
+      "A Joke Gone Too Far",
+      "Sabotage The Cannon",
+      "Sabotage The Cannon",
+      "This Is Personal"
+    ],
+    "marker_quests": [
+      "A Joke Gone Too Far",
+      "Sabotage The Cannon",
+      "This Is Personal"
+    ],
+    "islands": [
+      "Clown Town"
+    ]
+  },
+  "Clucking Villager": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "The Wandering Hypnotist"
+    ],
+    "islands": []
+  },
+  "Copper Ore": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "First Upgrade"
+    ],
+    "islands": []
+  },
+  "Corrupt Guard": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Captain's Brat",
+      "Granny's Nemesis"
+    ],
+    "islands": []
+  },
+  "Corrupt Marine": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Collections",
+      "Novice Swordsman 1",
+      "Pirate Fan Letter"
+    ],
+    "islands": []
+  },
+  "Corrupt Marine Marker": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Bullies in Suits",
+      "Corruption Cleanse",
+      "Crew: Defeat Corrupt Marines",
+      "Defeat 25 Corrupt Marines",
+      "Defeat 50 Corrupt Marines",
+      "Defeat 75 Corrupt Marines"
+    ],
+    "islands": []
+  },
+  "Corrupt Marine Officer": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Corruption Cleanse",
+      "Novice Swordsman 2",
+      "Novice Swordsman 3",
+      "Tea Party Crashers"
+    ],
+    "islands": []
+  },
+  "Corrupt Marine Officer Marker": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Officer Termination"
+    ],
+    "islands": []
+  },
+  "CraftingTable": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Miners Stone Ring"
+    ],
+    "islands": []
+  },
+  "Craftsman Henry": {
+    "accept_quests": [
+      "Handle Recipe"
+    ],
+    "turnin_quests": [
+      "Handle Recipe"
+    ],
+    "talk_in_stages": [
+      "Handle Recipe"
+    ],
+    "marker_quests": [],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "Denver The Dog": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Finding Denver"
+    ],
+    "islands": []
+  },
+  "Dumbbell": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Militia Powerup 1"
+    ],
+    "islands": []
+  },
+  "Farmer Joe": {
+    "accept_quests": [
+      "Something Isn't Right",
+      "A Balanced Field",
+      "Green Thumb",
+      "The Full Harvest"
+    ],
+    "turnin_quests": [
+      "A Balanced Field",
+      "Green Thumb",
+      "The Full Harvest"
+    ],
+    "talk_in_stages": [
+      "Raid Preparations",
+      "Something Isn't Right",
+      "Paper Route",
+      "A Balanced Field",
+      "Green Thumb",
+      "The Full Harvest"
+    ],
+    "marker_quests": [
+      "A Balanced Field",
+      "Green Thumb",
+      "Paper Route",
+      "Raid Preparations",
+      "The Full Harvest"
+    ],
+    "islands": [
+      "Anchor Town",
+      "Maple Village"
+    ]
+  },
+  "Fisherman Jack": {
+    "accept_quests": [
+      "Fisherman Jack's Challenge"
+    ],
+    "turnin_quests": [
+      "Fisherman Jack's Challenge"
+    ],
+    "talk_in_stages": [
+      "Fisherman Jack's Challenge"
+    ],
+    "marker_quests": [
+      "Fisherman Jack's Challenge"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "Fist Wraps": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Clown Town's Militia"
+    ],
+    "islands": []
+  },
+  "FlintlockForSale": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Gearing Up"
+    ],
+    "islands": []
+  },
+  "Frightened Servant": {
+    "accept_quests": [
+      "Expose the Butler"
+    ],
+    "turnin_quests": [],
+    "talk_in_stages": [
+      "Expose the Butler",
+      "Expose the Butler"
+    ],
+    "marker_quests": [],
+    "islands": [
+      "Maple Village"
+    ]
+  },
+  "Frightened Servant (Dialogue)": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Expose the Butler"
+    ],
+    "islands": []
+  },
+  "Furnace": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "First Upgrade"
+    ],
+    "islands": []
+  },
+  "Gambit": {
+    "accept_quests": [
+      "Undermine The Circus 1",
+      "Undermine The Circus 2",
+      "Undermine The Circus 3"
+    ],
+    "turnin_quests": [
+      "Undermine The Circus 1",
+      "Undermine The Circus 2",
+      "Undermine The Circus 3"
+    ],
+    "talk_in_stages": [
+      "Undermine The Circus 1",
+      "Undermine The Circus 2",
+      "Undermine The Circus 3"
+    ],
+    "marker_quests": [
+      "Undermine The Circus 1",
+      "Undermine The Circus 2",
+      "Undermine The Circus 3"
+    ],
+    "islands": [
+      "Clown Town"
+    ]
+  },
+  "Granny Todo": {
+    "accept_quests": [
+      "Captain's Brat",
+      "Apple Pot Pie",
+      "Guest List",
+      "Granny's Nemesis"
+    ],
+    "turnin_quests": [
+      "Captain's Brat",
+      "Apple Pot Pie",
+      "Granny's Nemesis"
+    ],
+    "talk_in_stages": [
+      "Captain's Brat",
+      "Captain's Brat",
+      "Apple Pot Pie",
+      "Guest List",
+      "Granny's Nemesis"
+    ],
+    "marker_quests": [
+      "Apple Pot Pie",
+      "Captain's Brat",
+      "Granny's Nemesis",
+      "Guest List"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "Gus": {
+    "accept_quests": [
+      "Peace of Mind"
+    ],
+    "turnin_quests": [
+      "Peace of Mind"
+    ],
+    "talk_in_stages": [
+      "Peace of Mind"
+    ],
+    "marker_quests": [
+      "Peace of Mind"
+    ],
+    "islands": [
+      "Maple Village"
+    ]
+  },
+  "Helmeppo (Guards)": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Captain's Brat",
+      "Granny's Nemesis"
+    ],
+    "islands": []
+  },
+  "Helmeppo (Soro)": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Corruption Cleanse",
+      "Feral Dog"
+    ],
+    "islands": []
+  },
+  "Intermediate Arm Wrestler": {
+    "accept_quests": [
+      "Arm Wrestling 2"
+    ],
+    "turnin_quests": [
+      "Arm Wrestling 2"
+    ],
+    "talk_in_stages": [
+      "Arm Wrestling 2"
+    ],
+    "marker_quests": [],
+    "islands": [
+      "Clown Town"
+    ]
+  },
+  "Iron Ore": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Dwindling Iron Supply"
+    ],
+    "islands": []
+  },
+  "Jay Vonera": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Apple Pot Pie"
+    ],
+    "islands": []
+  },
+  "Johnny Nibblebottom": {
+    "accept_quests": [
+      "Revenge of the Nibblebottom",
+      "Nibblebottom's Revenge"
+    ],
+    "turnin_quests": [
+      "Revenge of the Nibblebottom",
+      "Nibblebottom's Revenge"
+    ],
+    "talk_in_stages": [
+      "Revenge of the Nibblebottom",
+      "Revenge of the Nibblebottom",
+      "Nibblebottom's Revenge"
+    ],
+    "marker_quests": [
+      "Nibblebottom's Revenge",
+      "Revenge of the Nibblebottom"
+    ],
+    "islands": [
+      "Clown Town"
+    ]
+  },
+  "Jokic": {
+    "accept_quests": [
+      "Finding Denver"
+    ],
+    "turnin_quests": [
+      "Finding Denver"
+    ],
+    "talk_in_stages": [
+      "Finding Denver"
+    ],
+    "marker_quests": [
+      "Finding Denver",
+      "Overdue Payment"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "Keeper Otis": {
+    "accept_quests": [
+      "Keeper of the Flame"
+    ],
+    "turnin_quests": [
+      "Keeper of the Flame"
+    ],
+    "talk_in_stages": [
+      "Keeper of the Flame"
+    ],
+    "marker_quests": [],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "Keeper Otis (Dialogue)": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Keeper of the Flame"
+    ],
+    "islands": []
+  },
+  "Killer Clown Marker": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Billy's Business",
+      "Butcher's Business"
+    ],
+    "islands": []
+  },
+  "Koro": {
+    "accept_quests": [
+      "Bullies in Suits",
+      "Crew: Defeat Corrupt Marines"
+    ],
+    "turnin_quests": [
+      "Pirate Fan Letter",
+      "Bullies in Suits",
+      "Crew: Defeat Corrupt Marines"
+    ],
+    "talk_in_stages": [
+      "Pirate Fan Letter",
+      "Pirate Fan Letter",
+      "Bullies in Suits",
+      "Crew: Defeat Corrupt Marines"
+    ],
+    "marker_quests": [
+      "Bullies in Suits",
+      "Crew: Defeat Corrupt Marines",
+      "Pirate Fan Letter"
+    ],
+    "islands": [
+      "Anchor Town",
+      "Crew"
+    ]
+  },
+  "Kuro": {
+    "accept_quests": [
+      "Missing Servants"
+    ],
+    "turnin_quests": [],
+    "talk_in_stages": [
+      "Missing Servants"
+    ],
+    "marker_quests": [],
+    "islands": [
+      "Maple Village"
+    ]
+  },
+  "Kuro (Dialogue)": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Missing Servants"
+    ],
+    "islands": []
+  },
+  "Lady Maia": {
+    "accept_quests": [
+      "The Black Noir Raid"
+    ],
+    "turnin_quests": [
+      "The Black Noir Raid"
+    ],
+    "talk_in_stages": [
+      "Raid Preparations",
+      "The Black Noir Raid"
+    ],
+    "marker_quests": [
+      "Raid Preparations",
+      "The Black Noir Raid"
+    ],
+    "islands": [
+      "Maple Village"
+    ]
+  },
+  "Lamp Oil Spawn": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Keeper of the Flame"
+    ],
+    "islands": []
+  },
+  "Lash": {
+    "accept_quests": [
+      "Ferris Wheel Standoff"
+    ],
+    "turnin_quests": [],
+    "talk_in_stages": [
+      "Ferris Wheel Standoff"
+    ],
+    "marker_quests": [
+      "Ferris Wheel Standoff"
+    ],
+    "islands": [
+      "Clown Town"
+    ]
+  },
+  "LemonForSale": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Feed The Hungry"
+    ],
+    "islands": []
+  },
+  "Loki": {
+    "accept_quests": [
+      "Feed The Hungry"
+    ],
+    "turnin_quests": [
+      "Feed The Hungry"
+    ],
+    "talk_in_stages": [
+      "Feed The Hungry",
+      "Feed The Hungry",
+      "Feed The Hungry",
+      "Feed The Hungry"
+    ],
+    "marker_quests": [
+      "Feed The Hungry"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "Loki [2]": {
+    "accept_quests": [
+      "Trickster 1",
+      "Trickster 2",
+      "Trickster 3",
+      "Trickster 4",
+      "Trickster 5"
+    ],
+    "turnin_quests": [
+      "Trickster 1",
+      "Trickster 2",
+      "Trickster 3",
+      "Trickster 4",
+      "Trickster 5"
+    ],
+    "talk_in_stages": [
+      "Trickster 1",
+      "Trickster 2",
+      "Trickster 3",
+      "Trickster 4",
+      "Trickster 5"
+    ],
+    "marker_quests": [
+      "Trickster 1",
+      "Trickster 2",
+      "Trickster 3",
+      "Trickster 4",
+      "Trickster 5"
+    ],
+    "islands": [
+      "Fighting Style"
+    ]
+  },
+  "Maeve": {
+    "accept_quests": [
+      "Tea Party Crashers",
+      "Officer Termination"
+    ],
+    "turnin_quests": [
+      "Tea Party Crashers",
+      "Guest List",
+      "Officer Termination"
+    ],
+    "talk_in_stages": [
+      "Tea Party Crashers",
+      "Tea Party Crashers",
+      "Guest List",
+      "Guest List",
+      "Officer Termination"
+    ],
+    "marker_quests": [
+      "Guest List",
+      "Officer Termination",
+      "Tea Party Crashers"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "Mansion Fountain Marker": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Missing Servants"
+    ],
+    "islands": []
+  },
+  "Mansion Garden Marker": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Expose the Butler",
+      "Missing Servants"
+    ],
+    "islands": []
+  },
+  "Maple Village Marker": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Journey to Maple Village"
+    ],
+    "islands": []
+  },
+  "Marine Metal Gate": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Gate of Authority"
+    ],
+    "islands": []
+  },
+  "Marine Snitch": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Tea Party Crashers"
+    ],
+    "islands": []
+  },
+  "Marnie": {
+    "accept_quests": [],
+    "turnin_quests": [
+      "Ferris Wheel Standoff"
+    ],
+    "talk_in_stages": [
+      "Ferris Wheel Standoff"
+    ],
+    "marker_quests": [
+      "Ferris Wheel Standoff"
+    ],
+    "islands": [
+      "Clown Town"
+    ]
+  },
+  "Martha": {
+    "accept_quests": [
+      "Trouble Down the Well"
+    ],
+    "turnin_quests": [
+      "Trouble Down the Well"
+    ],
+    "talk_in_stages": [
+      "Something Isn't Right",
+      "Trouble Down the Well"
+    ],
+    "marker_quests": [
+      "Trouble Down the Well"
+    ],
+    "islands": [
+      "Maple Village"
+    ]
+  },
+  "Martha Chicken": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Trouble Down the Well"
+    ],
+    "islands": []
+  },
+  "Mayor Kiyoshi": {
+    "accept_quests": [
+      "Circus Suppliers",
+      "Clown Captives",
+      "Escort The Mayor",
+      "Journey to Maple Village"
+    ],
+    "turnin_quests": [
+      "Setting Sail",
+      "Circus Suppliers",
+      "Clown Captives",
+      "Journey to Maple Village"
+    ],
+    "talk_in_stages": [
+      "Setting Sail",
+      "Circus Suppliers",
+      "Circus Suppliers",
+      "Clown Captives",
+      "Clown Captives",
+      "Escort The Mayor",
+      "Journey to Maple Village"
+    ],
+    "marker_quests": [
+      "Circus Suppliers",
+      "Clown Captives",
+      "Escort The Mayor",
+      "Journey to Maple Village",
+      "Setting Sail"
+    ],
+    "islands": [
+      "Anchor Town",
+      "Clown Town"
+    ]
+  },
+  "Mayor Kiyoshi [2]": {
+    "accept_quests": [
+      "Clown Town's Militia",
+      "Mayor's Stache",
+      "The Ringmaster",
+      "Choppy The Clown"
+    ],
+    "turnin_quests": [
+      "Escort The Mayor",
+      "Mayor's Stache",
+      "The Ringmaster",
+      "Choppy The Clown"
+    ],
+    "talk_in_stages": [
+      "Clown Town's Militia",
+      "Escort The Mayor",
+      "Mayor's Stache",
+      "Mayor's Stache",
+      "The Ringmaster",
+      "The Ringmaster",
+      "Choppy The Clown"
+    ],
+    "marker_quests": [
+      "Choppy The Clown",
+      "Clown Town's Militia",
+      "Escort The Mayor",
+      "Mayor's Stache",
+      "The Ringmaster"
+    ],
+    "islands": [
+      "Clown Town"
+    ]
+  },
+  "Mayor's Mustache": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Mayor's Stache"
+    ],
+    "islands": []
+  },
+  "Mei": {
+    "accept_quests": [
+      "Explosive Research 1",
+      "Explosive Research 2",
+      "Explosive Research 3"
+    ],
+    "turnin_quests": [
+      "Explosive Research 1",
+      "Explosive Research 2",
+      "Explosive Research 3"
+    ],
+    "talk_in_stages": [
+      "Explosive Research 1",
+      "Explosive Research 2",
+      "Explosive Research 3"
+    ],
+    "marker_quests": [
+      "Explosive Research 1",
+      "Explosive Research 2",
+      "Explosive Research 3"
+    ],
+    "islands": [
+      "Clown Town"
+    ]
+  },
+  "Merchant": {
+    "accept_quests": [
+      "The 'Priceless' Haul"
+    ],
+    "turnin_quests": [],
+    "talk_in_stages": [
+      "The 'Priceless' Haul"
+    ],
+    "marker_quests": [
+      "Gearing Up",
+      "The 'Priceless' Haul"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "Miner Song Jil Wu": {
+    "accept_quests": [
+      "Miners Bracelet"
+    ],
+    "turnin_quests": [
+      "Miners Bracelet"
+    ],
+    "talk_in_stages": [
+      "Miners Bracelet"
+    ],
+    "marker_quests": [
+      "Miners Bracelet"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "Miner Song Kim Wu": {
+    "accept_quests": [
+      "Dwindling Iron Supply"
+    ],
+    "turnin_quests": [
+      "Dwindling Iron Supply"
+    ],
+    "talk_in_stages": [
+      "Dwindling Iron Supply"
+    ],
+    "marker_quests": [
+      "Dwindling Iron Supply"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "Muggy Cannon": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Sabotage The Cannon",
+      "Undermine The Circus 1"
+    ],
+    "islands": []
+  },
+  "Nagi": {
+    "accept_quests": [
+      "Collections",
+      "Courier's Test"
+    ],
+    "turnin_quests": [
+      "Collections",
+      "Courier's Test",
+      "Paper Route"
+    ],
+    "talk_in_stages": [
+      "Collections",
+      "Courier's Test",
+      "Paper Route"
+    ],
+    "marker_quests": [
+      "Collections",
+      "Courier's Test",
+      "Paper Route"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "Nell": {
+    "accept_quests": [
+      "Clear the Road"
+    ],
+    "turnin_quests": [
+      "Clear the Road"
+    ],
+    "talk_in_stages": [
+      "Clear the Road"
+    ],
+    "marker_quests": [
+      "Clear the Road"
+    ],
+    "islands": [
+      "Maple Village"
+    ]
+  },
+  "Nessa": {
+    "accept_quests": [
+      "Paper Route"
+    ],
+    "turnin_quests": [],
+    "talk_in_stages": [
+      "Paper Route"
+    ],
+    "marker_quests": [
+      "Paper Route"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "North Camp Signal Fire": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Destroy the Signalers"
+    ],
+    "islands": []
+  },
+  "Officer Graves": {
+    "accept_quests": [
+      "A Voice in a Shell",
+      "Aim Training",
+      "Basics",
+      "Introduction",
+      "Leveling Skill",
+      "Pirate Fan Letter",
+      "Setting Sail"
+    ],
+    "turnin_quests": [
+      "A Voice in a Shell",
+      "Aim Training",
+      "Basics",
+      "Introduction",
+      "Leveling Skill"
+    ],
+    "talk_in_stages": [
+      "A Voice in a Shell",
+      "Aim Training",
+      "Aim Training",
+      "Basics",
+      "Basics",
+      "Basics",
+      "Introduction",
+      "Introduction",
+      "Leveling Skill",
+      "Pirate Fan Letter",
+      "Setting Sail"
+    ],
+    "marker_quests": [
+      "A Voice in a Shell",
+      "Aim Training",
+      "Basics",
+      "Introduction",
+      "Leveling Skill",
+      "Pirate Fan Letter",
+      "Setting Sail"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "Officer Graves [2]": {
+    "accept_quests": [
+      "Advanced Training"
+    ],
+    "turnin_quests": [],
+    "talk_in_stages": [
+      "Advanced Training"
+    ],
+    "marker_quests": [
+      "Advanced Training"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "Overlook Signal Fire": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Destroy the Signalers"
+    ],
+    "islands": []
+  },
+  "Pantry Basket": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Stocked for a Siege"
+    ],
+    "islands": []
+  },
+  "Party Crasher": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Guest List"
+    ],
+    "islands": []
+  },
+  "Penniless Pete": {
+    "accept_quests": [
+      "A Dish Best Served Cold",
+      "Down on His Luck"
+    ],
+    "turnin_quests": [
+      "A Dish Best Served Cold",
+      "Down on His Luck"
+    ],
+    "talk_in_stages": [
+      "A Dish Best Served Cold",
+      "Down on His Luck"
+    ],
+    "marker_quests": [
+      "A Dish Best Served Cold",
+      "Down on His Luck"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "Pip": {
+    "accept_quests": [
+      "Big Shot 1",
+      "Big Shot 2",
+      "Big Shot 3",
+      "Big Shot 4"
+    ],
+    "turnin_quests": [
+      "Big Shot 1",
+      "Big Shot 2",
+      "Big Shot 3",
+      "Big Shot 4"
+    ],
+    "talk_in_stages": [
+      "Raid Preparations",
+      "Big Shot 1",
+      "Big Shot 2",
+      "Big Shot 3",
+      "Big Shot 4"
+    ],
+    "marker_quests": [
+      "Big Shot 1",
+      "Big Shot 2",
+      "Big Shot 3",
+      "Big Shot 4",
+      "Raid Preparations"
+    ],
+    "islands": [
+      "Maple Village"
+    ]
+  },
+  "Red Shell Spawn": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Wizards Apprentice"
+    ],
+    "islands": []
+  },
+  "Remy": {
+    "accept_quests": [
+      "Raid Preparations",
+      "Fresh From the Farm",
+      "Kitchen Helper",
+      "The Perfect Dish"
+    ],
+    "turnin_quests": [
+      "Fresh From the Farm",
+      "Kitchen Helper",
+      "The Perfect Dish"
+    ],
+    "talk_in_stages": [
+      "Raid Preparations",
+      "Fresh From the Farm",
+      "Kitchen Helper",
+      "The Perfect Dish"
+    ],
+    "marker_quests": [
+      "Fresh From the Farm",
+      "Kitchen Helper",
+      "Raid Preparations",
+      "The Perfect Dish"
+    ],
+    "islands": [
+      "Maple Village"
+    ]
+  },
+  "RowboatForSale": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Setting Sail"
+    ],
+    "islands": []
+  },
+  "Rusty Pickaxe": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "First Upgrade"
+    ],
+    "islands": []
+  },
+  "Scratch Spawn Marker": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Expose the Butler"
+    ],
+    "islands": []
+  },
+  "Servant's Journal Spawn": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Missing Servants"
+    ],
+    "islands": []
+  },
+  "Ship Spawner": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Setting Sail"
+    ],
+    "islands": []
+  },
+  "Shiro": {
+    "accept_quests": [
+      "Novice Swordsman 1",
+      "Novice Swordsman 2",
+      "Novice Swordsman 3",
+      "Novice Swordsman 4"
+    ],
+    "turnin_quests": [
+      "Advanced Training",
+      "Novice Swordsman 1",
+      "Novice Swordsman 2",
+      "Novice Swordsman 3",
+      "Novice Swordsman 4"
+    ],
+    "talk_in_stages": [
+      "Advanced Training",
+      "Novice Swordsman 1",
+      "Novice Swordsman 2",
+      "Novice Swordsman 3",
+      "Novice Swordsman 4"
+    ],
+    "marker_quests": [
+      "Advanced Training",
+      "Novice Swordsman 1",
+      "Novice Swordsman 2",
+      "Novice Swordsman 3",
+      "Novice Swordsman 4"
+    ],
+    "islands": [
+      "Anchor Town",
+      "Fighting Style"
+    ]
+  },
+  "Silver Miners Bracelet": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Miners Bracelet"
+    ],
+    "islands": []
+  },
+  "Sleeping Villager": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "The Wandering Hypnotist"
+    ],
+    "islands": []
+  },
+  "Smuggler": {
+    "accept_quests": [
+      "Overdue Payment"
+    ],
+    "turnin_quests": [
+      "Overdue Payment"
+    ],
+    "talk_in_stages": [
+      "Overdue Payment"
+    ],
+    "marker_quests": [
+      "Overdue Payment"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "SnailForSale": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "A Voice in a Shell"
+    ],
+    "islands": []
+  },
+  "Soro": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Corruption Cleanse",
+      "Feral Dog"
+    ],
+    "islands": []
+  },
+  "South Camp Signal Fire": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Destroy the Signalers"
+    ],
+    "islands": []
+  },
+  "Stephon": {
+    "accept_quests": [
+      "Lion's Victim",
+      "Stephon's Tormentor",
+      "Cat Problem"
+    ],
+    "turnin_quests": [
+      "Lion's Victim",
+      "Stephon's Tormentor",
+      "Cat Problem"
+    ],
+    "talk_in_stages": [
+      "Lion's Victim",
+      "Lion's Victim",
+      "Stephon's Tormentor",
+      "Stephon's Tormentor",
+      "Cat Problem"
+    ],
+    "marker_quests": [
+      "Cat Problem",
+      "Lion's Victim",
+      "Stephon's Tormentor"
+    ],
+    "islands": [
+      "Clown Town"
+    ]
+  },
+  "StolenGoods": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Proof of Pirates"
+    ],
+    "islands": []
+  },
+  "Sturdy Stick": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Clown Town's Militia"
+    ],
+    "islands": []
+  },
+  "Sushi": {
+    "accept_quests": [
+      "Sushi's Training 1",
+      "Sushi's Training 2",
+      "Sushi's Training 3",
+      "Sushi's Training 4",
+      "Sushi's Training 5",
+      "Sushi's Training 6",
+      "Sushi's Training 7",
+      "Sushi's Training 8",
+      "Sushi's Training 9"
+    ],
+    "turnin_quests": [
+      "Sushi's Training 1",
+      "Sushi's Training 2",
+      "Sushi's Training 3",
+      "Sushi's Training 4",
+      "Sushi's Training 5",
+      "Sushi's Training 6",
+      "Sushi's Training 7",
+      "Sushi's Training 8",
+      "Sushi's Training 9"
+    ],
+    "talk_in_stages": [
+      "Sushi's Training 1",
+      "Sushi's Training 2",
+      "Sushi's Training 3",
+      "Sushi's Training 4",
+      "Sushi's Training 5",
+      "Sushi's Training 6",
+      "Sushi's Training 7",
+      "Sushi's Training 8",
+      "Sushi's Training 9"
+    ],
+    "marker_quests": [
+      "Noise Complaint",
+      "Sushi's Training 1",
+      "Sushi's Training 2",
+      "Sushi's Training 3",
+      "Sushi's Training 4",
+      "Sushi's Training 5",
+      "Sushi's Training 6",
+      "Sushi's Training 7",
+      "Sushi's Training 8",
+      "Sushi's Training 9"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "Tara": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [
+      "Something Isn't Right"
+    ],
+    "marker_quests": [],
+    "islands": [
+      "Maple Village"
+    ]
+  },
+  "Terry": {
+    "accept_quests": [
+      "Terry vs. The Tide",
+      "Terry's White Whale",
+      "Wormless Terry"
+    ],
+    "turnin_quests": [
+      "Terry vs. The Tide",
+      "Terry's White Whale",
+      "Wormless Terry"
+    ],
+    "talk_in_stages": [
+      "Guest List",
+      "Terry vs. The Tide",
+      "Terry's White Whale",
+      "Wormless Terry"
+    ],
+    "marker_quests": [
+      "Guest List",
+      "Terry's White Whale",
+      "Wormless Terry"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "Tip Jar": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Easy Pickings"
+    ],
+    "islands": []
+  },
+  "Tomato Crate": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Clown Town's Militia"
+    ],
+    "islands": []
+  },
+  "Tomoe": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [
+      "Message for the Strongbox"
+    ],
+    "marker_quests": [
+      "Message for the Strongbox"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "TrainingDummy": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Aim Training",
+      "Gearing Up",
+      "Introduction",
+      "Sushi's Training 1",
+      "Sushi's Training 2",
+      "Sushi's Training 3",
+      "Sushi's Training 4",
+      "Sushi's Training 5",
+      "Sushi's Training 6",
+      "Sushi's Training 7",
+      "Sushi's Training 8",
+      "Sushi's Training 9"
+    ],
+    "islands": []
+  },
+  "Treasure Hunter": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Finders Keepers",
+      "The 'Priceless' Haul"
+    ],
+    "islands": []
+  },
+  "Troubled Civilian": {
+    "accept_quests": [
+      "The Hoarder"
+    ],
+    "turnin_quests": [
+      "The Hoarder"
+    ],
+    "talk_in_stages": [
+      "The Hoarder",
+      "The Hoarder"
+    ],
+    "marker_quests": [
+      "The Hoarder"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "Trust Dock Delivery": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Courier's Test"
+    ],
+    "islands": []
+  },
+  "TrustStrongbox": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Collections"
+    ],
+    "islands": []
+  },
+  "Wade": {
+    "accept_quests": [
+      "Finders Keepers"
+    ],
+    "turnin_quests": [
+      "Finders Keepers",
+      "The 'Priceless' Haul"
+    ],
+    "talk_in_stages": [
+      "Finders Keepers",
+      "The 'Priceless' Haul"
+    ],
+    "marker_quests": [
+      "Finders Keepers",
+      "The 'Priceless' Haul"
+    ],
+    "islands": [
+      "Anchor Town"
+    ]
+  },
+  "Wallace": {
+    "accept_quests": [
+      "Brawler 1",
+      "Brawler 2",
+      "Brawler 3",
+      "Brawler 4"
+    ],
+    "turnin_quests": [
+      "Brawler 1",
+      "Brawler 2",
+      "Brawler 3",
+      "Brawler 4"
+    ],
+    "talk_in_stages": [
+      "Advanced Training",
+      "Brawler 1",
+      "Brawler 2",
+      "Brawler 3",
+      "Brawler 4"
+    ],
+    "marker_quests": [
+      "Advanced Training",
+      "Brawler 1",
+      "Brawler 2",
+      "Brawler 3",
+      "Brawler 4"
+    ],
+    "islands": [
+      "Anchor Town",
+      "Fighting Style"
+    ]
+  },
+  "White Shell Spawn": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Wizards Apprentice"
+    ],
+    "islands": []
+  },
+  "WormForSale": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Wormless Terry"
+    ],
+    "islands": []
+  },
+  "Yellow Shell Spawn": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "Wizards Apprentice"
+    ],
+    "islands": []
+  },
+  "\\": {
+    "accept_quests": [],
+    "turnin_quests": [],
+    "talk_in_stages": [],
+    "marker_quests": [
+      "The Wandering Hypnotist"
+    ],
+    "islands": []
+  }
+}

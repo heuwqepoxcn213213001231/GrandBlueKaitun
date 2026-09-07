@@ -1,0 +1,281 @@
+[
+  {
+    "name": "Strong Punch",
+    "kind": "condition:EquipSkill",
+    "source_quest": "Basics",
+    "island": "Anchor Town",
+    "type": "Story",
+    "amount": 1
+  },
+  {
+    "name": "Strong Punch",
+    "kind": "condition:Cast",
+    "source_quest": "Basics",
+    "island": "Anchor Town",
+    "type": "Story",
+    "amount": 1
+  },
+  {
+    "name": "Flintlock",
+    "kind": "condition:Upgrade",
+    "source_quest": "First Upgrade",
+    "island": "Anchor Town",
+    "type": "Story",
+    "amount": 1
+  },
+  {
+    "name": "Flintlock",
+    "kind": "condition:Purchase",
+    "source_quest": "Gearing Up",
+    "island": "Anchor Town",
+    "type": "Story",
+    "amount": 1
+  },
+  {
+    "name": "Flintlock",
+    "kind": "condition:Equip",
+    "source_quest": "Gearing Up",
+    "island": "Anchor Town",
+    "type": "Story",
+    "amount": 1
+  },
+  {
+    "name": "Strong Punch",
+    "kind": "Skill",
+    "source_quest": "Introduction",
+    "island": "Anchor Town",
+    "type": "Story"
+  },
+  {
+    "name": "Strong Punch",
+    "kind": "condition:Level",
+    "source_quest": "Leveling Skill",
+    "island": "Anchor Town",
+    "type": "Story",
+    "amount": 1
+  },
+  {
+    "name": "Gunshot",
+    "kind": "condition:Level",
+    "source_quest": "Leveling Skill",
+    "island": "Anchor Town",
+    "type": "Story",
+    "amount": 1
+  },
+  {
+    "name": "Scratch",
+    "kind": "condition:Kill",
+    "source_quest": "Expose the Butler",
+    "island": "Maple Village",
+    "type": "Story",
+    "amount": 1
+  },
+  {
+    "name": "Grab",
+    "kind": "condition:Kill",
+    "source_quest": "Expose the Butler",
+    "island": "Maple Village",
+    "type": "Story",
+    "amount": 1
+  },
+  {
+    "name": "100 Rep Punch",
+    "kind": "Passive",
+    "source_quest": "Sushi's Training 1",
+    "island": "Anchor Town",
+    "type": "Side"
+  },
+  {
+    "name": "1,000 Rep Punch",
+    "kind": "Passive",
+    "source_quest": "Sushi's Training 2",
+    "island": "Anchor Town",
+    "type": "Side"
+  },
+  {
+    "name": "100 Rep Punch",
+    "kind": "RemovePassive",
+    "source_quest": "Sushi's Training 2",
+    "island": "Anchor Town",
+    "type": "Side"
+  },
+  {
+    "name": "10,000 Rep Punch",
+    "kind": "Passive",
+    "source_quest": "Sushi's Training 3",
+    "island": "Anchor Town",
+    "type": "Side"
+  },
+  {
+    "name": "1,000 Rep Punch",
+    "kind": "RemovePassive",
+    "source_quest": "Sushi's Training 3",
+    "island": "Anchor Town",
+    "type": "Side"
+  },
+  {
+    "name": "100,000 Rep Punch",
+    "kind": "Passive",
+    "source_quest": "Sushi's Training 4",
+    "island": "Anchor Town",
+    "type": "Side"
+  },
+  {
+    "name": "10,000 Rep Punch",
+    "kind": "RemovePassive",
+    "source_quest": "Sushi's Training 4",
+    "island": "Anchor Town",
+    "type": "Side"
+  },
+  {
+    "name": "1,000,000 Rep Punch",
+    "kind": "Passive",
+    "source_quest": "Sushi's Training 5",
+    "island": "Anchor Town",
+    "type": "Side"
+  },
+  {
+    "name": "100,000 Rep Punch",
+    "kind": "RemovePassive",
+    "source_quest": "Sushi's Training 5",
+    "island": "Anchor Town",
+    "type": "Side"
+  },
+  {
+    "name": "King's Punch",
+    "kind": "Skill",
+    "source_quest": "Sushi's Training 5",
+    "island": "Anchor Town",
+    "type": "Side"
+  },
+  {
+    "name": "10,000,000 Rep Punch",
+    "kind": "Passive",
+    "source_quest": "Sushi's Training 6",
+    "island": "Anchor Town",
+    "type": "Side"
+  },
+  {
+    "name": "1,000,000 Rep Punch",
+    "kind": "RemovePassive",
+    "source_quest": "Sushi's Training 6",
+    "island": "Anchor Town",
+    "type": "Side"
+  },
+  {
+    "name": "100,000,000 Rep Punch",
+    "kind": "Passive",
+    "source_quest": "Sushi's Training 7",
+    "island": "Anchor Town",
+    "type": "Side"
+  },
+  {
+    "name": "10,000,000 Rep Punch",
+    "kind": "RemovePassive",
+    "source_quest": "Sushi's Training 7",
+    "island": "Anchor Town",
+    "type": "Side"
+  },
+  {
+    "name": "1,000,000,000 Rep Punch",
+    "kind": "Passive",
+    "source_quest": "Sushi's Training 8",
+    "island": "Anchor Town",
+    "type": "Side"
+  },
+  {
+    "name": "100,000,000 Rep Punch",
+    "kind": "RemovePassive",
+    "source_quest": "Sushi's Training 8",
+    "island": "Anchor Town",
+    "type": "Side"
+  },
+  {
+    "name": "Power Slash",
+    "kind": "condition:Unlock Skill",
+    "source_quest": "Novice Swordsman 1",
+    "island": "Fighting Style",
+    "type": "Fighting Style",
+    "amount": 1
+  },
+  {
+    "name": "Power Slash",
+    "kind": "condition:Damage",
+    "source_quest": "Novice Swordsman 1",
+    "island": "Fighting Style",
+    "type": "Fighting Style",
+    "amount": 200
+  },
+  {
+    "name": "Sword Lunge",
+    "kind": "condition:Unlock Skill",
+    "source_quest": "Novice Swordsman 2",
+    "island": "Fighting Style",
+    "type": "Fighting Style",
+    "amount": 1
+  },
+  {
+    "name": "Sword Lunge",
+    "kind": "condition:Damage",
+    "source_quest": "Novice Swordsman 2",
+    "island": "Fighting Style",
+    "type": "Fighting Style",
+    "amount": 200
+  },
+  {
+    "name": "Whirlwind Slash",
+    "kind": "condition:Unlock Skill",
+    "source_quest": "Novice Swordsman 3",
+    "island": "Fighting Style",
+    "type": "Fighting Style",
+    "amount": 1
+  },
+  {
+    "name": "Whirlwind Slash",
+    "kind": "condition:Damage",
+    "source_quest": "Novice Swordsman 3",
+    "island": "Fighting Style",
+    "type": "Fighting Style",
+    "amount": 200
+  },
+  {
+    "name": "Power Slash",
+    "kind": "condition:Damage",
+    "source_quest": "Novice Swordsman 4",
+    "island": "Fighting Style",
+    "type": "Fighting Style",
+    "amount": 200
+  },
+  {
+    "name": "Sword Lunge",
+    "kind": "condition:Damage",
+    "source_quest": "Novice Swordsman 4",
+    "island": "Fighting Style",
+    "type": "Fighting Style",
+    "amount": 200
+  },
+  {
+    "name": "Whirlwind Slash",
+    "kind": "condition:Damage",
+    "source_quest": "Novice Swordsman 4",
+    "island": "Fighting Style",
+    "type": "Fighting Style",
+    "amount": 200
+  },
+  {
+    "name": "Pocket Sand",
+    "kind": "condition:Land",
+    "source_quest": "Trickster 1",
+    "island": "Fighting Style",
+    "type": "Fighting Style",
+    "amount": 20
+  },
+  {
+    "name": "Cheap Shot",
+    "kind": "condition:Land",
+    "source_quest": "Trickster 2",
+    "island": "Fighting Style",
+    "type": "Fighting Style",
+    "amount": 25
+  }
+]
