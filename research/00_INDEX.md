@@ -1,6 +1,6 @@
 # Grand Blue (Eternal Pose) — Research Pack
 
-**Turn scope:** Phase 4 RE + Phase 5–9 Kaitun implemented. Entry `kaitun.lua`. Version **1.1.11** (Mining TutorialScreen dismiss — no UIS getconnections walk). Reports: `FINAL_IMPLEMENTATION_REPORT.md`, `FINAL_CHECKLIST.md`, `REMOTE_REGISTRY.md`, `PROGRESSION_FINAL.md`, `RUNTIME_FIXES.md`, `QUEST_EXECUTION_MATRIX.md`, `QUEST_COVERAGE_REPORT.md`, `TUTORIAL_FLOW.md`.
+**Turn scope:** Phase 4 RE + Phase 5–9 Kaitun implemented. Entry `kaitun.lua`. Version **1.1.12** (mine HOLD QTE + stats 8:2). Reports: `FINAL_IMPLEMENTATION_REPORT.md`, `FINAL_CHECKLIST.md`, `REMOTE_REGISTRY.md`, `PROGRESSION_FINAL.md`, `RUNTIME_FIXES.md`, `QUEST_EXECUTION_MATRIX.md`, `QUEST_COVERAGE_REPORT.md`, `TUTORIAL_FLOW.md`.
 
 **Place (Studio):** `place 118635363908336 Game.rbxl` — connected. `Workspace.Islands` chỉ có 3 đảo.
 
@@ -57,7 +57,7 @@ Không đoán Remote arguments. Không bịa item/NPC/quest/fruit.
 - **EXP scale:** Repeatable + Story ngoài Anchor Town: `math.round(exp * 0.8)` trong QuestInfo loader. Giá trị `exp` trong dump = field module; có thể là pre-scale.
 - **Repeatable decay:** `player > rangeMax+5` → `floor(exp * max(0.1, 1/(1+(lv-(rangeMax+5))*0.15)))`. `full_until` (picker) = `rangeMax + 5`.
 - **MidIslandGate(N):** dump `Consolidated=true` → runtime trả **1**; level ý định = argument N (7/15/20/30/35/40/43/45/50/58/60/70). Studio `LevelGateConfig` xác nhận.
-- **Stats (StatSystem):** Strength, Willpower, Agility, Precision, Energy, Health. Invest **VERIFIED** `StatPoints("Invest", name, n)` (MenuHandler). Cost = unused points 1:1. Cap/grant curve UNKNOWN.
+- **Stats (StatSystem):** Strength, Willpower, Agility, Precision, Energy, Health. Invest **VERIFIED** `StatPoints("Invest", name, n)` (MenuHandler). Default live ratio **8 Strength : 2 Health** on current totals (`StatRatio`). Cost = unused points 1:1. Cap/grant curve UNKNOWN.
 - **Haki trainer / backpack size:** UNKNOWN. Shop prices + RaceOdds + fruit names: Studio VERIFIED (xem FINAL / E / G).
 
 ## Systems snapshot

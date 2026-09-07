@@ -39,7 +39,7 @@ Talk remote: `ClientQuest:FireServer("Talk", DisplayName)` + `DialogueBindable:F
 | Feral Dog | 2 | Anchor Town | Kill | Kill | Soro | — | Soro | Anchor Town | Captain's Brat | Combat.attack | live Kill Soro count 1 | STATIC_VERIFIED | IMPLEMENTED |
 | First Upgrade | 1 | Anchor Town | Talk | Talk | Blacksmith Shinozaki | — | Blacksmith Shinozaki | Anchor Town | The Hoarder | Quest.talk | live Talk Blacksmith Shinozaki count 1 | STATIC_VERIFIED | IMPLEMENTED |
 | First Upgrade | 2 | Anchor Town | Collect | AcquireItem | Rusty Pickaxe | ShopPurchase | Rusty Pickaxe | Anchor Town | The Hoarder | Shop.buy | inventory/quest Rusty Pickaxe 1 | STATIC_VERIFIED | IMPLEMENTED |
-| First Upgrade | 3 | Anchor Town | Collect | AcquireItem | Copper Ore | Mining | Copper Ore | Anchor Town | The Hoarder | LifeSkills.mineToward | inventory/quest Copper Ore 2 | STATIC_VERIFIED | IMPLEMENTED |
+| First Upgrade | 3 | Anchor Town | Collect | AcquireItem | Copper Ore | Mining | Copper Ore | Anchor Town | The Hoarder | LifeSkills.mineToward HOLD QTE | inventory/quest Copper Ore 2 | STATIC_VERIFIED | IMPLEMENTED |
 | First Upgrade | 4 | Anchor Town | Talk | Talk | Blacksmith Shinozaki | — | Blacksmith Shinozaki | Anchor Town | The Hoarder | Quest.talk | live Talk Blacksmith Shinozaki count 1 | STATIC_VERIFIED | IMPLEMENTED |
 | First Upgrade | 5 | Anchor Town | Smelt | AcquireItem | Copper Bar | Crafting | Furnace | Anchor Town | The Hoarder | LifeSkills.smeltToward | inventory/quest Copper Bar 2 | STATIC_VERIFIED | IMPLEMENTED |
 | First Upgrade | 6 | Anchor Town | Upgrade | Upgrade | Flintlock | — | Flintlock | Anchor Town | The Hoarder | Equipment.upgradeNamed | live Upgrade Flintlock count 1 | STATIC_VERIFIED | IMPLEMENTED |

@@ -1,5 +1,22 @@
 # Runtime Fixes
 
+## 1.1.12 — Mine is HOLD charge, stats 8:2 on current totals
+
+Copper Ore 0/2. `EquipAndActivateBindable("Pickaxe")` tap started Swing then QTE died (`Beginning charge` / `bindable event fired`). Ore prompt HOLD. `TutorialLocal` already said hold then release at the top.
+
+`Pickaxe.ClientActivated` → `StartMiningLoop` → `Swing` → after 0.29s `QuickTimeEvents.Mining`. Bar fills; release when `1-fill` is in Critical Zone. `PickaxeHit` stays on the tool. Teleport every tick + Stun interrupts the QTE. Acquire treated a tap as fail → `fail #4` / STUCK.
+
+**Fix:** stand once, hold MB1, activate, release in zone (or fill≥0.93), do not teleport mid-charge. Mining in-progress returns `hunting` (no fail count). AutoStats spends unused points to keep current Strength:Health at 8:2.
+
+```
+[Kaitun][MINING] hold charge at OreBlockObjectId-...
+[Kaitun][MINING] release fill=0.94 zone=yes
+[Kaitun][MINING] hit hp 18->15
+[Kaitun][STAT] Invest Strength x8 now Str=8 Hp=0 target 8:2
+```
+
+---
+
 ## 1.1.11 — Mining overlay: stop walking UIS.InputBegan
 
 Ảnh 2 (stage 1+2 cùng lúc) là click tay. Bot vẫn loop `_src` + `skip ContinueOverlay`. 1.1.10 vẫn gọi `getconnections(UIS.InputBegan)` — executor index `_src` trên CorePackages `SchedulerHostConfig.default`, engine tick chết trước khi TutorialLocal chạy.

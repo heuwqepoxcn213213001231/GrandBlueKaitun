@@ -47,8 +47,10 @@ return function(GB)
 	def("AutoRewards", true)
 	def("AutoTutorial", true)
 
-	-- Build: Balanced | Strength | Sword | Gun | Fruit | Hybrid
-	def("Build", "Balanced")
+	-- Build: Melee | Balanced | Strength | Sword | Gun | Fruit | Hybrid
+	-- StatRatio is live current totals, not a dump of unused points. 8 Str : 2 Health.
+	def("Build", "Melee")
+	def("StatRatio", { Strength = 8, Health = 2 })
 	def("FruitMode", "KEEP_CURRENT") -- KEEP_CURRENT | DesiredFruits
 	def("DesiredFruits", { "Flame", "Darkness", "Light", "Chop" })
 

@@ -479,8 +479,12 @@ return function(GB)
 					return true
 				end
 			elseif step == "Mining" then
-				if M.Mining(item) then
-					return M.AlreadyOwned(item, amount)
+				local swung = M.Mining(item)
+				if credited(item, amount, ctx) then
+					return true
+				end
+				if swung then
+					return false, "hunting"
 				end
 			elseif step == "Crafting" then
 				if M.Crafting(item) then

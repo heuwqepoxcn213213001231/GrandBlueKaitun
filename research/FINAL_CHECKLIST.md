@@ -21,7 +21,7 @@
 | Haki | DISABLED | No trainer/quest/unlock remote |
 | Race/Trait | DISABLED | Odds VERIFIED; AutoRaceTrait false; Race FireServer missing |
 | Bosses | PARTIAL | Named kill targets on live story/repeat; loot tables UNKNOWN |
-| Mining | PARTIAL | Equip pickaxe + EquipAndActivateBindable("Pickaxe") |
+| Mining | WORKING | HOLD MouseButton1 through Mining QTE, release in crit zone / bar top (1.1.12) |
 | Fishing | PARTIAL | Move to shop/rod; cast packet UNRESOLVED |
 | Farming | PARTIAL | Move + proximity; grow math UNKNOWN |
 | Cooking | PARTIAL | Move to target; perfect window UNKNOWN |
