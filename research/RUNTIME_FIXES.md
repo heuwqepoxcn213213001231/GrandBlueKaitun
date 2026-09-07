@@ -1,5 +1,62 @@
 # Runtime Fixes
 
+## 1.0.7 — Basics Cast blocked by Unlock Skill tutorial overlay
+
+### Issue
+
+Live **Basics Cast Strong Punch**. Overlay **Unlock Skill** (Strong Punch / Active Skill) + "PRESS ANYWHERE TO CONTINUE" / "Press anywhere to continue". Instruction: "When a skill is unlocked, it will show up on your screen with a special effect".
+
+Logs:
+
+```
+[Kaitun][QUEST] Basics fail #4 cast not credited Strong Punch
+[Kaitun][QUEST] Basics fail #5 cast not credited Strong Punch
+[Kaitun][QUEST] STUCK Basics cast not credited Strong Punch
+[Kaitun][RECOVERY] level=1 quest Basics
+[Kaitun][SKILL] cast hotbar Strong Punch
+```
+
+Hotbar click ran under the overlay. SkillObtained also sets `CantAttack` until dismissed. Five "casts" then STUCK.
+
+`CLOSEST PART BaseRock` + table dumps are **not** from Kaitun. Game `PickaxeStrike` (`workspace:GetAttribute("DebugPrints")`).
+
+### Root Cause (Studio place `118635363908336`)
+
+| Surface | Path | Dismiss |
+|---|---|---|
+| Skill card (left) | `PlayerGui.SkillObtained` from `RS.ScreenGuis.SkillObtained` | `UIS.InputBegan` MouseButton1/Touch **after 3s**. `ContinueButton` is TextLabel, not a button. Sets `Enabled=false` + clears CantAttack. `Event:Fire(true)` is visuals only. |
+| Tutorial (title + step + bottom prompt) | `PlayerGui.TutorialScreen` from `RS.ScreenGuis.TutorialScreen` | `TutorialLocal`: `UIS.InputBegan` MouseButton1/Touch. `ClickToContinue` TextLabel. `Background.Active=false` (click is not gameProcessed). **Unlock Skill** has 3 stages; last click `CloseGUI` → `TutorialEvent:FireServer("Unlock Skill")`. Same ScreenGui hosts Mining / Curse Fruits. |
+| Equip leftover | `EquipStrongPunch` | ScreenShadow highlight on scroll/hotbar — not this overlay. |
+
+No full-screen GuiButton. Do not invent remotes. Cast after overlay: `CastStrongPunch` clicks hotbar `ToolFrame.Title == "Strong Punch"` (same as `Skills.cast`).
+
+Basics remaining after Cast (handlers already exist): Talk Graves → `Required TotalStatPoints` (`Stats.investMinimum`) → Talk Graves → `Open Logbook` (`ForceOpenLogbook` + `OpenLogbookHelp`).
+
+### Fix
+
+- `State.tutorialOverlayVisible` / `State.dismissTutorialOverlay`: TutorialScreen, SkillObtained, any Enabled LayerCollector with ClickToContinue / ContinueButton / "Press anywhere" / "Unlock Skill".
+- Dismiss: `clickGui` if a GuiButton exists, then fire the same `UserInputService.InputBegan` (MouseButton1, gameProcessed=false). Rate 0.45s. Not Strong-Punch-only.
+- Quest `doLive` + EquipSkill/Cast: dismiss first. Do **not** `noteFail` / STUCK while overlay is up.
+- `Skills.equip` / `Skills.cast`: refuse until overlay is gone.
+
+### Files
+
+- `Core/State.lua`, `Systems/Quest.lua`, `Systems/Skills.lua`
+- `VERSION` / `manifest.json` / `loader.lua` → **1.0.7**
+
+### Expected next log
+
+```
+[Kaitun][UI] dismiss overlay TutorialScreen Unlock Skill
+[Kaitun][UI] dismiss overlay SkillObtained Strong Punch
+[Kaitun][SKILL] cast hotbar Strong Punch
+[Kaitun][QUEST] Basics 0/1 -> 1/1
+```
+
+Then Talk Graves → Invest → Talk → Open Logbook.
+
+---
+
 ## 1.0.6 — Live quest stuck on Introduction while UI is Basics EquipSkill
 
 ### Issue

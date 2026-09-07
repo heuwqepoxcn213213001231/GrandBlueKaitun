@@ -2,7 +2,7 @@
 
 | Feature | Status | Reason |
 |---|---|---|
-| Fresh bootstrap | PARTIAL | Wait character + StatReplication; live quest via GetData+tracker (1.0.6). 1.0.1–1.0.5 prior |
+| Fresh bootstrap | PARTIAL | Wait character + StatReplication; live quest via GetData+tracker (1.0.6). Overlay dismiss 1.0.7. 1.0.1–1.0.5 prior |
 | Tutorial | WORKING | Introduction Talk/Dummy/Dash/Block/turn-in; Basics EquipSkill scroll + Cast + Invest + OpenLogbookHelp |
 | Quest | WORKING | Generic live stage executor (Talk/Kill/Collect/Purchase/Equip/Upgrade/Mine/Fish/Farm/Cook/Deliver/Interact/Travel/Escort/Boss). UNKNOWN_OBJECTIVE stops that loop |
 | Auto level | WORKING | Story gates + repeatable `full_until` bands |

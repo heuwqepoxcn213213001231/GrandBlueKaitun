@@ -686,6 +686,10 @@ return function(GB)
 		end
 		if typ == "EquipSkill" then
 			GB.Combat.stopLock()
+			if GB.State.tutorialOverlayVisible() then
+				GB.State.dismissTutorialOverlay()
+				return false
+			end
 			local qs = M.questState(questName)
 			local before = M.signature(qs)
 			local ok = GB.Skills.equip(target)
@@ -695,12 +699,20 @@ return function(GB)
 					M.noteOk(questName)
 					return true
 				end
+				if GB.State.tutorialOverlayVisible() then
+					GB.State.dismissTutorialOverlay()
+					return false
+				end
 				M.noteFail(questName, "equipskill not credited " .. tostring(target))
 			end
 			return ok
 		end
 		if typ == "Cast" then
 			GB.Combat.stopLock()
+			if GB.State.tutorialOverlayVisible() then
+				GB.State.dismissTutorialOverlay()
+				return false
+			end
 			local qs = M.questState(questName)
 			local before = M.signature(qs)
 			local ok = GB.Skills.cast(target)
@@ -709,6 +721,10 @@ return function(GB)
 				if progressed then
 					M.noteOk(questName)
 					return true
+				end
+				if GB.State.tutorialOverlayVisible() then
+					GB.State.dismissTutorialOverlay()
+					return false
 				end
 				M.noteFail(questName, "cast not credited " .. tostring(target))
 			end
@@ -961,6 +977,10 @@ return function(GB)
 		end
 
 		if qs.Objective then
+			if GB.State.tutorialOverlayVisible() then
+				GB.State.dismissTutorialOverlay()
+				return false
+			end
 			local typ = qs.Objective.Type
 			if typ and not HANDLED[typ] then
 				if not M.unknown[name .. tostring(typ)] then
@@ -974,6 +994,10 @@ return function(GB)
 		end
 
 		if qs.NPC then
+			if GB.State.tutorialOverlayVisible() then
+				GB.State.dismissTutorialOverlay()
+				return false
+			end
 			return M.talk(qs.NPC, false, { Quest = name, Island = qs.Island, DisplayName = qs.NPC })
 		end
 		return false

@@ -1,5 +1,6 @@
 -- EquipSkill: scroll overlay → ConsumeSkillScroll(nil) → Skill("Equip", name).
--- Cast: hotbar ToolFrame Title == name. PromptSkillEquip only for Tool obtain popup.
+-- Cast: dismiss TutorialScreen/SkillObtained first, then hotbar ToolFrame Title == name.
+-- PromptSkillEquip only for Tool obtain popup.
 
 return function(GB)
 	local M = {
@@ -175,6 +176,10 @@ return function(GB)
 		if not name then
 			return false
 		end
+		if GB.State.tutorialOverlayVisible() then
+			GB.State.dismissTutorialOverlay()
+			return false
+		end
 		if os.clock() - (M.lastEquip[name] or 0) < 0.9 then
 			return false
 		end
@@ -237,6 +242,10 @@ return function(GB)
 
 	function M.cast(name)
 		if not name then
+			return false
+		end
+		if GB.State.tutorialOverlayVisible() then
+			GB.State.dismissTutorialOverlay()
 			return false
 		end
 		if os.clock() - (M.lastCast[name] or 0) < 0.7 then

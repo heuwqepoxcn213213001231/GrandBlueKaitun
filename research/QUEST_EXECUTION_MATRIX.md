@@ -13,7 +13,7 @@ Talk remote: `ClientQuest:FireServer("Talk", DisplayName)` + `DialogueBindable:F
 | Introduction | 5 | Talk | Officer Graves | Talk | ResolveNPC DisplayName + alias Officer Graves [2] DialogueNPCs | live Talk Officer Graves count 1 | VERIFIED |
 | Basics | 1 | Talk | Officer Graves | Talk | ResolveNPC DisplayName + alias Officer Graves [2] DialogueNPCs | live Talk Officer Graves count 1 | VERIFIED |
 | Basics | 2 | EquipSkill | Strong Punch | Skills.equip: hotbar "Skill: Strong Punch" + SkillScroll ImageButton + ConsumeSkillScroll(nil) + Skill("Equip", name) + Skills.Storage click + Equip Button. Overlay ScreenShadow "Select the 'Strong Punch' skill scroll". PromptSkillEquip only Tool obtain popup | PlayerGui.Skills.Storage / hotbar Title Strong Punch / Skills[name].Equipped | live EquipSkill Strong Punch count 1 | VERIFIED |
-| Basics | 3 | Cast | Strong Punch | Skills.cast: close Skills/Menu, click hotbar ToolFrame Title "Strong Punch" (CastStrongPunch path) | live Cast count / hotbar | live Cast Strong Punch count 1 | VERIFIED |
+| Basics | 3 | Cast | Strong Punch | Dismiss TutorialScreen/SkillObtained (UIS.InputBegan MouseButton1) first. Then Skills.cast: close Skills/Menu, click hotbar ToolFrame Title "Strong Punch" (CastStrongPunch path) | live Cast count / hotbar | live Cast Strong Punch count 1 | VERIFIED |
 | Basics | 4 | Talk | Officer Graves | Talk | ResolveNPC DisplayName + alias Officer Graves [2] DialogueNPCs | live Talk Officer Graves count 1 | VERIFIED |
 | Basics | 5 | Required | TotalStatPoints | Equip | ResolveShop/Item | live Required TotalStatPoints count 1 | VERIFIED |
 | Basics | 6 | Talk | Officer Graves | Talk | ResolveNPC DisplayName + alias Officer Graves [2] DialogueNPCs | live Talk Officer Graves count 1 | VERIFIED |

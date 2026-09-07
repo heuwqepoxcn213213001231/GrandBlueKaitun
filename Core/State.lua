@@ -173,6 +173,167 @@ return function(GB)
 		return fired or ok
 	end
 
+	-- TutorialScreen / SkillObtained: no GuiButton. Client is UIS.InputBegan
+	-- MouseButton1/Touch (Background.Active=false so gameProcessed=false).
+	-- SkillObtained connects the listener only after a 3s delay.
+	local OVERLAY_GUIS = { "TutorialScreen", "SkillObtained" }
+
+	local function layerOn(ui)
+		if not ui then
+			return false
+		end
+		if ui:IsA("LayerCollector") and ui.Enabled == true then
+			return true
+		end
+		return ui:GetAttribute("Enabled") == true
+	end
+
+	local function overlayLabel(ui)
+		if not ui then
+			return "overlay"
+		end
+		if ui.Name == "TutorialScreen" then
+			local title = ui:FindFirstChild("Title")
+			local t = title and guiText(title)
+			return "TutorialScreen " .. tostring(t or "")
+		end
+		if ui.Name == "SkillObtained" then
+			local frame = ui:FindFirstChild("Frame")
+			local sn = frame and frame:FindFirstChild("SkillName")
+			return "SkillObtained " .. tostring((sn and guiText(sn)) or "")
+		end
+		return ui.Name
+	end
+
+	local function pressAnywhereText(t)
+		if type(t) ~= "string" or t == "" then
+			return false
+		end
+		return string.find(string.lower(t), "press anywhere", 1, true) ~= nil
+	end
+
+	function M.tutorialOverlayVisible()
+		local pg = GB.lp and GB.lp.PlayerGui
+		if not pg then
+			return false, nil
+		end
+		for _, name in ipairs(OVERLAY_GUIS) do
+			local ui = pg:FindFirstChild(name)
+			if layerOn(ui) then
+				return true, ui
+			end
+		end
+		for _, ui in ipairs(pg:GetChildren()) do
+			if ui:IsA("LayerCollector") and layerOn(ui) then
+				if ui:FindFirstChild("ClickToContinue", true) or ui:FindFirstChild("ContinueButton", true) then
+					return true, ui
+				end
+				local title = ui:FindFirstChild("Title")
+				local tt = title and guiText(title)
+				if pressAnywhereText(tt) or (type(tt) == "string" and string.find(tt, "Unlock Skill", 1, true)) then
+					return true, ui
+				end
+				for _, d in ipairs(ui:GetDescendants()) do
+					if (d:IsA("TextLabel") or d:IsA("TextButton")) and pressAnywhereText(d.Text) then
+						return true, ui
+					end
+				end
+			end
+		end
+		return false, nil
+	end
+
+	local function fireInputBegan(inputType, keyCode)
+		local UIS = game:GetService("UserInputService")
+		local fake = {
+			UserInputType = inputType or Enum.UserInputType.MouseButton1,
+			KeyCode = keyCode or Enum.KeyCode.Unknown,
+			UserInputState = Enum.UserInputState.Begin,
+		}
+		local sig = rbxSignal(UIS, "InputBegan")
+		if typeof(sig) == "RBXScriptSignal" then
+			if typeof(firesignal) == "function" then
+				local ok = pcall(firesignal, sig, fake, false)
+				if ok then
+					return true
+				end
+			end
+			if typeof(getconnections) == "function" then
+				local ok, conns = pcall(getconnections, sig)
+				if ok and type(conns) == "table" then
+					local any = false
+					for _, c in pairs(conns) do
+						local fire
+						pcall(function()
+							fire = c.Fire or c.fire
+						end)
+						if typeof(fire) == "function" and pcall(fire, c, fake, false) then
+							any = true
+						else
+							local fn
+							pcall(function()
+								fn = c.Function
+							end)
+							if typeof(fn) == "function" and pcall(fn, fake, false) then
+								any = true
+							end
+						end
+					end
+					if any then
+						return true
+					end
+				end
+			end
+		end
+		if typeof(mouse1click) == "function" then
+			mouse1click()
+			return true
+		end
+		local vim = game:GetService("VirtualInputManager")
+		if vim and vim.SendMouseButtonEvent then
+			vim:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+			vim:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+			return true
+		end
+		return false
+	end
+
+	local function clickContinueSurface(ui)
+		if not ui then
+			return false
+		end
+		local named = ui:FindFirstChild("ClickToContinue", true) or ui:FindFirstChild("ContinueButton", true)
+		if named and named:IsA("GuiButton") then
+			return M.clickGui(named)
+		end
+		local btn = ui:FindFirstChildWhichIsA("GuiButton", true)
+		if btn then
+			return M.clickGui(btn)
+		end
+		return false
+	end
+
+	function M.dismissTutorialOverlay()
+		local vis, ui = M.tutorialOverlayVisible()
+		if not vis then
+			M._overlayLog = nil
+			return false
+		end
+		local now = os.clock()
+		if now - (M._overlayAt or 0) < 0.45 then
+			return true
+		end
+		M._overlayAt = now
+		local label = overlayLabel(ui)
+		if M._overlayLog ~= label then
+			M._overlayLog = label
+			GB.Log.log("UI", "dismiss overlay " .. label)
+		end
+		clickContinueSurface(ui)
+		fireInputBegan(Enum.UserInputType.MouseButton1)
+		return true
+	end
+
 	function M.refresh()
 		M.prev = M.snap
 		local s = {}
