@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
--- Version: 1.1.21
--- Commit: 0f91408
--- BuiltAt: 2026-09-08T03:00:32+07:00
+-- Version: 1.1.22
+-- Commit: 11dfbb9
+-- BuiltAt: 2026-09-08T03:05:32+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -35,9 +35,9 @@ return function(meta)
 
 	stopPreviousInstance()
 
-	local BUILD_VERSION = "1.1.21"
-	local BUILD_COMMIT = "0f91408"
-	local BUILD_AT = "2026-09-08T03:00:32+07:00"
+	local BUILD_VERSION = "1.1.22"
+	local BUILD_COMMIT = "11dfbb9"
+	local BUILD_AT = "2026-09-08T03:05:32+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -8335,6 +8335,7 @@ return function(GB)
 	local REPOS_DIST = 4.2
 	local TARGET_MOVED = 3.5
 	local DEAD_TTL = 12
+	local SWING_RANGE_PAD = 1.8
 	local QUEST_CHECK_MIN_GAP = 0.32
 	local QUEST_CHECK_SAFETY = 2.8
 
@@ -8853,6 +8854,19 @@ return function(GB)
 		end
 		if M.lockMob and not M.IsEnemyAlive(M.lockMob) then
 			return
+		end
+		if GB.World.tweenPlaying and GB.World.tweenPlaying() then
+			return
+		end
+		if M.lockMob then
+			local root = GB.World.hrp and GB.World.hrp()
+			local part = GB.Resolver and GB.Resolver.part and GB.Resolver.part(M.lockMob) or nil
+			if root and part and part:IsA("BasePart") then
+				local maxRange = (GB.Config.CombatRange or 5.5) + SWING_RANGE_PAD
+				if (root.Position - part.Position).Magnitude > maxRange then
+					return
+				end
+			end
 		end
 		M.lastSwing = os.clock()
 		local atk = loadAttack()
