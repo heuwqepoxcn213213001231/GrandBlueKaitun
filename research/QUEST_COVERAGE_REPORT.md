@@ -1,6 +1,6 @@
 # Quest Coverage Report
 
-**Version:** 1.1.0  
+**Version:** 1.1.1  
 **Source:** `research/quests.json` (151 QuestInfo modules) + planner Goal/AcquireMethod.
 
 Quests dumped: **151**
@@ -141,6 +141,6 @@ Quests dumped: **151**
 - Goal: AcquireItem
 - Method: EnemyDrop
 - Source: **Corrupt Marine** (QuestInfo stage marker, CollectionService tag)
-- Pickup: drop-container / prompt semantic match (not nearest BaseRock)
+- Credit: kill → inventory **or** Collect `Target.Amount` (no world drop required; CollectQuestItem is not this quest)
 - Validation: inventory/quest count 0/1 → 1/1
 

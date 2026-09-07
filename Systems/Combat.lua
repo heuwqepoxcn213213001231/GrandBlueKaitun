@@ -78,6 +78,24 @@ return function(GB)
 		end
 	end
 
+	function M.isPet(inst)
+		return GB.Resolver.isPet and GB.Resolver.isPet(inst)
+	end
+
+	function M.aliveEnemy(mob)
+		if not (mob and mob.Parent) then
+			return false
+		end
+		if M.isPet(mob) then
+			return false
+		end
+		local h = mob:FindFirstChildOfClass("Humanoid")
+		if h and h.Health <= 0 then
+			return false
+		end
+		return true
+	end
+
 	function M.findTarget(name, questName)
 		name = GB.QuestData.killName(questName, name)
 		if not name then
@@ -85,9 +103,17 @@ return function(GB)
 			return nil
 		end
 		if isDummy(name) then
-			return GB.Resolver.dummy()
+			local d = GB.Resolver.dummy()
+			if d and M.isPet(d) then
+				return nil
+			end
+			return d
 		end
-		return GB.Resolver.enemy(name)
+		local mob = GB.Resolver.enemy(name)
+		if mob and M.isPet(mob) then
+			return nil
+		end
+		return mob
 	end
 
 	function M.needReposition(mob)
@@ -168,7 +194,11 @@ return function(GB)
 	end
 
 	function M.startLock(mob)
+		if not mob or M.isPet(mob) then
+			return
+		end
 		M.lockMob = mob
+		GB.Log.log("STATE", string.format("doing=combat target=%s", mob.Name))
 		if M.lockConn then
 			return
 		end
@@ -178,17 +208,12 @@ return function(GB)
 				return
 			end
 			local mob2 = M.lockMob
-			if not (mob2 and mob2.Parent) then
+			if not M.aliveEnemy(mob2) then
 				M.stopLock()
 				if GB.Resolver.invalidateDummy then
 					GB.Resolver.invalidateDummy()
 				end
 				GB.Cache.invalidate()
-				return
-			end
-			local h = mob2:FindFirstChildOfClass("Humanoid")
-			if h and h.Health <= 0 then
-				M.stopLock()
 				return
 			end
 			if M.needReposition(mob2) then
@@ -203,12 +228,42 @@ return function(GB)
 		if not mob then
 			return false
 		end
+		if M.isPet(mob) then
+			return false
+		end
 		GB.Log.log("COMBAT", tostring(name))
-		if not GB.World.moveTo(mob, 12) then
+		GB.Log.log("STATE", string.format("doing=combat target=%s", mob.Name))
+		if GB.World.ToEnemy then
+			if not GB.World.ToEnemy(mob, GB.Config.CombatRange or 5.5) then
+				if not GB.World.moveTo(mob, 12) then
+					return false
+				end
+			end
+		elseif not GB.World.moveTo(mob, 12) then
 			return false
 		end
 		M.startLock(mob)
 		return true
+	end
+
+	function M.huntUntilDead(name, timeout)
+		timeout = timeout or 14
+		local mob = M.findTarget(name, nil)
+		if not M.aliveEnemy(mob) then
+			return false, "no_enemy"
+		end
+		if not M.hunt(name) then
+			return false, "travel"
+		end
+		local t0 = os.clock()
+		while os.clock() - t0 < timeout do
+			if not M.aliveEnemy(M.lockMob or mob) then
+				M.stopLock()
+				return true, "dead"
+			end
+			task.wait(0.15)
+		end
+		return true, "timeout"
 	end
 
 	function M.attack(name, questName)
@@ -308,7 +363,7 @@ return function(GB)
 	end
 
 	function M.tick()
-		if M.lockMob and not M.lockMob.Parent then
+		if M.lockMob and (not M.lockMob.Parent or M.isPet(M.lockMob)) then
 			M.stopLock()
 			if GB.Resolver.invalidateDummy then
 				GB.Resolver.invalidateDummy()

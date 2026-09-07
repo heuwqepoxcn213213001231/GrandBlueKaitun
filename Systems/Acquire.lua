@@ -252,16 +252,53 @@ return function(GB)
 		return M.Interactable(item, ctx)
 	end
 
-	local function huntSource(source)
-		if not source or source == "" then
-			return false
+	local function needAmount(ctx, amount)
+		return (ctx and ctx.Amount) or amount or 1
+	end
+
+	local function questItemCount(item, ctx, amount)
+		local qname = ctx and ctx.Quest
+		if not qname or not GB.Quest then
+			return 0, false
 		end
-		return GB.Combat.hunt(source)
+		if GB.PlayerData.invalidateLive then
+			GB.PlayerData.invalidateLive()
+		end
+		if GB.PlayerData.refreshLive then
+			GB.PlayerData.refreshLive(true)
+		end
+		if GB.PlayerData.finished(qname) then
+			return needAmount(ctx, amount), true
+		end
+		local qs = GB.Quest.questState(qname)
+		if not qs then
+			return 0, false
+		end
+		if qs.IsComplete then
+			return needAmount(ctx, amount), true
+		end
+		local o = qs.Objective
+		if o and o.TargetName == item then
+			return o.Current or 0, o.Complete == true
+		end
+		if ctx.Stage and qs.StageIndex and qs.StageIndex ~= ctx.Stage then
+			return needAmount(ctx, amount), true
+		end
+		return 0, false
+	end
+
+	local function credited(item, amount, ctx)
+		if M.AlreadyOwned(item, amount) then
+			return true
+		end
+		local n, done = questItemCount(item, ctx, amount)
+		return done or n >= amount
 	end
 
 	function M.AcquireFromEnemyDrop(item, amount, ctx)
 		ctx = ctx or {}
 		amount = amount or 1
+		ctx.Amount = amount
 		local source = ctx.Source
 		local spec = GB.QuestSpecs and GB.QuestSpecs.itemOf(item)
 		if not source and spec then
@@ -275,59 +312,81 @@ return function(GB)
 		M.lastSource = source
 		GB.Log.log("ACQUIRE", "source=" .. tostring(source))
 
-		if M.AlreadyOwned(item, amount) then
+		if credited(item, amount, ctx) then
 			return true
 		end
 		if M.WorldPickup(item) then
 			task.wait(0.35)
-			if M.AlreadyOwned(item, amount) then
+			if credited(item, amount, ctx) then
 				return true
 			end
 		end
 
-		local strat = GB.Recovery and GB.Recovery.currentStrategy and GB.Recovery.currentStrategy() or "enemy"
-		if strat == "lookup" then
-			return M.WorldPickup(item)
-		end
-		if strat == "diagnostic" or strat == "blocker" then
-			return false
-		end
-
-		local key = tostring(ctx.Quest or "") .. "|" .. item
-		local n = (M.cycles[key] or 0) + 1
-		local cap = GB.Config.QuestMaxAcquireCycles or 8
-		if n > cap then
-			GB.Log.warn("ACQUIRE", "bounded fail " .. item .. " x" .. tostring(n))
-			M.cycles[key] = 0
-			return false, "bounded"
-		end
-		M.cycles[key] = n
-
-		huntSource(source)
-		local window = GB.Config.DropWindow or 4
 		local t0 = os.clock()
-		while os.clock() - t0 < window do
-			if M.AlreadyOwned(item, amount) then
+		local budget = 16
+		local sawEnemy = false
+		local sawDrop = false
+		local noEnemy = 0
+
+		while os.clock() - t0 < budget do
+			if credited(item, amount, ctx) then
 				if GB.Combat then
 					GB.Combat.stopLock()
 				end
 				return true
 			end
+
 			local drop = M.findDrop(item)
 			if drop then
+				sawDrop = true
 				if GB.Combat then
 					GB.Combat.stopLock()
 				end
 				GB.Log.log("DROP", tostring(item))
 				M.pickupInst(drop, item)
 				task.wait(0.3)
-				if M.AlreadyOwned(item, amount) then
+				if credited(item, amount, ctx) then
 					return true
 				end
 			end
-			task.wait(0.2)
+
+			local mob = GB.Combat and GB.Combat.findTarget and GB.Combat.findTarget(source)
+			if mob then
+				sawEnemy = true
+				noEnemy = 0
+				GB.Log.log("STATE", string.format("doing=combat target=%s", mob.Name))
+				local ok = GB.Combat.huntUntilDead and GB.Combat.huntUntilDead(source, 12)
+				if not ok then
+					GB.Combat.hunt(source)
+					task.wait(0.8)
+				end
+				if GB.PlayerData.invalidateLive then
+					GB.PlayerData.invalidateLive()
+				end
+				task.wait(0.25)
+				if credited(item, amount, ctx) then
+					if GB.Combat then
+						GB.Combat.stopLock()
+					end
+					GB.Log.log("ACQUIRE", "kill-credit " .. item)
+					return true
+				end
+			else
+				noEnemy = noEnemy + 1
+				if ctx.Location and GB.World and GB.World.pullStream then
+					GB.World.pullStream(ctx.Location)
+				end
+				task.wait(0.4)
+			end
 		end
-		return M.AlreadyOwned(item, amount)
+
+		if credited(item, amount, ctx) then
+			return true
+		end
+		if sawEnemy or sawDrop then
+			return false, "hunting"
+		end
+		return false, "stuck"
 	end
 
 	function M.BossDrop(item, amount, ctx)
@@ -397,8 +456,8 @@ return function(GB)
 				if ok then
 					return true
 				end
-				if err == "bounded" then
-					return false
+				if err == "hunting" or err == "stuck" or err == "bounded" then
+					return false, err
 				end
 			elseif step == "ShopPurchase" then
 				if M.ShopPurchase(item, amount) then

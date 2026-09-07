@@ -103,23 +103,73 @@ return function(GB)
 		GB.Backpack.tick()
 	end
 
+	local function logDoing(doing, target)
+		GB.Log.log("STATE", string.format("doing=%s target=%s", tostring(doing), tostring(target or "-")))
+	end
+
+	local function logQuestDoing(name)
+		local mob = GB.Combat and GB.Combat.lockMob
+		if mob and mob.Parent then
+			logDoing("combat", mob.Name)
+			return
+		end
+		local qs = name and GB.Quest.questState(name)
+		local o = qs and qs.Objective
+		if o then
+			local typ = tostring(o.Type or "quest")
+			if typ == "Collect" or typ == "Kill" or typ == "Defeat" or typ == "Hit" or typ == "Shoot" then
+				logDoing("combat", o.TargetName or (GB.Acquire and GB.Acquire.lastSource) or "-")
+			elseif typ == "Talk" or typ == "Automatic Talk" then
+				logDoing("talk", o.TargetName)
+			else
+				logDoing(string.lower(typ), o.TargetName)
+			end
+			return
+		end
+		logDoing("quest", name)
+	end
+
+	local function acceptNextStory(island, lv)
+		local story = nextStory(island, lv)
+		if not story then
+			return false
+		end
+		if GB.PlayerData.finished(story) then
+			return false
+		end
+		setTask("story:" .. story)
+		logDoing("accept", story)
+		GB.Quest.doLive(story)
+		return true
+	end
+
+	local function afterQuest(name)
+		if name and GB.PlayerData.finished(name) then
+			local snap = GB.State.get()
+			acceptNextStory(snap.CurrentIsland, snap.Level or 0)
+			return
+		end
+		logQuestDoing(name)
+	end
+
 	function M.decide()
 		local snap = GB.State.refresh()
 		if not snap.Alive then
 			setTask("wait_spawn")
+			logDoing("wait_spawn")
 			return
 		end
 		if snap.GameplayPaused then
 			setTask("wait_unpause")
+			logDoing("wait_unpause")
 			GB.World.waitUnpause()
 			return
 		end
 
-		-- Recovery
+		-- Recovery dumps / strategy change, then resume story. Do not freeze.
 		if GB.Recovery.stuck() then
 			setTask("recovery")
 			GB.Recovery.run("engine")
-			return
 		end
 
 		if GB.Config.AutoCodes then
@@ -148,7 +198,9 @@ return function(GB)
 					return
 				end
 				setTask("quest:" .. cur)
+				logQuestDoing(cur)
 				GB.Quest.doLive(cur)
+				afterQuest(cur)
 				return
 			end
 		end
@@ -171,14 +223,18 @@ return function(GB)
 		local liveName = GB.PlayerData.current()
 		if liveName and not GB.Config.SkipQuests[liveName] then
 			setTask("quest:" .. liveName)
+			logQuestDoing(liveName)
 			GB.Quest.doLive(liveName)
+			afterQuest(liveName)
 			return
 		end
 
 		local pick = picker()
 		if pick and pick.name then
 			setTask("pick:" .. pick.name)
+			logDoing("pick", pick.name)
 			GB.Quest.doLive(pick.name)
+			afterQuest(pick.name)
 			return
 		end
 
@@ -190,26 +246,32 @@ return function(GB)
 				local rep = bestRepeat(island, lv)
 				if rep then
 					setTask("farm:" .. rep)
+					logDoing("farm", rep)
 					GB.Quest.doLive(rep)
 					return
 				end
 				setTask("wait_level:" .. story)
+				logDoing("wait_level", story)
 				return
 			end
 			setTask("story:" .. story)
+			logDoing("accept", story)
 			GB.Quest.doLive(story)
+			afterQuest(story)
 			return
 		end
 
 		local rep = bestRepeat(island, lv)
 		if rep then
 			setTask("repeat:" .. rep)
+			logDoing("repeat", rep)
 			GB.Quest.doLive(rep)
 			return
 		end
 
 		runOptional()
 		setTask("idle")
+		logDoing("idle")
 	end
 
 	return M

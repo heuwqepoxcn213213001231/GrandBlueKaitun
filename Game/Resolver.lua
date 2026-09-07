@@ -224,12 +224,31 @@ return function(GB)
 		return inst
 	end
 
+	-- Studio: Workspace.Entities."<Player> Slot N Pet" tagged Pet (+ NPC/Character).
+	function M.isPet(inst)
+		if not inst then
+			return false
+		end
+		local root = climbRoot(inst) or inst
+		if root:HasTag("Pet") then
+			return true
+		end
+		local n = root.Name
+		if type(n) == "string" and string.find(n, " Slot ", 1, true) and string.sub(n, -4) == " Pet" then
+			return true
+		end
+		return false
+	end
+
 	local function usable(inst, kind)
 		if not (inst and inst.Parent) or inRS(inst) then
 			return false
 		end
 		local root = climbRoot(inst)
 		if not root or inRS(root) then
+			return false
+		end
+		if M.isPet(root) then
 			return false
 		end
 		if kind == "enemy" then
@@ -652,8 +671,34 @@ return function(GB)
 		if M.isDummyName(name) then
 			return M.dummy()
 		end
+		local origin
+		local hrp = GB.World and GB.World.hrp and GB.World.hrp()
+		if hrp then
+			origin = hrp.Position
+		end
+		local best, bestD
+		local ok, tagged = pcall(CS.GetTagged, CS, name)
+		if ok and type(tagged) == "table" then
+			for _, inst in ipairs(tagged) do
+				if usable(inst, "enemy") then
+					local root = climbRoot(inst) or inst
+					local pos = M.positionOf(root)
+					local d = (origin and pos) and (pos - origin).Magnitude or 1e9
+					if not bestD or d < bestD then
+						best, bestD = root, d
+					end
+				end
+			end
+		end
+		if best then
+			GB.Log.log("RESOLVE", string.format("%s -> %s", name, best:GetFullName()))
+			return best
+		end
 		local pack = M.resolve(name, { kind = "enemy", ExpectedRole = "enemy" })
-		return pack and pack.Instance
+		if pack and pack.Instance and not M.isPet(pack.Instance) then
+			return pack.Instance
+		end
+		return nil
 	end
 
 	function M.taggedAny(tag)
@@ -661,7 +706,7 @@ return function(GB)
 			return nil
 		end
 		for _, inst in ipairs(CS:GetTagged(tag)) do
-			if inst.Parent and not inRS(inst) then
+			if inst.Parent and not inRS(inst) and not M.isPet(inst) then
 				return inst
 			end
 		end

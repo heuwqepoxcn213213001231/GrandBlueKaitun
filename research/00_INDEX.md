@@ -1,6 +1,6 @@
 # Grand Blue (Eternal Pose) — Research Pack
 
-**Turn scope:** Phase 4 RE + Phase 5–9 Kaitun implemented. Entry `kaitun.lua`. Version **1.1.0** (Goal + Acquire planner). Reports: `FINAL_IMPLEMENTATION_REPORT.md`, `FINAL_CHECKLIST.md`, `REMOTE_REGISTRY.md`, `PROGRESSION_FINAL.md`, `RUNTIME_FIXES.md`, `QUEST_EXECUTION_MATRIX.md`, `QUEST_COVERAGE_REPORT.md`.
+**Turn scope:** Phase 4 RE + Phase 5–9 Kaitun implemented. Entry `kaitun.lua`. Version **1.1.1** (EnemyDrop kill-credit; resume after STUCK). Reports: `FINAL_IMPLEMENTATION_REPORT.md`, `FINAL_CHECKLIST.md`, `REMOTE_REGISTRY.md`, `PROGRESSION_FINAL.md`, `RUNTIME_FIXES.md`, `QUEST_EXECUTION_MATRIX.md`, `QUEST_COVERAGE_REPORT.md`.
 
 **Place (Studio):** `place 118635363908336 Game.rbxl` — connected. `Workspace.Islands` chỉ có 3 đảo.
 
@@ -16,7 +16,7 @@
 | `E_item_database.md` | Item từ `data.json` (+ phụ lục Studio) |
 | `F_remote_map.md` | Action → remote → args |
 | `G_missing.md` | Chưa RE |
-| `RUNTIME_FIXES.md` | Crash/runtime fixes (1.0.1–1.0.7 prior; **1.1.0** AcquireItem planner, Pirate Fan Letter EnemyDrop) |
+| `RUNTIME_FIXES.md` | Crash/runtime fixes (1.0.1–1.1.0 prior; **1.1.1** EnemyDrop kill-credit, no freeze after STUCK) |
 | `QUEST_EXECUTION_MATRIX.md` | Mọi stage: Goal / AcquireMethod / source / handler / status |
 | `QUEST_COVERAGE_REPORT.md` | Totals planned/implemented/runtime/unresolved; Anchor/Clown/Maple |
 | `quests.json` | 151 quest đã flatten |

@@ -812,7 +812,24 @@ return function(GB)
 	end
 
 	function M.ToEnemy(inst, range)
-		return M.moveTo(inst, range or 12)
+		if not inst then
+			return false
+		end
+		if GB.Resolver.isPet and GB.Resolver.isPet(inst) then
+			return false
+		end
+		local dest = M.safeOffset(inst, range or (GB.Config.CombatRange or 5.5))
+		if not dest then
+			return M.moveTo(inst, range or 8)
+		end
+		if not M.destOk(dest) then
+			local g = M.groundAt(dest)
+			if g then
+				dest = g
+			end
+		end
+		GB.Log.log("TRAVEL", "Teleport -> " .. (GB.Resolver.displayName(inst) or inst.Name))
+		return M.setPos(dest)
 	end
 
 	function M.ToInteractable(inst, range)

@@ -124,7 +124,7 @@ return function(GB)
 			end
 			local beforeCur = plan.Current or 0
 			local beforeSig = GB.Quest.signature(qs)
-			local ok = GB.Acquire.AcquireItem(plan.Target, plan.Amount or 1, {
+			local ok, err = GB.Acquire.AcquireItem(plan.Target, plan.Amount or 1, {
 				Quest = qs.Name,
 				Stage = qs.StageIndex,
 				Type = plan.Type,
@@ -153,6 +153,9 @@ return function(GB)
 			end
 			if ok then
 				return true
+			end
+			if err == "hunting" then
+				return false
 			end
 			GB.Quest.noteFail(qs.Name, "acquire " .. tostring(plan.Target))
 			return false

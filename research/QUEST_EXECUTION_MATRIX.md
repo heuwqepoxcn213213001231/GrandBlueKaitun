@@ -3,6 +3,7 @@
 Source: `research/quests.json` (QuestInfo Studio dump) + live Studio place `118635363908336`.
 Planner: Goal + AcquireMethod. Collect is not ResolveShop/Item.
 Pirate Fan Letter Collect source = **Corrupt Marine** (QuestInfo marker). Not Strong Marine.
+Collect credits on kill (inventory / `Target.Amount`). No world pickup / CollectQuestItem.
 Runtime identity: world Graves = `Workspace.AA IMPORTANT.DialogueNPCs.Anchor Town.Officer Graves [2]` (DisplayName `Officer Graves`).
 Talk remote: `ClientQuest:FireServer("Talk", DisplayName)` + `DialogueBindable:Fire(Configuration)` — never `BeginQuest`.
 
@@ -451,7 +452,7 @@ Talk remote: `ClientQuest:FireServer("Talk", DisplayName)` + `DialogueBindable:F
 ## Notes
 
 - **Officer Graves** quest target / DisplayName ≠ instance Name. Instance is `Officer Graves [2]`. ReplicatedStorage `Officer Graves` is character-create.
-- **Pirate Fan Letter** Collect = KillUntilDrop **Corrupt Marine** (QuestInfo `markers[].tag`). Pickup via drop-container prompt. Do not `byName` the letter as a world rock.
+- **Pirate Fan Letter** Collect = KillUntilDrop **Corrupt Marine** (QuestInfo `markers[].tag`). Credit = inventory or Collect `Target.Amount` after kill. Do not require world pickup / CollectQuestItem.
 - **Pirate Instructions** Collect = KillUntilDrop **Black Noir Officer** (marker `Black Noir Officer Marker`).
 - **Escort The Mayor**: handler `Escort`, `NeverSkip`. Follow only. Do not substitute Talk/Kill.
 - **The Wandering Hypnotist**: `NeverSkip`. Kill target verified `"Hypnotist" Mango`.

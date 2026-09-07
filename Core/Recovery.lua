@@ -63,23 +63,24 @@ return function(GB)
 		GB.Log.warn("RECOVERY", string.format("level=%d strategy=%s %s", M.level, tostring(strat), tostring(why)))
 		GB.Cache.invalidate()
 
+		if strat == "lookup" or strat == "enemy" then
+			GB.State.track.TaskStartedAt = os.clock()
+			return
+		end
+
 		if GB.Combat then
 			GB.Combat.stopLock()
 		end
 
-		if strat == "lookup" then
-			return
-		end
-		if strat == "enemy" then
-			return
-		end
 		if strat == "diagnostic" then
 			if GB.DumpRuntimeIssue then
 				GB.DumpRuntimeIssue()
 			end
+			M.resetStrategy()
+			GB.State.track.TaskStartedAt = os.clock()
 			return
 		end
-		-- blocker
+		-- blocker: dump once, then resume hunt next tick
 		if GB.WriteDeadEnd then
 			GB.WriteDeadEnd()
 		end
@@ -87,6 +88,8 @@ return function(GB)
 		if q and GB.Config.NeverSkip[q] then
 			GB.Log.warn("RECOVERY", "keep " .. q)
 		end
+		M.resetStrategy()
+		M.level = 0
 		GB.State.track.TaskStartedAt = os.clock()
 	end
 

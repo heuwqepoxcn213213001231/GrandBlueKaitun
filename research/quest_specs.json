@@ -1,5 +1,5 @@
 {
-  "version": "1.1.0",
+  "version": "1.1.1",
   "source": "research/quests.json QuestInfo Studio dump",
   "items": {
     "Pirate Fan Letter": {
@@ -7,7 +7,7 @@
       "source": "Corrupt Marine",
       "source_location": "Anchor Town",
       "confidence": "STATIC_VERIFIED",
-      "note": "QuestInfo marker tag Corrupt Marine; description coughs it up. Not Strong Marine."
+      "note": "QuestInfo marker tag Corrupt Marine; kill-credit inventory/quest count. Not Strong Marine. No CollectQuestItem world prompt."
     },
     "Pirate Instructions": {
       "method": "EnemyDrop",

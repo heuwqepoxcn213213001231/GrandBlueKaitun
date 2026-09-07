@@ -1,5 +1,57 @@
 # Runtime Fixes
 
+## 1.1.1 — Enemy-drop Collect credits on kill, engine froze after STUCK
+
+### Issue
+
+```
+[Kaitun][PLAN] Need item Pirate Fan Letter
+[Kaitun][ACQUIRE] source=Corrupt Marine
+[Kaitun][RESOLVE] Corrupt Marine -> Workspace.Entities.Corrupt Marine 2436
+[Kaitun][QUEST] Pirate Fan Letter fail #1..#5 acquire Pirate Fan Letter
+[Kaitun][RESOLVE] miss 'Pirate Fan Letter' nearby=52 Officer Graves...
+[Kaitun][QUEST] STUCK Pirate Fan Letter acquire Pirate Fan Letter
+[Kaitun][RECOVERY] level=5 strategy=blocker
+```
+
+UI Collect 0/1. "Beat them up until one of them coughs it up." User: quest không làm, không nhận, không đánh quái.
+
+### Root cause (Studio place `118635363908336`)
+
+1. **Kill credit, no world drop.** QuestInfo stage 3: `CreateCondition(..., "Collect", "Pirate Fan Letter", 1)` + marker tag **Corrupt Marine**. ItemInfo: Type=`Quest Item`, ItemCap=1. Koro complete `Inventory.Remove(..., "Pirate Fan Letter")`. `CollectQuestItem` is only RetrieveLocalItem / Trouble Down the Well world prompts — **not** this quest. 1.1.0 waited for `findDrop` / pickup. Letter never appears as a world instance → fail #1–5 → STUCK.
+2. **STUCK froze the engine.** `AcquireFromEnemyDrop` returned false on recovery `diagnostic`/`blocker`. `DecisionEngine` `return` after `Recovery.run`. No more hunt.
+3. **Pet lock / highlight.** Live pets are `Workspace.Entities."<Player> Slot N Pet"` tagged **Pet** (also NPC/Character). `AttackModule.Swing` HitHighlight on whatever is in the hitbox. Resolver did not reject pets.
+4. **Strong Marine** — 0 Studio instances / 0 scripts. Marker stays **Corrupt Marine**.
+
+### Fix
+
+- EnemyDrop success = inventory **or** live Collect `Target.Amount` / stage advance. World pickup optional. Do not require prompt.
+- Hunt while 0/N and tagged enemies exist. `hunting` ≠ fail. STUCK only if no enemy AND no drop AND no progress after the budget.
+- After STUCK/blocker: reset strategy, next tick resumes hunt. Recovery no longer aborts the story tick.
+- Combat: reject `HasTag("Pet")` / `Slot N Pet`. Teleport to tagged enemy, Swing 0.42 + CanSwing, until dead, then next.
+- `[STATE] doing=combat target=Corrupt Marine 2436` each decision. Auto-accept next Automatic story when current completes.
+
+### Files
+
+- `Systems/Acquire.lua`, `Systems/Combat.lua`, `Game/Resolver.lua`, `Game/World.lua`
+- `Progression/DecisionEngine.lua`, `Progression/Planner.lua`, `Core/Recovery.lua`, `Core/Logger.lua`
+- `VERSION` / `manifest.json` / `loader.lua` → **1.1.1**
+
+### Expected log
+
+```
+[Kaitun][STATE] doing=combat target=Corrupt Marine 2436
+[Kaitun][PLAN] Need item Pirate Fan Letter
+[Kaitun][ACQUIRE] source=Corrupt Marine
+[Kaitun][COMBAT] Corrupt Marine
+[Kaitun][ACQUIRE] kill-credit Pirate Fan Letter
+[Kaitun][QUEST] 0/1 -> 1/1
+```
+
+No `[DROP]` / `[PICKUP]` required. Then Talk Koro (Automatic).
+
+---
+
 ## 1.1.0 — Collect treated as world item (Pirate Fan Letter → BaseRock)
 
 ### Issue
