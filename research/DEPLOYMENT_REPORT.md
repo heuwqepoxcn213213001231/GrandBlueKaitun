@@ -3,42 +3,44 @@
 ## Quyết định repo
 
 - Workspace `Tool/` **không** phải git repo (dump nhiều project).
-- Không có remote GitHub sẵn cho Grand Blue.
-- Chọn **repo riêng** `GrandBlueKaitun` (public) — raw URL sạch, không dính `.env` của Tool.
+- Repo riêng `GrandBlueKaitun` (public) — raw URL sạch, không dính `.env` của Tool.
 
-## GitHub auth (lúc build)
+## GitHub auth + push
 
-`gh auth status`: account `shuys1230sxmcsweiqpxcv` active nhưng **token keyring invalid**.
+`gh auth status`: account **`heuwqepoxcn213213001231`** active (scopes: gist, read:org, repo, workflow).
 
-Chưa create/push được remote. Architecture + commit local đã xong.
+`gh repo create GrandBlueKaitun --public --source=. --remote=origin --push` thành công.
 
-**Một lệnh user phải chạy:**
+| Field | Value |
+|---|---|
+| Repository | https://github.com/heuwqepoxcn213213001231/GrandBlueKaitun |
+| Branch | `main` |
+| Version | `1.0.0` |
+| Commit (docs URL bump) | *set after commit* |
+| Raw loader URL | https://raw.githubusercontent.com/heuwqepoxcn213213001231/GrandBlueKaitun/main/loader.lua |
 
-```bash
-gh auth refresh -h github.com
-```
-
-Sau đó, trong thư mục Grand Blue:
-
-```bash
-gh repo create GrandBlueKaitun --public --source=. --remote=origin --push
-```
-
-Default owner trong `loader.lua` = `shuys1230sxmcsweiqpxcv` (account `gh` đang trỏ). Raw URL **chưa tồn tại** cho đến khi push.
-
-## Raw URL (sau khi push)
-
-```
-https://raw.githubusercontent.com/shuys1230sxmcsweiqpxcv/GrandBlueKaitun/main/loader.lua
-```
-
-Production:
+## Production command
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/shuys1230sxmcsweiqpxcv/GrandBlueKaitun/main/loader.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/heuwqepoxcn213213001231/GrandBlueKaitun/main/loader.lua"))()
 ```
 
-Nếu owner khác: `getgenv().GB_REPO = "owner/GrandBlueKaitun"` rồi HttpGet đúng owner.
+`GBConfig` **không bắt buộc**. Loader dùng default trong `Config.lua`. Override trước loadstring nếu cần:
+
+```lua
+getgenv().GBConfig = {
+	Enabled = true,
+	Build = "Fruit",
+	FruitMode = "KEEP_CURRENT",
+	AutoHaki = false,
+	AutoRaceTrait = false,
+	AutoBackpack = false,
+	LogLevel = "INFO",
+}
+loadstring(game:HttpGet("https://raw.githubusercontent.com/heuwqepoxcn213213001231/GrandBlueKaitun/main/loader.lua"))()
+```
+
+Loader default: owner `heuwqepoxcn213213001231`, repo `GrandBlueKaitun`, branch `main`. Override: `GB_REPO`, `GB_BRANCH`, hoặc `GB_BASE_URL`.
 
 ## Architecture
 
@@ -78,27 +80,3 @@ Nếu owner khác: `getgenv().GB_REPO = "owner/GrandBlueKaitun"` rồi HttpGet �
 ## Clean-machine verify
 
 Production import: `loader.lua` → `fetchRemote` → `HttpGet(BASE + path + ?v=ver)`. Không còn `readfile` sibling trên đường REMOTE. Persist/cache chỉ chạy nếu executor có FS.
-
-## Local commit (đã xong)
-
-- Branch: `main`
-- Version: `1.0.0`
-- Commit: `50d1add8de95930f5f851fe0cc268c0142dd5c93`
-- Message: `feat: add portable GitHub remote loader`
-- Working tree: clean
-- Remote: chưa có (auth fail)
-
-## Sau auth + push
-
-```bash
-gh auth refresh -h github.com
-cd "/Users/lenguyenkhachuy/Downloads/Tool/NiaUISilent/Hub/Grand Blue"
-gh repo create GrandBlueKaitun --public --source=. --remote=origin --push
-```
-
-Sau push:
-
-- Repository URL: `https://github.com/shuys1230sxmcsweiqpxcv/GrandBlueKaitun`
-- Raw loader URL: `https://raw.githubusercontent.com/shuys1230sxmcsweiqpxcv/GrandBlueKaitun/main/loader.lua`
-
-Hai URL trên **chưa live** cho đến khi `gh repo create --push` thành công. Không dùng trước khi push.

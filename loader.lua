@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun — GitHub RAW loader (the only file you HttpGet)
 -- Default: REMOTE. Fresh machine, no local folder.
 
-local DEFAULT_OWNER = "shuys1230sxmcsweiqpxcv"
+local DEFAULT_OWNER = "heuwqepoxcn213213001231"
 local DEFAULT_REPO = "GrandBlueKaitun"
 local DEFAULT_BRANCH = "main"
 

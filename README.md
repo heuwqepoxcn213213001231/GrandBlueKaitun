@@ -5,18 +5,16 @@ Portable GitHub RAW loader. A clean machine needs one line — no local `NiaUISi
 ## Install
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/shuys1230sxmcsweiqpxcv/GrandBlueKaitun/main/loader.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/heuwqepoxcn213213001231/GrandBlueKaitun/main/loader.lua"))()
 ```
-
-If that raw URL 404s, the repo is not on GitHub yet. Re-auth (`gh auth refresh -h github.com`), push, then use the printed raw URL from `research/DEPLOYMENT_REPORT.md`.
 
 Override target without editing `loader.lua`:
 
 ```lua
-getgenv().GB_REPO = "owner/GrandBlueKaitun"
+getgenv().GB_REPO = "heuwqepoxcn213213001231/GrandBlueKaitun"
 getgenv().GB_BRANCH = "main"
 -- or:
-getgenv().GB_BASE_URL = "https://raw.githubusercontent.com/owner/GrandBlueKaitun/main/"
+getgenv().GB_BASE_URL = "https://raw.githubusercontent.com/heuwqepoxcn213213001231/GrandBlueKaitun/main/"
 loadstring(game:HttpGet(getgenv().GB_BASE_URL .. "loader.lua"))()
 ```
 
@@ -41,7 +39,7 @@ getgenv().GBConfig = {
 	AutoBackpack = false,
 	LogLevel = "INFO",
 }
-loadstring(game:HttpGet("https://raw.githubusercontent.com/shuys1230sxmcsweiqpxcv/GrandBlueKaitun/main/loader.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/heuwqepoxcn213213001231/GrandBlueKaitun/main/loader.lua"))()
 ```
 
 After boot you can still mutate `getgenv().GBConfig.AutoQuest = false`.
