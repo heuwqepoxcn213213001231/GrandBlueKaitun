@@ -301,17 +301,22 @@ return function(GB)
 			return false
 		end
 		local allow = OWNER_SCRIPTS[ui and ui.Name] or OWNER_SCRIPTS.SkillObtained
-		local name = typeof(scr) == "Instance" and scr.Name or scr.Name
-		if allow[name] then
-			return true
+		if typeof(scr) == "Instance" then
+			if allow[scr.Name] then
+				return true
+			end
+			local ok, inside = pcall(function()
+				return ui and scr:IsDescendantOf(ui)
+			end)
+			return ok and inside == true
 		end
-		if typeof(scr) == "Instance" and ui and scr:IsDescendantOf(ui) then
-			return true
-		end
-		if type(scr._src) == "string" then
-			for n in pairs(allow) do
-				if string.find(scr._src, n, 1, true) then
-					return true
+		if type(scr) == "table" then
+			local src = rawget(scr, "_src")
+			if type(src) == "string" then
+				for n in pairs(allow) do
+					if string.find(src, n, 1, true) then
+						return true
+					end
 				end
 			end
 		end
@@ -405,11 +410,20 @@ return function(GB)
 		local sig = rbxSignal(UIS, "InputBegan")
 
 		local function takeConn(c)
+			local scr = connScript(c)
+			if typeof(scr) == "Instance" then
+				local ok, full = pcall(function()
+					return scr:GetFullName()
+				end)
+				if ok and type(full) == "string" and string.find(full, "CorePackages", 1, true) then
+					return false
+				end
+			end
 			local fn
 			pcall(function()
 				fn = c.Function
 			end)
-			return ownerMatch(ui, connScript(c)) or overlayInputFn(fn) == true
+			return ownerMatch(ui, scr) or overlayInputFn(fn) == true
 		end
 
 		local function fireOverlay(c)
@@ -420,6 +434,18 @@ return function(GB)
 			return false
 		end
 
+		-- ButtonX first. TutorialLocal ignores gameProcessed only for ButtonX.
+		-- Conn walk must not run before this — a property error used to abort the tick.
+		local vim = game:GetService("VirtualInputManager")
+		if vim and vim.SendKeyEvent then
+			pcall(function()
+				vim:SendKeyEvent(true, Enum.KeyCode.ButtonX, false, game)
+				task.wait(0.03)
+				vim:SendKeyEvent(false, Enum.KeyCode.ButtonX, false, game)
+			end)
+			method = method or "VirtualInput:ButtonX"
+		end
+
 		if strategy ~= "synth" and typeof(getconnections) == "function" and typeof(sig) == "RBXScriptSignal" then
 			local ok, conns = pcall(getconnections, sig)
 			if ok and type(conns) == "table" then
@@ -427,7 +453,13 @@ return function(GB)
 					if invoked >= 8 then
 						break
 					end
-					if takeConn(c) and fireOverlay(c) then
+					local hit
+					pcall(function()
+						if takeConn(c) and fireOverlay(c) then
+							hit = true
+						end
+					end)
+					if hit then
 						method = method or "InputBegan:connection"
 					end
 				end
@@ -457,17 +489,6 @@ return function(GB)
 					end
 				end
 			end
-		end
-
-		-- ButtonX is the only key PassiveObtained accepts when gameProcessed=true.
-		local vim = game:GetService("VirtualInputManager")
-		if vim and vim.SendKeyEvent then
-			pcall(function()
-				vim:SendKeyEvent(true, Enum.KeyCode.ButtonX, false, game)
-				task.wait(0.03)
-				vim:SendKeyEvent(false, Enum.KeyCode.ButtonX, false, game)
-			end)
-			method = method or "VirtualInput:ButtonX"
 		end
 
 		if strategy == "synth" then
@@ -589,6 +610,7 @@ return function(GB)
 			M._overlayLog = nil
 			M._soSeen = nil
 			M._soWaitLog = nil
+			M._tsSeen = nil
 			return false, nil, "gone"
 		end
 		local now = os.clock()
@@ -602,9 +624,22 @@ return function(GB)
 				end
 				return false, ui, "wait_listener"
 			end
+		elseif ui.Name == "TutorialScreen" then
+			M._soSeen = nil
+			M._soWaitLog = nil
+			M._tsSeen = M._tsSeen or now
+			-- OpenGUI ShowContinue(0.75) then u6=true. First press after that.
+			if now - M._tsSeen < 0.85 then
+				if M._soWaitLog ~= label then
+					M._soWaitLog = label
+					GB.Log.log("GATE", "waiting TutorialScreen continue " .. label)
+				end
+				return false, ui, "wait_listener"
+			end
 		else
 			M._soSeen = nil
 			M._soWaitLog = nil
+			M._tsSeen = nil
 		end
 		if now - (M._overlayAt or 0) < 0.4 then
 			return false, ui, "rate"

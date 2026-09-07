@@ -1,5 +1,23 @@
 # Runtime Fixes
 
+## 1.1.10 — Mining TutorialScreen: `_src` crash aborted continue
+
+Pickaxe bought. `EquipAndActivate` opened **TutorialScreen Mining** — "Press anywhere to continue", 3 stages (hold / release at top / special materials). Detected ContinueOverlay + UIS.InputBegan. Overlay never closed.
+
+Engine: ` _src is not a valid member of ModuleScript CorePackages...SchedulerHostConfig.default`. `ownerMatch` did `type(scr._src)` on every InputBegan connection. CorePackages ModuleScript throws. Scheduler pcall logged it and **the rest of `invokeContinueInput` never ran** — no ButtonX, no TutorialLocal invoke. Recovery correctly skipped the overlay and looped.
+
+Mining `TutorialLocal`: same InputBegan as SkillObtained (MouseButton1/Touch/ButtonX; gameProcessed ignored only for ButtonX). `ShowContinue(0.75)`. Three folders; each press `AdvanceStage`, last press `CloseGUI` + `TutorialEvent:FireServer("Mining")`.
+
+**Fix:** `_src` only on fake tables (`rawget`). Skip CorePackages. ButtonX fires **before** the connection walk. pcall each conn. Wait 0.85s for TutorialScreen continue prompt. Do not hide GUI.
+
+```
+[Kaitun][GATE] waiting TutorialScreen continue TutorialScreen Mining
+[Kaitun][UI] continue TutorialScreen Mining via VirtualInput:ButtonX
+[Kaitun][GATE] TutorialScreen cleared
+```
+
+---
+
 ## 1.1.9 — First Upgrade Collect Rusty Pickaxe: mines are below DestYMin
 
 Unlock credited. Stage 2: **Purchase a pickaxe down in the mines** / Collect Rusty Pickaxe 0/1. Planner looped `Need item Rusty Pickaxe` → `CYCLE First Upgrade AcquireItem|Rusty Pickaxe`.
