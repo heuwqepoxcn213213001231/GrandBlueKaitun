@@ -143,21 +143,24 @@ return function(GB)
 		for _, e in ipairs(GB.QuestData.REPEATS) do
 			if e.island == island and lv >= (e.accept or 0) and lv <= (e.full_until or 999) then
 				if GB.QuestData.prereqOk(e.prereq) then
+					local eExp = tonumber(e.exp) or 0
 					local start = repeatStartability(e.name)
 					if start.Mode == "quest" then
-						if not bestQuest or e.exp > bestQuest.exp then
+						if (not bestQuest) or eExp > (tonumber(bestQuest.Exp) or 0) then
 							bestQuest = {
 								Name = e.name,
 								Mode = "quest",
+								Exp = eExp,
 								Entry = e,
 								StartSpec = start.StartSpec,
 							}
 						end
 					elseif start.Mode == "direct" then
-						if not bestDirect or e.exp > bestDirect.exp then
+						if (not bestDirect) or eExp > (tonumber(bestDirect.Exp) or 0) then
 							bestDirect = {
 								Name = e.name,
 								Mode = "direct",
+								Exp = eExp,
 								Entry = e,
 								StartSpec = start.StartSpec,
 							}
