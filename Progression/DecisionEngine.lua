@@ -70,18 +70,82 @@ return function(GB)
 		end
 	end
 
-	local function bestRepeat(island, lv)
-		local best
-		for _, e in ipairs(GB.QuestData.REPEATS) do
-			if e.island == island and lv >= (e.accept or 0) and lv <= (e.full_until or 999) then
-				if GB.QuestData.prereqOk(e.prereq) then
-					if not best or e.exp > best.exp then
-						best = e
+	local function repeatDirectTarget(name)
+		local stages = GB.QuestSpecs and GB.QuestSpecs.STAGES
+		if type(stages) ~= "table" then
+			return nil
+		end
+		local bestTarget, bestStage
+		for _, row in pairs(stages) do
+			if type(row) == "table" and row.quest == name then
+				local target = row.target
+				local obj = tostring(row.objective or "")
+				local goal = tostring(row.goal or "")
+				local isCombat = obj == "Kill" or obj == "Defeat" or obj == "Hit" or obj == "Shoot" or goal == "Kill"
+				if isCombat and type(target) == "string" and target ~= "" then
+					local st = tonumber(row.stage) or 9999
+					if not bestTarget or st < bestStage then
+						bestTarget = target
+						bestStage = st
 					end
 				end
 			end
 		end
-		return best and best.name
+		return bestTarget
+	end
+
+	local function repeatMode(name)
+		if not (GB.Quest and GB.Quest.questState) then
+			return "quest", nil
+		end
+		local qs = GB.Quest.questState(name)
+		if qs and (qs.IsAccepted or qs.Automatic or (type(qs.NPC) == "string" and qs.NPC ~= "")) then
+			return "quest", nil
+		end
+		local target = repeatDirectTarget(name)
+		if target then
+			return "direct", target
+		end
+		return nil, nil
+	end
+
+	local function bestRepeat(island, lv)
+		local bestQuest
+		local bestDirect
+		for _, e in ipairs(GB.QuestData.REPEATS) do
+			if e.island == island and lv >= (e.accept or 0) and lv <= (e.full_until or 999) then
+				if GB.QuestData.prereqOk(e.prereq) then
+					local mode, target = repeatMode(e.name)
+					if mode == "quest" then
+						if not bestQuest or e.exp > bestQuest.exp then
+							bestQuest = e
+						end
+					elseif mode == "direct" and target then
+						if not bestDirect or e.exp > bestDirect.exp then
+							bestDirect = {
+								name = e.name,
+								exp = e.exp,
+								target = target,
+							}
+						end
+					end
+				end
+			end
+		end
+		if bestQuest then
+			return {
+				Name = bestQuest.name,
+				Mode = "quest",
+			}
+		end
+		if bestDirect then
+			return {
+				Name = bestDirect.name,
+				Mode = "direct",
+				Target = bestDirect.target,
+			}
+		end
+		return nil
 	end
 
 	local function activeQuestNames()
@@ -135,6 +199,7 @@ return function(GB)
 		if not rep then
 			return false
 		end
+		local repName = rep.Name or tostring(rep)
 		local blockers = blockerList()
 		local note = tostring(why or "story_blocked")
 		for _, b in ipairs(blockers) do
@@ -143,15 +208,45 @@ return function(GB)
 				break
 			end
 		end
-		if M._farmNote ~= (rep .. "|" .. note) then
-			M._farmNote = rep .. "|" .. note
-			GB.Log.log("PLANNER", "farm goal " .. note)
-			GB.Log.log("PLANNER", "next=" .. tostring(rep))
+		if rep.Mode == "direct" and rep.Target then
+			note = note .. " direct:" .. tostring(rep.Target)
 		end
-		M.goal = { Type = "FARM", Quest = rep, Note = note, At = os.clock() }
-		setTask("farm:" .. rep)
-		logDoing("farm", rep)
-		GB.Quest.doLive(rep)
+		if M._farmNote ~= (repName .. "|" .. note) then
+			M._farmNote = repName .. "|" .. note
+			GB.Log.log("PLANNER", "farm goal " .. note)
+			GB.Log.log("PLANNER", "next=" .. tostring(repName))
+		end
+		M.goal = { Type = "FARM", Quest = repName, Note = note, Mode = rep.Mode, Target = rep.Target, At = os.clock() }
+		if rep.Mode == "direct" and rep.Target and GB.Combat then
+			setTask("farm_direct:" .. tostring(rep.Target))
+			logDoing("farm_direct", rep.Target)
+			local ok = false
+			if GB.Combat.huntUntilDead then
+				ok = select(1, GB.Combat.huntUntilDead(rep.Target, 16))
+			elseif GB.Combat.attack then
+				ok = GB.Combat.attack(rep.Target)
+			end
+			if not ok then
+				GB.Log.warn("PLANNER", "direct farm miss " .. tostring(rep.Target))
+			end
+			return true
+		end
+		setTask("farm:" .. repName)
+		logDoing("farm", repName)
+		local ok = GB.Quest.doLive(repName)
+		if not ok then
+			local fallback = repeatDirectTarget(repName)
+			if fallback and GB.Combat then
+				setTask("farm_direct:" .. tostring(fallback))
+				logDoing("farm_direct", fallback)
+				GB.Log.warn("PLANNER", "fallback direct farm " .. tostring(repName) .. " -> " .. tostring(fallback))
+				if GB.Combat.huntUntilDead then
+					GB.Combat.huntUntilDead(fallback, 16)
+				elseif GB.Combat.attack then
+					GB.Combat.attack(fallback)
+				end
+			end
+		end
 		return true
 	end
 
