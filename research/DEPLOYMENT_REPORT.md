@@ -16,7 +16,7 @@
 | Repository | https://github.com/heuwqepoxcn213213001231/GrandBlueKaitun |
 | Branch | `main` |
 | Version | `1.0.0` |
-| Commit (docs URL bump) | *set after commit* |
+| Commit | `d8563b42d09f07e48522201eb9a7097aa9287cb0` |
 | Raw loader URL | https://raw.githubusercontent.com/heuwqepoxcn213213001231/GrandBlueKaitun/main/loader.lua |
 
 ## Production command
