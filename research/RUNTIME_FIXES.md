@@ -1,5 +1,59 @@
 # Runtime Fixes
 
+## 1.0.4 — Dialogue ImageButton `:Activate()` crash (choice found, click dies)
+
+### Issue
+
+Choice resolve worked. Dialogue open, label `"I can help change that!"`, path `DialogueUI.Main.1.ImageButton`. Engine:
+
+```
+[Kaitun][QUEST] Click I can help change that!
+[Kaitun][ERROR] engine Activate is not a valid member of ImageButton "Players....PlayerGui.DialogueUI.Main.1.ImageButton"
+[Kaitun][QUEST] Introduction fail #1 talk not credited Officer Graves
+```
+
+Talk 0/1 never became 1/1. Re-Talk/teleport did not run (dialogue-open branch). Click itself threw.
+
+### Root Cause (Studio place `118635363908336`)
+
+`DialogueHandler.setupButton` (choice ImageButton):
+
+```
+p44.Activated:Connect(u89)
+p44.InputBegan → Touch → u89
+p44:GetAttributeChangedSignal("Clicked"):Connect(u89)
+```
+
+Keyboard `1`–`7`: `Main[n].ImageButton:SetAttribute("Clicked", not GetAttribute("Clicked"))`.
+
+`GuiButton:Activate()` is **not** a member on this executor ImageButton. Indexing `.Activate` / calling `:Activate()` throws the same class of error as `.Text` on ImageButton. Client never uses `Activate()`.
+
+Do **not** invent `ClientQuest("Choice", …)` — that remote is the reward-picker path, not FirstAgree.
+
+### Fix
+
+- `State.clickGui(btn)`: never index `.Activate`.
+- Prefer `firesignal` / `getconnections` on `Activated` (same hook `setupButton` uses). `MouseButton1Click` only if Activated had no fireable signal.
+- Always flip `Clicked` after — same as KeyCode.One. `u89` no-ops if Activated already ran (`u12`/`u48`).
+- `clickAccept` + Logbook menu button use `clickGui` only.
+- Dialogue already open: click only, no re-Talk / teleport. `waitProgress` still validates 0/1 → 1/1.
+
+### Files
+
+- `Core/State.lua`, `Systems/Quest.lua`
+- `VERSION` / `manifest.json` / `loader.lua` → **1.0.4**
+
+### Expected next log
+
+```
+[Kaitun][QUEST] Click I can help change that!
+[Kaitun][QUEST] Introduction 0/1 -> 1/1
+```
+
+Then next Introduction stage (Hit Training Dummy).
+
+---
+
 ## 1.0.3 — Dialogue ImageButton `.Text` crash (Introduction stuck after Talk)
 
 ### Issue

@@ -180,8 +180,7 @@ return function(GB)
 			shown = pick.btn.Name
 		end
 		GB.Log.log("QUEST", "Click " .. tostring(shown))
-		pick.btn:Activate()
-		return true
+		return GB.State.clickGui(pick.btn)
 	end
 
 	local function openLogbook()
@@ -198,8 +197,7 @@ return function(GB)
 		if menu then
 			for _, d in ipairs(menu:GetDescendants()) do
 				if d:IsA("GuiButton") and (d.Name == "Logbook" or d.Name == "Log Book" or d.Name == "LogbookButton") then
-					d:Activate()
-					return true
+					return GB.State.clickGui(d)
 				end
 			end
 		end

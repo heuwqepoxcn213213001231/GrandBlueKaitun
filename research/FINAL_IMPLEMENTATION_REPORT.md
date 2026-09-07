@@ -1,6 +1,6 @@
 # FINAL Implementation Report — Grand Blue Kaitun
 
-**Version:** `1.0.3`  
+**Version:** `1.0.4`  
 **Place:** `118635363908336` (Studio connected).  
 **Entry:** `NiaUISilent/Hub/Grand Blue/kaitun.lua`  
 **Ngôn ngữ log:** `[Kaitun][CAT]`.  
@@ -100,4 +100,4 @@ Haki trainer, backpack slot buy, Equip RF (clothing) args, EquipSkill RF invoke,
 
 ## Limitations
 
-Executor must `readfile` the folder (or set `GB_ROOT`). Dialogue Accept is GUI Activate best-effort. Boat Spawn tries index `1`. FireServer ≠ success — systems re-check inventory/quest. No invented remote args.
+Executor must `readfile` the folder (or set `GB_ROOT`). Dialogue choice is `clickGui`: `firesignal`/`getconnections` on `Activated` + `Clicked` attribute (never `:Activate()`). Boat Spawn tries index `1`. FireServer ≠ success — systems re-check inventory/quest. No invented remote args.

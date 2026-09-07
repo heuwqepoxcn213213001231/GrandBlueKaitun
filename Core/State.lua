@@ -92,6 +92,87 @@ return function(GB)
 		return guiNum(inst)
 	end
 
+	-- Never index .Activate / :Activate() — this executor ImageButton throws
+	-- "Activate is not a valid member". DialogueHandler setupButton wires
+	-- ImageButton.Activated, InputBegan(Touch), and GetAttributeChangedSignal("Clicked").
+	-- Keyboard 1–7 flips Clicked on the same ImageButton.
+	local function rbxSignal(inst, name)
+		if not inst or type(name) ~= "string" then
+			return nil
+		end
+		local ok, ev = pcall(function()
+			return inst[name]
+		end)
+		if ok and typeof(ev) == "RBXScriptSignal" then
+			return ev
+		end
+		return nil
+	end
+
+	local function fireRbxSignal(sig)
+		if typeof(sig) ~= "RBXScriptSignal" then
+			return false
+		end
+		if typeof(firesignal) == "function" then
+			if pcall(firesignal, sig) then
+				return true
+			end
+		end
+		if typeof(getconnections) ~= "function" then
+			return false
+		end
+		local ok, conns = pcall(getconnections, sig)
+		if not (ok and type(conns) == "table") then
+			return false
+		end
+		local any = false
+		local seen = {}
+		local function tryConn(c)
+			if c == nil or seen[c] then
+				return
+			end
+			seen[c] = true
+			local fire = nil
+			pcall(function()
+				fire = c.Fire or c.fire
+			end)
+			if typeof(fire) == "function" and pcall(fire, c) then
+				any = true
+				return
+			end
+			local fn = nil
+			pcall(function()
+				fn = c.Function
+			end)
+			if typeof(fn) == "function" and pcall(fn) then
+				any = true
+			end
+		end
+		for i = 1, #conns do
+			tryConn(conns[i])
+		end
+		for _, c in pairs(conns) do
+			tryConn(c)
+		end
+		return any
+	end
+
+	function M.clickGui(btn)
+		if not (btn and btn.Parent) then
+			return false
+		end
+		local fired = fireRbxSignal(rbxSignal(btn, "Activated"))
+		if not fired then
+			fired = fireRbxSignal(rbxSignal(btn, "MouseButton1Click"))
+		end
+		-- Same path DialogueHandler uses for KeyCode.One on Main.1.ImageButton.
+		-- u89 no-ops if Activated already ran (u12 / u48).
+		local ok = pcall(function()
+			btn:SetAttribute("Clicked", not btn:GetAttribute("Clicked"))
+		end)
+		return fired or ok
+	end
+
 	function M.refresh()
 		M.prev = M.snap
 		local s = {}

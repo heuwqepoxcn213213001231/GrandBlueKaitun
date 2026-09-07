@@ -1,6 +1,6 @@
 # Grand Blue (Eternal Pose) — Research Pack
 
-**Turn scope:** Phase 4 RE + Phase 5–9 Kaitun implemented. Entry `kaitun.lua`. Version **1.0.3**. Reports: `FINAL_IMPLEMENTATION_REPORT.md`, `FINAL_CHECKLIST.md`, `REMOTE_REGISTRY.md`, `PROGRESSION_FINAL.md`, `RUNTIME_FIXES.md`, `QUEST_EXECUTION_MATRIX.md`.
+**Turn scope:** Phase 4 RE + Phase 5–9 Kaitun implemented. Entry `kaitun.lua`. Version **1.0.4**. Reports: `FINAL_IMPLEMENTATION_REPORT.md`, `FINAL_CHECKLIST.md`, `REMOTE_REGISTRY.md`, `PROGRESSION_FINAL.md`, `RUNTIME_FIXES.md`, `QUEST_EXECUTION_MATRIX.md`.
 
 **Place (Studio):** `place 118635363908336 Game.rbxl` — connected. `Workspace.Islands` chỉ có 3 đảo.
 
@@ -16,7 +16,7 @@
 | `E_item_database.md` | Item từ `data.json` (+ phụ lục Studio) |
 | `F_remote_map.md` | Action → remote → args |
 | `G_missing.md` | Chưa RE |
-| `RUNTIME_FIXES.md` | Crash/runtime fixes (1.0.1 Folder islands; 1.0.2 Graves resolve; 1.0.3 Dialogue ImageButton Text) |
+| `RUNTIME_FIXES.md` | Crash/runtime fixes (1.0.1 Folder islands; 1.0.2 Graves resolve; 1.0.3 Dialogue ImageButton Text; 1.0.4 Activate crash) |
 | `QUEST_EXECUTION_MATRIX.md` | Mọi stage verified: handler / resolver / validation |
 | `quests.json` | 151 quest đã flatten |
 | `items.json` | Drop + condition item rows |
