@@ -1,7 +1,5 @@
--- State → Goal → Task → Execute → Validate → Repeat.
--- Priority: Recovery → Tutorial → Rewards → Codes → Unlock → Inventory → Equip →
--- Stats → Skills → Travel → Story → Repeat → Boss → Upgrades → Fruit/Haki/Race →
--- Treasure/Chest → Life skills.
+-- Priority: Recovery → Mandatory story → Prerequisites → Level-gate farm → Story.
+-- Optional Fruit/Haki/Race after story is idle.
 
 return function(GB)
 	local M = {
@@ -27,6 +25,20 @@ return function(GB)
 			end
 		end
 		return nil
+	end
+
+	local function isStory(name)
+		if not name or not GB.QuestData then
+			return false
+		end
+		for _, ch in ipairs(GB.QuestData.CHAINS) do
+			for _, n in ipairs(ch.order) do
+				if n == name then
+					return true
+				end
+			end
+		end
+		return false
 	end
 
 	local function nextStory(island, lv)
@@ -61,6 +73,36 @@ return function(GB)
 		return best and best.name
 	end
 
+	function M.optionalOk()
+		if GB.Config.StoryFirst == false then
+			return true
+		end
+		local cur = GB.PlayerData.current()
+		if cur and isStory(cur) and not GB.Config.SkipQuests[cur] then
+			return false
+		end
+		if M.task and string.find(tostring(M.task), "quest:", 1, true) then
+			return false
+		end
+		if M.task and string.find(tostring(M.task), "story:", 1, true) then
+			return false
+		end
+		return true
+	end
+
+	local function runOptional()
+		if not M.optionalOk() then
+			return
+		end
+		GB.Boss.tick()
+		GB.Fruit.tick()
+		GB.Haki.tick()
+		GB.RaceTrait.tick()
+		GB.Treasure.tick()
+		GB.Chest.tick()
+		GB.Backpack.tick()
+	end
+
 	function M.decide()
 		local snap = GB.State.refresh()
 		if not snap.Alive then
@@ -80,8 +122,14 @@ return function(GB)
 			return
 		end
 
-		-- Live quest from GetData + tracker. Never prefer stale ClientCache Introduction.
-		-- Required Level: keep the quest accepted but farm repeats until the gate.
+		if GB.Config.AutoCodes then
+			GB.Codes.tick()
+		end
+		if GB.Config.AutoRewards then
+			GB.Rewards.tick()
+		end
+
+		-- Mandatory live story
 		if GB.Config.AutoTutorial or GB.Config.AutoQuest then
 			local cur = GB.PlayerData.current()
 			if cur and not GB.Config.SkipQuests[cur] then
@@ -91,28 +139,25 @@ return function(GB)
 				local need = gated and (obj.Amount or GB.QuestData.needLevel(cur)) or 0
 				if gated and (snap.Level or 0) < need then
 					setTask("wait_level:" .. cur)
-				else
-					setTask("quest:" .. cur)
-					GB.Quest.doLive(cur)
+					local island = snap.CurrentIsland
+					local rep = bestRepeat(island, snap.Level or 0)
+					if rep then
+						setTask("farm:" .. rep)
+						GB.Quest.doLive(rep)
+					end
 					return
 				end
+				setTask("quest:" .. cur)
+				GB.Quest.doLive(cur)
+				return
 			end
 		end
 
-		-- Codes / rewards (rate limited inside)
-		if GB.Config.AutoCodes then
-			GB.Codes.tick()
-		end
-		if GB.Config.AutoRewards then
-			GB.Rewards.tick()
-		end
-
-		-- Mandatory progression purchases
+		-- Prerequisites / progression shop (Flintlock, pickaxe, snail, boat)
 		if GB.Config.AutoShop then
 			GB.Shop.tick()
 		end
 
-		-- Inventory full: never sell UNKNOWN
 		if GB.Inventory.full() then
 			GB.Log.warn("STATE", "inventory many items — UNKNOWN kept")
 		end
@@ -127,7 +172,6 @@ return function(GB)
 		if liveName and not GB.Config.SkipQuests[liveName] then
 			setTask("quest:" .. liveName)
 			GB.Quest.doLive(liveName)
-			GB.Chest.tick()
 			return
 		end
 
@@ -145,15 +189,11 @@ return function(GB)
 			if lv < GB.QuestData.needLevel(story) then
 				local rep = bestRepeat(island, lv)
 				if rep then
-					setTask("repeat:" .. rep)
+					setTask("farm:" .. rep)
 					GB.Quest.doLive(rep)
 					return
 				end
 				setTask("wait_level:" .. story)
-				local rep2 = bestRepeat(island, lv)
-				if rep2 then
-					GB.Quest.doLive(rep2)
-				end
 				return
 			end
 			setTask("story:" .. story)
@@ -168,13 +208,7 @@ return function(GB)
 			return
 		end
 
-		GB.Boss.tick()
-		GB.Fruit.tick()
-		GB.Haki.tick()
-		GB.RaceTrait.tick()
-		GB.Treasure.tick()
-		GB.Chest.tick()
-		GB.Backpack.tick()
+		runOptional()
 		setTask("idle")
 	end
 

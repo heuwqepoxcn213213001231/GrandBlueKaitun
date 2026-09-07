@@ -1,6 +1,6 @@
 {
   "name": "GrandBlueKaitun",
-  "version": "1.0.7",
+  "version": "1.1.0",
   "entry": "kaitun.lua",
   "files": {
     "kaitun.lua": "kaitun.lua",
@@ -19,9 +19,11 @@
     "Game/World.lua": "Game/World.lua",
     "Game/ItemData.lua": "Game/ItemData.lua",
     "Game/QuestData.lua": "Game/QuestData.lua",
+    "Game/QuestSpecs.lua": "Game/QuestSpecs.lua",
     "Game/Inventory.lua": "Game/Inventory.lua",
     "Systems/Combat.lua": "Systems/Combat.lua",
     "Systems/Quest.lua": "Systems/Quest.lua",
+    "Systems/Acquire.lua": "Systems/Acquire.lua",
     "Systems/Stats.lua": "Systems/Stats.lua",
     "Systems/Skills.lua": "Systems/Skills.lua",
     "Systems/Equipment.lua": "Systems/Equipment.lua",
@@ -38,6 +40,7 @@
     "Systems/Codes.lua": "Systems/Codes.lua",
     "Systems/Rewards.lua": "Systems/Rewards.lua",
     "Systems/Backpack.lua": "Systems/Backpack.lua",
+    "Progression/Planner.lua": "Progression/Planner.lua",
     "Progression/DecisionEngine.lua": "Progression/DecisionEngine.lua"
   },
   "order": [
@@ -55,9 +58,11 @@
     { "key": "World", "path": "Game/World.lua", "kind": "core" },
     { "key": "ItemData", "path": "Game/ItemData.lua", "kind": "core" },
     { "key": "QuestData", "path": "Game/QuestData.lua", "kind": "core" },
+    { "key": "QuestSpecs", "path": "Game/QuestSpecs.lua", "kind": "core" },
     { "key": "Inventory", "path": "Game/Inventory.lua", "kind": "core" },
     { "key": "Combat", "path": "Systems/Combat.lua", "kind": "core" },
     { "key": "Quest", "path": "Systems/Quest.lua", "kind": "core" },
+    { "key": "Acquire", "path": "Systems/Acquire.lua", "kind": "core" },
     { "key": "Stats", "path": "Systems/Stats.lua", "kind": "optional" },
     { "key": "Skills", "path": "Systems/Skills.lua", "kind": "optional" },
     { "key": "Equipment", "path": "Systems/Equipment.lua", "kind": "optional" },
@@ -74,6 +79,7 @@
     { "key": "Codes", "path": "Systems/Codes.lua", "kind": "optional" },
     { "key": "Rewards", "path": "Systems/Rewards.lua", "kind": "optional" },
     { "key": "Backpack", "path": "Systems/Backpack.lua", "kind": "optional" },
+    { "key": "Planner", "path": "Progression/Planner.lua", "kind": "core" },
     { "key": "Engine", "path": "Progression/DecisionEngine.lua", "kind": "core" },
     { "key": "Picker", "path": "picker.lua", "kind": "optional", "factory": false }
   ]

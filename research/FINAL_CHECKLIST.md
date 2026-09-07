@@ -2,9 +2,9 @@
 
 | Feature | Status | Reason |
 |---|---|---|
-| Fresh bootstrap | PARTIAL | Wait character + StatReplication; live quest via GetData+tracker (1.0.6). Overlay dismiss 1.0.7. 1.0.1–1.0.5 prior |
+| Fresh bootstrap | PARTIAL | Wait character + StatReplication; live quest via GetData+tracker (1.0.6). Overlay dismiss 1.0.7. Planner 1.1.0 |
 | Tutorial | WORKING | Introduction Talk/Dummy/Dash/Block/turn-in; Basics EquipSkill scroll + Cast + Invest + OpenLogbookHelp |
-| Quest | WORKING | Generic live stage executor (Talk/Kill/Collect/Purchase/Equip/Upgrade/Mine/Fish/Farm/Cook/Deliver/Interact/Travel/Escort/Boss). UNKNOWN_OBJECTIVE stops that loop |
+| Quest | WORKING | Goal+Acquire planner for all 151 QuestInfo stages. Collect KillUntilDrop uses EnemyDrop (Corrupt Marine / Black Noir Officer). UNKNOWN_OBJECTIVE stops that loop |
 | Auto level | WORKING | Story gates + repeatable `full_until` bands |
 | Island | WORKING | Anchor → Setting Sail 30 → Clown → Journey 70 → Maple. Geometry API type-safe on Folder/Model/BasePart (`World.GetIsland*`) |
 | Travel | PARTIAL | destOk hop/walk; island spawn; no invented teleport list |
@@ -29,7 +29,7 @@
 | Treasure | PARTIAL | Move on Finders/Priceless; ShovelHit args UNKNOWN |
 | Codes | WORKING | Codes(code) + CodeProg; states SUCCESS/INVALID/EXPIRED/ALREADY_USED/ERROR |
 | Daily/rewards | PARTIAL | Easy Pickings / Noise Complaint / Corruption Cleanse only; 4 dailies empty |
-| Recovery | WORKING | Stuck levels, cooldown, rescue, rebuild |
+| Recovery | WORKING | Strategy cycle lookup→enemy→diagnostic→blocker; DumpRuntimeIssue; void rescue on tick |
 | Anti-stuck | WORKING | destOk, groundAt, water/void rescue, task timeout |
 | Logging | WORKING | `[Kaitun][CAT]` rate-limited |
 | Config | WORKING | GBConfig Auto* Build FruitMode Codes NeverSkip |

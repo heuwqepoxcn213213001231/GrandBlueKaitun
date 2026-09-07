@@ -40,6 +40,7 @@ return function(GB)
 	local dummyCache = nil
 	local dummyPos = nil
 	local dummyMiss = 0
+	M.lastCandidates = {}
 
 	function M.isDummyName(name)
 		if type(name) ~= "string" or name == "" then
@@ -515,6 +516,16 @@ return function(GB)
 			"RESOLVE",
 			string.format("miss '%s' nearby=%d %s", tostring(request), #cand, table.concat(bits, " | "))
 		)
+		M.lastCandidates = {}
+		for i = 1, n do
+			local c = cand[i]
+			M.lastCandidates[i] = {
+				Name = c.Name,
+				DisplayName = c.DisplayName,
+				Parent = c.Parent,
+				Dist = c.Dist,
+			}
+		end
 		return cand
 	end
 

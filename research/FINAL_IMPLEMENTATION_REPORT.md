@@ -1,6 +1,6 @@
 # FINAL Implementation Report — Grand Blue Kaitun
 
-**Version:** `1.0.7`  
+**Version:** `1.1.0`  
 **Place:** `118635363908336` (Studio connected).  
 **Entry:** `NiaUISilent/Hub/Grand Blue/kaitun.lua`  
 **Ngôn ngữ log:** `[Kaitun][CAT]`.  
@@ -14,10 +14,10 @@ Grand Blue/
   Config.lua
   picker.lua                      -- optional pick()
   Core/   Logger Scheduler Retry Cache Recovery Persist State
-  Game/   Remotes Resolver PlayerData World Inventory QuestData ItemData
-  Systems/ Quest Combat Stats Skills Equipment Shop Travel Boat
+  Game/   Remotes Resolver PlayerData World Inventory QuestData QuestSpecs ItemData
+  Systems/ Quest Acquire Combat Stats Skills Equipment Shop Travel Boat
            Fruit Haki RaceTrait LifeSkills Chest Treasure Boss Codes Rewards Backpack
-  Progression/ DecisionEngine.lua
+  Progression/ Planner.lua DecisionEngine.lua
 ```
 
 Load: `readfile` từ `GB_ROOT` / `NiaUISilent/Hub/Grand Blue/` / `Grand Blue/`. Mỗi module `return function(GB)`.
@@ -26,7 +26,7 @@ Load: `readfile` từ `GB_ROOT` / `NiaUISilent/Hub/Grand Blue/` / `Grand Blue/`.
 
 **Island geometry** (`Game/World.lua`): `GetIslandPosition` / `GetIslandBounds` / `IsPositionInsideIsland` / `GetIslandFromPosition`. Studio: `Workspace.Islands.*` là **Folder** (Anchor Town, Clown Town, Maple Village) — không đọc `.PrimaryPart` trước `IsA("Model")`. Origin: `PersistentAnchor.Center` + `Radius` khi có; không thì `Island` centroid/AABB (median, bỏ part nhỏ/xa); fallback `Constants.Persistent` GetBoundingBox. Map chưa load → `nil`.
 
-**DecisionEngine:** Recovery → Tutorial → Codes/Rewards → Shop unlock → Equip → Stats → Skills → Travel/Boat → live story → picker → next story → best repeat → Boss/Fruit/Chest/Treasure.
+**DecisionEngine:** Recovery → Mandatory live story → Prerequisites/shop → Level-gate farm → Story → optional Fruit/Haki/Race (`StoryFirst`). Planner: Goal + AcquireItem (not Collect→byName).
 
 ## Verified remotes (client call sites)
 

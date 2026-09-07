@@ -1,17 +1,37 @@
--- Stuck: retry → reacquire → rebuild state → reset move/combat → abandon invalid → safe → restart.
--- Cooldown. No infinite retry.
+-- Stuck: change strategy. lookup drop → enemy → diagnostic → blocker.
+-- Teleport/talk/log is not progress. Void rescue stays on tick.
 
 return function(GB)
 	local M = {
 		last = 0,
 		level = 0,
 		reason = nil,
+		si = 1,
+		deadOnce = {},
 	}
+
+	M.STRATS = { "lookup", "enemy", "diagnostic", "blocker" }
+
+	function M.currentStrategy()
+		return M.STRATS[M.si] or "lookup"
+	end
+
+	function M.resetStrategy()
+		M.si = 1
+	end
+
+	function M.advanceStrategy()
+		if M.si < #M.STRATS then
+			M.si = M.si + 1
+		end
+		return M.currentStrategy()
+	end
 
 	function M.markSuccess()
 		GB.State.track.SuccessfulAction = os.clock()
 		M.level = 0
 		M.reason = nil
+		M.resetStrategy()
 	end
 
 	function M.stuck()
@@ -36,40 +56,38 @@ return function(GB)
 		M.last = os.clock()
 		M.level = M.level + 1
 		M.reason = why
-		GB.Log.warn("RECOVERY", string.format("level=%d %s", M.level, tostring(why)))
+		local strat = M.currentStrategy()
+		if M.level > 1 then
+			strat = M.advanceStrategy()
+		end
+		GB.Log.warn("RECOVERY", string.format("level=%d strategy=%s %s", M.level, tostring(strat), tostring(why)))
 		GB.Cache.invalidate()
 
-		if M.level == 1 then
-			if GB.Combat then
-				pcall(GB.Combat.stopLock)
+		if GB.Combat then
+			GB.Combat.stopLock()
+		end
+
+		if strat == "lookup" then
+			return
+		end
+		if strat == "enemy" then
+			return
+		end
+		if strat == "diagnostic" then
+			if GB.DumpRuntimeIssue then
+				GB.DumpRuntimeIssue()
 			end
 			return
 		end
-		if M.level == 2 then
-			GB.State.refresh()
-			if GB.Combat then
-				pcall(GB.Combat.stopLock)
-			end
-			if GB.World then
-				pcall(GB.World.rescue)
-			end
-			return
+		-- blocker
+		if GB.WriteDeadEnd then
+			GB.WriteDeadEnd()
 		end
-		if M.level == 3 then
-			if GB.World then
-				pcall(GB.World.goSafe)
-			end
-			GB.State.track.TaskStartedAt = os.clock()
-			return
-		end
-		-- level 4+: reset task, do not abandon NeverSkip
 		local q = GB.State.snap.CurrentQuest
 		if q and GB.Config.NeverSkip[q] then
 			GB.Log.warn("RECOVERY", "keep " .. q)
 		end
-		GB.State.track.TaskName = nil
 		GB.State.track.TaskStartedAt = os.clock()
-		M.level = 0
 	end
 
 	function M.tick()
@@ -77,7 +95,7 @@ return function(GB)
 			M.run("stuck " .. tostring(GB.State.track.TaskName))
 		end
 		if GB.World then
-			pcall(GB.World.rescue)
+			GB.World.rescue()
 		end
 	end
 

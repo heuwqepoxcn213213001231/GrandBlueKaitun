@@ -17,6 +17,8 @@ return function(GB)
 		local gap = 2.5
 		if cat == "ERROR" then
 			gap = 8
+		elseif cat == "PLAN" or cat == "ACQUIRE" or cat == "DROP" or cat == "PICKUP" then
+			gap = 1.1
 		elseif cat == "QUEST" then
 			local m = tostring(msg)
 			if string.find(m, "not credited", 1, true) or string.find(m, "resolve miss", 1, true) then

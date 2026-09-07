@@ -8,6 +8,7 @@ return function(GB)
 			codes = {},
 			checkpoint = {},
 			failedRemotes = {},
+			session = nil,
 		},
 	}
 
@@ -42,6 +43,9 @@ return function(GB)
 	end
 
 	function M.load()
+		if not M.data.session then
+			M.data.session = "s" .. tostring(os.time())
+		end
 		if not GB.Config.Persist or not canIO() then
 			return
 		end
@@ -58,7 +62,13 @@ return function(GB)
 				if type(t.failedRemotes) == "table" then
 					M.data.failedRemotes = t.failedRemotes
 				end
+				if type(t.session) == "string" then
+					M.data.session = t.session
+				end
 			end
+		end
+		if not M.data.session then
+			M.data.session = "s" .. tostring(os.time())
 		end
 		if type(getgenv().GBCodes) == "table" then
 			for k, v in pairs(getgenv().GBCodes) do

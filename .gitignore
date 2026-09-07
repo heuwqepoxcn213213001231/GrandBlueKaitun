@@ -10,6 +10,9 @@
 secrets/
 GBKaitun_persist.json
 GBKaitun_cache/
+GBKaitun/runtime/
 *.log
+*.jsonl
 .idea/
 .vscode/
+tools/runtime_watcher.local.json

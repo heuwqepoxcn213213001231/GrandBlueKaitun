@@ -1,5 +1,49 @@
 # Runtime Fixes
 
+## 1.1.0 — Collect treated as world item (Pirate Fan Letter → BaseRock)
+
+### Issue
+
+```
+[Kaitun][QUEST] collect miss Pirate Fan Letter
+[Kaitun][ERROR] resolve miss Pirate Fan Letter
+[Kaitun][RECOVERY] level=1 stuck quest:Pirate Fan Letter
+```
+
+UI Collect Pirate Fan Letter (0/1). QuestInfo: "Beat them up until one of them coughs it up." Marker tag **Corrupt Marine**. Script `byName("Pirate Fan Letter")` on an item that does not exist yet.
+
+### Root cause
+
+Collect handler was ObjectiveType→`Resolver.byName(item)`. KillUntilDrop items are not world props. `Combat.attack` also refused non-Kill objectives, so even a one-off marine hunt would stop.
+
+### Fix
+
+Goal + Acquire plan for all 151 QuestInfo modules. `AcquireItem` methods (AlreadyOwned, WorldPickup, EnemyDrop, …). Drop scan is folder/tag/prompt + semantic match — not nearest BasePart.
+
+Pirate Fan Letter Collect → `EnemyDrop` source=`Corrupt Marine` (QuestInfo marker). Pickup via drop-container prompt. Validate inventory/quest 0/1 → 1/1.
+
+Recovery changes strategy: lookup drop → enemy → diagnostic → blocker. `GBKaitun.DumpRuntimeIssue()` JSONL. Fruit/Haki/Race gated by `StoryFirst`.
+
+### Files
+
+- `Game/QuestSpecs.lua`, `Systems/Acquire.lua`, `Progression/Planner.lua`
+- `Systems/Quest.lua`, `Systems/Combat.lua` (`hunt`)
+- `Progression/DecisionEngine.lua`, `Core/Recovery.lua`, `kaitun.lua`
+- `VERSION` / `manifest.json` / `loader.lua` → **1.1.0**
+
+### Expected log
+
+```
+[Kaitun][PLAN] Need item Pirate Fan Letter
+[Kaitun][ACQUIRE] source=Corrupt Marine
+[Kaitun][COMBAT] Corrupt Marine
+[Kaitun][DROP] Pirate Fan Letter
+[Kaitun][PICKUP] Pirate Fan Letter
+[Kaitun][QUEST] 0/1 -> 1/1
+```
+
+---
+
 ## 1.0.7 — Basics Cast blocked by Unlock Skill tutorial overlay
 
 ### Issue

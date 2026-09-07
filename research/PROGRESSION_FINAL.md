@@ -12,7 +12,7 @@ Hard level cap: **UNKNOWN**. Soft visual `LEVEL_SOFT_CAP=125` (radar only). Cont
 
 1. **Introduction** — Talk Officer Graves (world instance `Officer Graves [2]`, DisplayName `Officer Graves`) → Dummy×4, Dash, Block → Talk Graves; Strong Punch drop → `PromptSkillEquip` if popup.
 2. **Basics** — EquipStrongPunch scroll (`ConsumeSkillScroll` + `Skill("Equip","Strong Punch")`); Cast hotbar; `StatPoints Invest` ≥1; ForceOpenLogbook + `OpenLogbookHelp`.
-3. **Pirate Fan Letter** — Koro / letter; Stolen Watch.
+3. **Pirate Fan Letter** — Talk Graves → Talk Koro → KillUntilDrop **Corrupt Marine** until letter (Stolen Watch side drop) → Talk Koro.
 4. Repeat **Bullies in Suits** (band 5–12) if need EXP.
 5. **Gearing Up** — Sell watch (`SellItem`); buy **Flintlock 150G**; HeldItem Equip; shoot dummy.
 6. **The Hoarder** (lv7) — Kill Afuaru; key; loot 5 chests.

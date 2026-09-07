@@ -34,6 +34,7 @@ return function(GB)
 	def("AutoFruit", true)
 	def("AutoHaki", false) -- trainer UNRESOLVED
 	def("AutoRaceTrait", false) -- default off; no spam reroll
+	def("StoryFirst", true) -- Fruit/Haki/Race do not interrupt story
 	def("AutoBoss", true)
 	def("AutoChest", true)
 	def("AutoTreasure", true)
@@ -74,6 +75,8 @@ return function(GB)
 	def("RecoveryCooldown", 8)
 	def("ActionTimeout", 25)
 	def("MaxRetries", 3)
+	def("QuestMaxAcquireCycles", 8)
+	def("DropWindow", 4)
 
 	-- HARD: do not skip these after RE
 	def("NeverSkip", {

@@ -18,6 +18,113 @@ return function(GB)
 		GB.Log.log("BOOT", "checkpoint quest=" .. tostring(ck.quest) .. " stage=" .. tostring(ck.stage or "-"))
 	end
 
+	local function encodeDump(t)
+		local Http = game:GetService("HttpService")
+		return Http:JSONEncode(t)
+	end
+
+	local function canWrite()
+		return typeof(writefile) == "function"
+	end
+
+	local function ensureFolder(path)
+		if typeof(makefolder) == "function" then
+			makefolder(path)
+		end
+	end
+
+	local function appendJsonl(path, line)
+		if not canWrite() then
+			return
+		end
+		local prev = ""
+		if typeof(isfile) == "function" and isfile(path) and typeof(readfile) == "function" then
+			prev = readfile(path)
+			if type(prev) ~= "string" then
+				prev = ""
+			end
+		end
+		writefile(path, prev .. line .. "\n")
+	end
+
+	local function invSummary()
+		local rows = {}
+		if not (GB.Inventory and GB.Inventory.list) then
+			return rows
+		end
+		for _, r in ipairs(GB.Inventory.list()) do
+			rows[#rows + 1] = { name = r.name, amount = r.amount }
+		end
+		return rows
+	end
+
+	function GB.DumpRuntimeIssue()
+		local snap = GB.State.get()
+		local cur = GB.PlayerData.current()
+		local qs = cur and GB.Quest.questState(cur)
+		local tr = cur and GB.Quest.trackOf(cur)
+		local plan = GB.Planner and GB.Planner.last
+		local obj = qs and qs.Objective
+		local dump = {
+			Version = tostring(getgenv().GB_VERSION or "1.1.0"),
+			PlaceId = game.PlaceId,
+			Level = snap.Level,
+			Island = snap.CurrentIsland,
+			Quest = cur,
+			Stage = qs and qs.StageIndex,
+			Objective = obj and {
+				Type = obj.Type,
+				Target = obj.TargetName,
+				Current = obj.Current,
+				Amount = obj.Amount,
+			} or nil,
+			Plan = plan and {
+				Goal = plan.Goal,
+				Target = plan.Target,
+				Method = plan.Method,
+				Source = plan.Source,
+			} or nil,
+			Target = obj and obj.TargetName,
+			Item = GB.Acquire and GB.Acquire.lastItem,
+			Attempts = tr and tr.AttemptCount,
+			LastProgress = GB.State.track.QuestProgress,
+			LastError = tr and tr.LastError,
+			Strategy = GB.Recovery and GB.Recovery.currentStrategy and GB.Recovery.currentStrategy(),
+			ResolverCandidates = GB.Resolver.lastCandidates,
+			Inventory = invSummary(),
+			Equip = snap.Weapon,
+		}
+		GB.Log.warn("DIAG", string.format("DumpRuntimeIssue quest=%s stage=%s", tostring(cur), tostring(dump.Stage)))
+		local line = encodeDump(dump)
+		if canWrite() then
+			ensureFolder("GBKaitun")
+			ensureFolder("GBKaitun/runtime")
+			appendJsonl("GBKaitun/runtime/latest.jsonl", line)
+			local sid = GB.Persist.data and GB.Persist.data.session or "session"
+			appendJsonl("GBKaitun/runtime/" .. sid .. ".jsonl", line)
+		end
+		return dump
+	end
+
+	function GB.WriteDeadEnd()
+		local dump = GB.DumpRuntimeIssue()
+		local q = tostring(dump.Quest or "unknown"):gsub("[^%w _%-]", "_")
+		local st = tostring(dump.Stage or 0)
+		local key = q .. "_" .. st
+		if GB.Recovery.deadOnce[key] then
+			return dump
+		end
+		GB.Recovery.deadOnce[key] = true
+		if canWrite() then
+			local sid = GB.Persist.data and GB.Persist.data.session or "session"
+			ensureFolder("runtime_reports")
+			ensureFolder("runtime_reports/" .. sid)
+			writefile("runtime_reports/" .. sid .. "/" .. key .. ".json", encodeDump(dump))
+		end
+		GB.Log.err("DIAG", "dead-end " .. key)
+		return dump
+	end
+
 	function GB.unload()
 		getgenv()._GBKaitunGen = (GB.gen or 0) + 1
 		if GB.Scheduler then

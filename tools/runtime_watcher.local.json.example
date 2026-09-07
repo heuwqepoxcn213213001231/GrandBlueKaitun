@@ -1,0 +1,6 @@
+{
+  "watch_dir": "/path/to/executor/GBKaitun/runtime",
+  "machine_alias": "testpc",
+  "git_push": false,
+  "interval": 5
+}

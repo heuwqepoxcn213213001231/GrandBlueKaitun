@@ -82,6 +82,10 @@ research/
 
 `GB.Require("Core.State")` / `LoadModule("Core/State")` resolve to `BASE_URL + path`.
 
+## Diagnostics
+
+`GBKaitun.DumpRuntimeIssue()` writes a serializable dump (version, place, quest/stage/plan, inventory names — no cookies). Watcher: `python3 tools/runtime_log_watcher.py` — see `tools/README.md`.
+
 ## Persist
 
 `Core/Persist.lua` writes `GBKaitun_persist.json` only when `writefile` exists. No filesystem → no crash.

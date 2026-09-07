@@ -198,6 +198,19 @@ return function(GB)
 		end)
 	end
 
+	function M.hunt(name)
+		local mob = M.findTarget(name, nil)
+		if not mob then
+			return false
+		end
+		GB.Log.log("COMBAT", tostring(name))
+		if not GB.World.moveTo(mob, 12) then
+			return false
+		end
+		M.startLock(mob)
+		return true
+	end
+
 	function M.attack(name, questName)
 		if questName then
 			local qs = GB.Quest.questState(questName)
@@ -207,15 +220,7 @@ return function(GB)
 				return false
 			end
 		end
-		local mob = M.findTarget(name, questName)
-		if not mob then
-			return false
-		end
-		if not GB.World.moveTo(mob, 12) then
-			return false
-		end
-		M.startLock(mob)
-		return true
+		return M.hunt(name)
 	end
 
 	function M.waitPermission(kind, timeout)

@@ -429,7 +429,10 @@ return function(GB)
 		end
 		if t.AttemptCount >= 5 then
 			GB.Log.err("QUEST", "STUCK " .. name .. " " .. tostring(err))
-			GB.Recovery.run("quest " .. name)
+			GB.Recovery.run("quest:" .. name)
+			if GB.DumpRuntimeIssue then
+				GB.DumpRuntimeIssue()
+			end
 			t.AttemptCount = 0
 			t.NextRetryAt = now + 4
 		end
@@ -737,17 +740,18 @@ return function(GB)
 			return false
 		end
 		if typ == "Collect" or typ == "CollectLocal" or typ == "CollectLocalItem" or typ == "Loot" then
-			if target and (string.find(target, "Ore") or target == "Copper Bar") then
-				return GB.LifeSkills.mineToward(target)
-			end
-			local obj = GB.Resolver.byName(target)
-			if obj then
-				GB.World.ToInteractable(obj, 8)
-				local pr = GB.Resolver.prompt(obj)
-				if pr then
-					fireproximityprompt(pr)
+			if GB.Planner and GB.Planner.execute then
+				local qs = M.questState(questName)
+				local plan = GB.Planner.build(qs)
+				if plan and plan.Goal == "AcquireItem" then
+					return GB.Planner.execute(qs, plan)
 				end
-				return true
+			end
+			if GB.Acquire then
+				return GB.Acquire.AcquireItem(target, GB.QuestData.conditionAmount(cond), {
+					Quest = questName,
+					Type = typ,
+				})
 			end
 			GB.Log.warn("QUEST", "collect miss " .. tostring(target))
 			return false
@@ -989,6 +993,12 @@ return function(GB)
 				end
 				t.NextRetryAt = os.clock() + 6
 				return false
+			end
+			if GB.Planner then
+				local plan = GB.Planner.build(qs)
+				if plan then
+					return GB.Planner.execute(qs, plan)
+				end
 			end
 			return M.handleCondition(name, qs.Objective.Raw, qs.Stage)
 		end
