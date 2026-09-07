@@ -2,7 +2,7 @@
 
 | Feature | Status | Reason |
 |---|---|---|
-| Fresh bootstrap | PARTIAL | Wait character + StatReplication; Introduction via live quest. 1.0.1 Folder islands. 1.0.2 Graves resolve + Talk validate |
+| Fresh bootstrap | PARTIAL | Wait character + StatReplication; Introduction via live quest. 1.0.1 Folder islands. 1.0.2 Graves resolve + Talk validate. 1.0.3 Dialogue ImageButton guiText + Activate |
 | Tutorial | PARTIAL | Introduction Talk Graves → dummy/Dash/Block → turn-in; Basics Talk/skill/stats/Logbook UI |
 | Quest | WORKING | Generic live stage executor (Talk/Kill/Collect/Purchase/Equip/Upgrade/Mine/Fish/Farm/Cook/Deliver/Interact/Travel/Escort/Boss). UNKNOWN_OBJECTIVE stops that loop |
 | Auto level | WORKING | Story gates + repeatable `full_until` bands |

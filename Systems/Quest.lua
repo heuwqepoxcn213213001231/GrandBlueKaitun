@@ -4,6 +4,7 @@
 return function(GB)
 	local M = {
 		lastTalk = {},
+		lastClick = 0,
 		track = {},
 		unknown = {},
 		lastSig = {},
@@ -65,43 +66,122 @@ return function(GB)
 		Boss = true,
 	}
 
+	local function guiText(inst)
+		return GB.State.guiText(inst)
+	end
+
+	local function isDecline(t)
+		if type(t) ~= "string" then
+			return false
+		end
+		for bad in pairs(DECLINE) do
+			if string.find(t, bad, 1, true) then
+				return true
+			end
+		end
+		return false
+	end
+
+	local function isAcceptText(t)
+		if type(t) ~= "string" then
+			return false
+		end
+		if string.find(t, "Accept", 1, true) then
+			return true
+		end
+		if string.find(t, "Thank", 1, true) then
+			return true
+		end
+		if string.find(t, "Yes", 1, true) then
+			return true
+		end
+		-- Officer Graves Dialogue.Definition FirstAgree — Introduction first node
+		if string.find(t, "I can help change that", 1, true) then
+			return true
+		end
+		return false
+	end
+
+	local function dialogueOpen()
+		local pg = GB.lp and GB.lp.PlayerGui
+		local ui = pg and pg:FindFirstChild("DialogueUI")
+		if not ui then
+			return false
+		end
+		if ui:IsA("LayerCollector") and ui.Enabled ~= true then
+			return false
+		end
+		local main = ui:FindFirstChild("Main")
+		if main then
+			for _, frame in ipairs(main:GetChildren()) do
+				if frame:IsA("Frame") and frame:FindFirstChildWhichIsA("GuiButton", true) then
+					return true
+				end
+			end
+		end
+		return ui:IsA("LayerCollector") and ui.Enabled == true
+	end
+
+	-- Choices live in DialogueUI.Main as cloned NodeFrames. ImageButton has no .Text;
+	-- label is sibling TextLabel. Template under DialogueHandler.NodeFrame is not clickable.
 	local function clickAccept()
 		local pg = GB.lp and GB.lp.PlayerGui
 		local ui = pg and pg:FindFirstChild("DialogueUI")
 		if not ui then
 			return false
 		end
-		local function try(btn)
-			if not btn or not btn:IsA("GuiButton") then
-				return false
-			end
-			local t = btn.Text or (btn:FindFirstChild("TextLabel") and btn.TextLabel.Text) or btn.Name
-			if type(t) ~= "string" then
-				return false
-			end
-			for bad in pairs(DECLINE) do
-				if string.find(t, bad, 1, true) then
-					return false
-				end
-			end
-			if string.find(t, "Accept") or string.find(t, "Thank") or string.find(t, "Yes") or t == "1" then
-				btn:Activate()
-				return true
-			end
+		local main = ui:FindFirstChild("Main")
+		if not main then
 			return false
 		end
-		for _, d in ipairs(ui:GetDescendants()) do
-			if try(d) then
-				return true
+		local candidates = {}
+		for _, frame in ipairs(main:GetChildren()) do
+			if frame:IsA("Frame") then
+				local btn = frame:FindFirstChild("ImageButton")
+				if btn and btn:IsA("GuiButton") then
+					local t = guiText(frame) or guiText(btn) or ""
+					if not isDecline(t) then
+						local num = frame:FindFirstChild("Number")
+						local ntext = ""
+						if num and (num:IsA("TextLabel") or num:IsA("TextButton") or num:IsA("TextBox")) then
+							ntext = num.Text
+						end
+						candidates[#candidates + 1] = {
+							btn = btn,
+							text = t,
+							first = frame.Name == "1" or frame.Name == 1 or (type(ntext) == "string" and string.sub(ntext, 1, 1) == "1"),
+							glow = frame:FindFirstChild("Quest Glow") ~= nil,
+						}
+					end
+				end
 			end
 		end
-		for _, d in ipairs(ui:GetDescendants()) do
-			if d:IsA("GuiButton") and (d.Name == "1" or d.Name == "Option1") then
-				d:Activate()
-				return true
+		local pick
+		for _, c in ipairs(candidates) do
+			if isAcceptText(c.text) or c.glow then
+				pick = c
+				break
 			end
 		end
-		return false
+		if not pick then
+			for _, c in ipairs(candidates) do
+				if c.first then
+					pick = c
+					break
+				end
+			end
+		end
+		pick = pick or candidates[1]
+		if not pick then
+			return false
+		end
+		local shown = pick.text
+		if shown == "" then
+			shown = pick.btn.Name
+		end
+		GB.Log.log("QUEST", "Click " .. tostring(shown))
+		pick.btn:Activate()
+		return true
 	end
 
 	local function openLogbook()
@@ -267,6 +347,18 @@ return function(GB)
 		local qsName = opts.Quest
 		local island = opts.Island or (qsName and GB.QuestData.islandOf(qsName))
 		local key = tostring(request)
+
+		if dialogueOpen() then
+			if os.clock() - (M.lastClick or 0) < 0.7 then
+				return false, "rate"
+			end
+			local clicked = clickAccept()
+			if clicked then
+				M.lastClick = os.clock()
+			end
+			return clicked, clicked and "advance" or "waiting"
+		end
+
 		if os.clock() - (M.lastTalk[key] or 0) < 1.8 then
 			return false, "rate"
 		end
@@ -342,7 +434,9 @@ return function(GB)
 			GB.Remotes.dialogueConfig(cfg)
 		end
 		task.wait(0.35)
-		clickAccept()
+		if clickAccept() then
+			M.lastClick = os.clock()
+		end
 		M.lastTalk[key] = os.clock()
 		return true, shown
 	end

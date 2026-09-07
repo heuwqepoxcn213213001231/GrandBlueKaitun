@@ -20,6 +20,49 @@ return function(GB)
 
 	local STATS = { "Health", "Strength", "Agility", "Precision", "Energy", "Willpower" }
 
+	local function readTextProp(inst)
+		if inst and (inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox")) then
+			local t = inst.Text
+			if type(t) == "string" then
+				return t
+			end
+		end
+		return nil
+	end
+
+	-- Never index .Text on ImageButton / Frame. DialogueUI NodeFrame: text is sibling TextLabel.
+	local function guiText(inst)
+		if not inst then
+			return nil
+		end
+		local direct = readTextProp(inst)
+		if direct and direct ~= "" then
+			return direct
+		end
+		local named = inst:FindFirstChild("TextLabel")
+		local fromNamed = readTextProp(named)
+		if fromNamed and fromNamed ~= "" then
+			return fromNamed
+		end
+		local deep = inst:FindFirstChildWhichIsA("TextLabel", true)
+		local fromDeep = readTextProp(deep)
+		if fromDeep and fromDeep ~= "" then
+			return fromDeep
+		end
+		local parent = inst.Parent
+		if parent then
+			local sib = readTextProp(parent:FindFirstChild("TextLabel"))
+			if sib and sib ~= "" then
+				return sib
+			end
+		end
+		local attr = inst:GetAttribute("Text")
+		if type(attr) == "string" and attr ~= "" then
+			return attr
+		end
+		return direct
+	end
+
 	local function guiNum(inst)
 		if not inst then
 			return nil
@@ -29,13 +72,20 @@ return function(GB)
 			t = inst.Text
 		else
 			local n = inst:FindFirstChild("StatpointText") or inst:FindFirstChildWhichIsA("TextLabel", true)
-			t = n and n.Text
+			t = n and (n:IsA("TextLabel") or n:IsA("TextButton") or n:IsA("TextBox")) and n.Text or nil
+		end
+		if type(t) ~= "string" then
+			t = guiText(inst)
 		end
 		if type(t) ~= "string" then
 			return nil
 		end
 		local n = t:gsub(",", ""):match("(%d+%.?%d*)")
 		return n and tonumber(n) or nil
+	end
+
+	function M.guiText(inst)
+		return guiText(inst)
 	end
 
 	function M.guiNum(inst)

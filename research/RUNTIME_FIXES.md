@@ -1,5 +1,67 @@
 # Runtime Fixes
 
+## 1.0.3 — Dialogue ImageButton `.Text` crash (Introduction stuck after Talk)
+
+### Issue
+
+NPC resolve + teleport worked. Player stood at Officer Graves with prompt **E Talk** and DialogueUI open, choice **"1. I can help change that!"**. Engine looped:
+
+```
+[Kaitun][QUEST] Talking Officer Graves
+[Kaitun][RESOLVE] Officer Graves -> Workspace.AA IMPORTANT.DialogueNPCs.Anchor Town.Officer Graves
+[Kaitun][TRAVEL] Teleport -> Officer Graves
+[Kaitun][ERROR] engine Text is not a valid member of ImageButton "Players.<name>.PlayerGui.DialogueUI.DialogueHandler.NodeFrame.ImageButton"
+[Kaitun][RECOVERY] level=4 stuck quest:Introduction
+```
+
+Talk 0/1 never became 1/1.
+
+### Root Cause (Studio place `118635363908336`)
+
+`DialogueUI` lives at `ReplicatedStorage.ScreenGuis.DialogueUI` (cloned to PlayerGui). Choice template:
+
+| Path | Class | Role |
+|---|---|---|
+| `DialogueHandler.NodeFrame` | Frame | template (not the live choice) |
+| `NodeFrame.TextLabel` | TextLabel | choice text (sibling) |
+| `NodeFrame.Number` | TextLabel | `"1."` |
+| `NodeFrame.ImageButton` | ImageButton | click target — **0 children, no `.Text`** |
+| `NodeFrame.Background` | ImageLabel | hover chrome |
+
+`DialogueHandler` clones `NodeFrame` into `DialogueUI.Main`, names the clone `1`/`2`, wires `ImageButton.Activated`. Client also listens `Clicked` attribute.
+
+`clickAccept` did `btn.Text or btn.TextLabel.Text`. Lua evaluates `btn.Text` first. ImageButton has no `Text` → crash. `GetDescendants()` hit the **template** under `DialogueHandler.NodeFrame` first, so the live `Main` clone was never reached.
+
+Even after a safe read, `"I can help change that!"` would not match `Accept`/`Thank`/`Yes`, and fallback `d.Name == "1"` looks at the ImageButton name (`"ImageButton"`), not the frame.
+
+Officer Graves `Dialogue.Definition` FirstAgree: `Text = "I can help change that!"`. PromptQuest Accept/Decline frames use the same NodeFrame + sibling label.
+
+### Fix
+
+- `State.guiText` / `guiNum`: never index `.Text` unless `IsA("TextLabel"|"TextButton"|"TextBox")`. ImageButton/Frame → named `TextLabel` child, then descendant label, then sibling `TextLabel`, then `GetAttribute("Text")`.
+- `clickAccept`: scan **`DialogueUI.Main` cloned frames only** (ignore template + Quest reward ImageButtons). Read label via `guiText`. Skip Decline / Good luck / Bye / No / Cancel. Prefer Accept / Thank / Yes / `"I can help change that"` / Quest Glow; else first numbered choice (`Name==1` / `Number` `"1."`).
+- Click path: `ImageButton:Activate()` — same `Activated` hook the client uses.
+- If DialogueUI is already Enabled, advance/click only. Do not re-`FireServer Talk` or re-teleport. Click rate 0.7s. `waitProgress` still validates 0/1 → 1/1.
+
+Shop/Codes do not read button `.Text`. `guiNum` already gated class before `.Text`.
+
+### Files
+
+- `Systems/Quest.lua`, `Core/State.lua`
+- `VERSION` / `manifest.json` / `loader.lua` → **1.0.3**
+
+### Expected next log
+
+```
+[Kaitun][QUEST] Talking Officer Graves
+[Kaitun][QUEST] Click I can help change that!
+[Kaitun][QUEST] Introduction 0/1 -> 1/1
+```
+
+Then next Introduction stage (Hit Training Dummy).
+
+---
+
 ## 1.0.2 — Officer Graves resolve miss (Introduction stuck)
 
 ### Issue
