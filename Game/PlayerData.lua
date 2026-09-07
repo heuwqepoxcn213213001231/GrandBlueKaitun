@@ -299,9 +299,8 @@ return function(GB)
 		if tr and M._live[tr] then
 			return tr
 		end
-		if tr and not M._done[tr] then
-			return tr
-		end
+		-- Tracker text leftovers ("Talk to Officer Graves to get started") must not
+		-- revive a finished starter quest as current.
 		if GB.QuestData then
 			for _, ch in ipairs(GB.QuestData.CHAINS) do
 				for _, name in ipairs(ch.order) do
@@ -353,6 +352,16 @@ return function(GB)
 	function M.refreshLive(force, why)
 		local t0 = pbegin()
 		loadMods()
+		if not M._seededDone then
+			M._seededDone = true
+			local snap = M.cache()
+			local raw = snap and (snap["Completed Quests"] or snap.CompletedQuests)
+			if raw then
+				for k in pairs(completedSet(raw)) do
+					M._done[k] = true
+				end
+			end
+		end
 		local now = os.clock()
 		M._tracker = readTracker()
 		local stale = now - (M._lastQuestFetchAt or 0) >= LIVE_SAFETY_TTL
@@ -595,11 +604,53 @@ return function(GB)
 		return out
 	end
 
+	function M.level()
+		local d = M.cache()
+		local n = tonumber(d and d.Level)
+		if n and n > 0 then
+			return n
+		end
+		local snap = GB.State and GB.State.get and GB.State.get()
+		return tonumber(snap and snap.Level) or 0
+	end
+
+	function M.markLocalDone(name, why)
+		if type(name) ~= "string" or name == "" then
+			return
+		end
+		M._localDone = M._localDone or {}
+		M._localDone[name] = true
+		M._done[name] = true
+		M._live[name] = nil
+		if M._current == name then
+			M._current = nil
+		end
+		if why and (not M._localDoneLog or os.clock() - M._localDoneLog > 2) then
+			M._localDoneLog = os.clock()
+			GB.Log.log("STATE", string.format("local done %s %s", name, tostring(why)))
+		end
+	end
+
 	function M.finished(name, skipRefresh)
+		if not name then
+			return false
+		end
 		if not skipRefresh then
 			M.refreshLive()
 		end
-		return name and M._done[name] == true
+		if M._done[name] == true then
+			return true
+		end
+		if M._localDone and M._localDone[name] then
+			return true
+		end
+		if M._live[name] then
+			return false
+		end
+		if GB.QuestData and GB.QuestData.impliedFinished then
+			return GB.QuestData.impliedFinished(name, M.level()) == true
+		end
+		return false
 	end
 
 	-- Historical Completed Quests membership. Repeatables stay true after the first clear.

@@ -982,6 +982,12 @@ return function(GB)
 				end
 			end
 		end
+		if t.AttemptCount >= 2 and not isRepeatable(name) then
+			local live = GB.PlayerData and GB.PlayerData.live and GB.PlayerData.live(name)
+			if not live and GB.PlayerData and GB.PlayerData.markLocalDone then
+				GB.PlayerData.markLocalDone(name, err)
+			end
+		end
 		if t.AttemptCount >= 5 then
 			if farmMiss then
 				t.AttemptCount = 0
@@ -2138,6 +2144,9 @@ return function(GB)
 		end
 
 		if not qs.IsAccepted then
+			if not (qs.Repeatable or isRepeatable(name)) and GB.PlayerData.finished(name, true) then
+				return resultRow(name, false, false, "already_complete")
+			end
 			if qs.IsComplete and not (qs.Repeatable or isRepeatable(name)) then
 				return resultRow(name, true, true, "already_complete")
 			end

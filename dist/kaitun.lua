@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
--- Version: 1.1.27
--- Commit: 8295847
--- BuiltAt: 2026-09-08T05:04:18+07:00
+-- Version: 1.1.28
+-- Commit: ea1d134
+-- BuiltAt: 2026-09-08T05:43:05+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -35,9 +35,9 @@ return function(meta)
 
 	stopPreviousInstance()
 
-	local BUILD_VERSION = "1.1.27"
-	local BUILD_COMMIT = "8295847"
-	local BUILD_AT = "2026-09-08T05:04:18+07:00"
+	local BUILD_VERSION = "1.1.28"
+	local BUILD_COMMIT = "ea1d134"
+	local BUILD_AT = "2026-09-08T05:43:05+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -963,6 +963,20 @@ return function(GB)
 		local qs = cur and GB.Quest and GB.Quest.questState and GB.Quest.questState(cur)
 		local o = qs and qs.Objective
 		if o and (o.Type == "Unlock" or o.Type == "Loot" or o.Type == "Open" or o.Type == "Interact") then
+			if strat == "enemy" then
+				strat = M.advanceStrategy()
+			end
+		end
+		local taskName = tostring(GB.State.track.TaskName or why or "")
+		if string.find(taskName, "pick:", 1, true) or string.find(taskName, "quest_accept", 1, true) then
+			local deadName = string.match(taskName, "pick:(.+)$") or string.match(taskName, "quest_accept:(.+)$")
+			if deadName and GB.PlayerData and GB.PlayerData.markLocalDone and not (GB.QuestData and GB.QuestData.isRepeatable and GB.QuestData.isRepeatable(deadName)) then
+				if not (GB.PlayerData.live and GB.PlayerData.live(deadName)) then
+					GB.PlayerData.markLocalDone(deadName, "recovery_accept")
+					M.markSuccess()
+					return
+				end
+			end
 			if strat == "enemy" then
 				strat = M.advanceStrategy()
 			end
@@ -2796,9 +2810,8 @@ return function(GB)
 		if tr and M._live[tr] then
 			return tr
 		end
-		if tr and not M._done[tr] then
-			return tr
-		end
+		-- Tracker text leftovers ("Talk to Officer Graves to get started") must not
+		-- revive a finished starter quest as current.
 		if GB.QuestData then
 			for _, ch in ipairs(GB.QuestData.CHAINS) do
 				for _, name in ipairs(ch.order) do
@@ -2850,6 +2863,16 @@ return function(GB)
 	function M.refreshLive(force, why)
 		local t0 = pbegin()
 		loadMods()
+		if not M._seededDone then
+			M._seededDone = true
+			local snap = M.cache()
+			local raw = snap and (snap["Completed Quests"] or snap.CompletedQuests)
+			if raw then
+				for k in pairs(completedSet(raw)) do
+					M._done[k] = true
+				end
+			end
+		end
 		local now = os.clock()
 		M._tracker = readTracker()
 		local stale = now - (M._lastQuestFetchAt or 0) >= LIVE_SAFETY_TTL
@@ -3092,11 +3115,53 @@ return function(GB)
 		return out
 	end
 
+	function M.level()
+		local d = M.cache()
+		local n = tonumber(d and d.Level)
+		if n and n > 0 then
+			return n
+		end
+		local snap = GB.State and GB.State.get and GB.State.get()
+		return tonumber(snap and snap.Level) or 0
+	end
+
+	function M.markLocalDone(name, why)
+		if type(name) ~= "string" or name == "" then
+			return
+		end
+		M._localDone = M._localDone or {}
+		M._localDone[name] = true
+		M._done[name] = true
+		M._live[name] = nil
+		if M._current == name then
+			M._current = nil
+		end
+		if why and (not M._localDoneLog or os.clock() - M._localDoneLog > 2) then
+			M._localDoneLog = os.clock()
+			GB.Log.log("STATE", string.format("local done %s %s", name, tostring(why)))
+		end
+	end
+
 	function M.finished(name, skipRefresh)
+		if not name then
+			return false
+		end
 		if not skipRefresh then
 			M.refreshLive()
 		end
-		return name and M._done[name] == true
+		if M._done[name] == true then
+			return true
+		end
+		if M._localDone and M._localDone[name] then
+			return true
+		end
+		if M._live[name] then
+			return false
+		end
+		if GB.QuestData and GB.QuestData.impliedFinished then
+			return GB.QuestData.impliedFinished(name, M.level()) == true
+		end
+		return false
 	end
 
 	-- Historical Completed Quests membership. Repeatables stay true after the first clear.
@@ -3227,7 +3292,7 @@ return function(GB)
 	return M
 end
 ]],
-    ["Game/QuestData.lua"] = [[-- Planner tables from data.json / picker. Kill-name fixes from Studio modules.
+    ["Game/QuestData.lua"] = [=[-- Planner tables from data.json / picker. Kill-name fixes from Studio modules.
 
 return function(GB)
 	local M = {}
@@ -3288,6 +3353,27 @@ return function(GB)
 		["The Ringmaster"] = 60,
 		["Journey to Maple Village"] = 70,
 		["The Island's Protector"] = 70,
+	}
+
+	-- If Completed Quests is empty, level still proves these story beats are behind us.
+	M.STORY_DONE_AT = {
+		["Introduction"] = 6,
+		["Basics"] = 6,
+		["Pirate Fan Letter"] = 8,
+		["Gearing Up"] = 8,
+		["The Hoarder"] = 12,
+		["First Upgrade"] = 12,
+		["Tea Party Crashers"] = 14,
+		["Captain's Brat"] = 20,
+		["Feral Dog"] = 24,
+		["Gate of Authority"] = 26,
+		["Captive Swordsman"] = 26,
+		["Axe-Handed Tyrant"] = 26,
+		["A Voice in a Shell"] = 26,
+	}
+
+	M.SIDES = {
+		{ name = "Advanced Training", island = "Anchor Town", accept = 0, prereq = "Tea Party Crashers" },
 	}
 
 	M.REPEATS = {
@@ -3442,6 +3528,7 @@ return function(GB)
 		["Stocked for a Siege"] = "Captain Esopo",
 		["Destroy the Signalers"] = "Captain Esopo",
 		["The Black Noir Raid"] = "Lady Maia",
+		["Advanced Training"] = "Officer Graves [2]",
 		["Bullies in Suits"] = "Koro",
 		["Officer Termination"] = "Maeve",
 		["Granny's Nemesis"] = "Granny Todo",
@@ -3463,6 +3550,9 @@ return function(GB)
 	for _, e in ipairs(M.REPEATS) do
 		M.QUEST_ISLAND[e.name] = e.island
 	end
+	for _, e in ipairs(M.SIDES) do
+		M.QUEST_ISLAND[e.name] = e.island
+	end
 
 	M.AUTOMATIC = {
 		["Introduction"] = true,
@@ -3472,6 +3562,7 @@ return function(GB)
 		["The Hoarder"] = true,
 		["First Upgrade"] = true,
 		["Tea Party Crashers"] = true,
+		["Advanced Training"] = true,
 		["Captain's Brat"] = true,
 		["Feral Dog"] = true,
 		["Gate of Authority"] = true,
@@ -3525,6 +3616,36 @@ return function(GB)
 
 	function M.needLevel(name)
 		return M.GATES[name] or 0
+	end
+
+	function M.impliedFinished(name, lv)
+		if type(name) ~= "string" or name == "" then
+			return false
+		end
+		lv = tonumber(lv) or 0
+		local cut = M.STORY_DONE_AT[name]
+		if cut and lv >= cut then
+			return true
+		end
+		for _, ch in ipairs(M.CHAINS) do
+			local idx
+			for i, n in ipairs(ch.order) do
+				if n == name then
+					idx = i
+					break
+				end
+			end
+			if idx then
+				for j = idx + 1, #ch.order do
+					local g = M.GATES[ch.order[j]]
+					if g and lv >= g then
+						return true
+					end
+				end
+				break
+			end
+		end
+		return false
 	end
 
 	function M.prereqOk(prereq)
@@ -3761,7 +3882,7 @@ return function(GB)
 
 	return M
 end
-]],
+]=],
     ["Game/QuestSpecs.lua"] = [[-- Generated from research/quests.json. Item sources are QuestInfo markers/conditions only.
 return function(GB)
 	local M = { ITEMS = {}, STAGES = {}, SUBGOALS = {} }
@@ -7773,6 +7894,23 @@ return function(GB)
 		end
 	end
 
+	local function pickSide(island, lv)
+		if not (GB.QuestData and GB.QuestData.SIDES) then
+			return nil
+		end
+		for _, e in ipairs(GB.QuestData.SIDES) do
+			if e.island == island and not GB.Config.SkipQuests[e.name] then
+				if GB.PlayerData.live(e.name) then
+					return e.name
+				end
+				if (not GB.PlayerData.finished(e.name, true)) and GB.QuestData.prereqOk(e.prereq) and lv >= (e.accept or 0) then
+					return e.name
+				end
+			end
+		end
+		return nil
+	end
+
 	local function repeatStartability(name)
 		local start = GB.QuestData and GB.QuestData.repeatStartSpec and GB.QuestData.repeatStartSpec(name) or nil
 		local qs = GB.Quest and GB.Quest.questState and GB.Quest.questState(name) or nil
@@ -8476,8 +8614,23 @@ return function(GB)
 			return
 		end
 
+		local island = snap.CurrentIsland or M._lastFarmIsland
+		local lv = snap.Level or 0
+		local side = pickSide(island, lv)
+		if side then
+			if M._planQuest ~= side then
+				M._planQuest = side
+				GB.Log.log("PLANNER", "side " .. tostring(side))
+			end
+			setTask("quest:" .. side)
+			logQuestDoing(side)
+			GB.Quest.doLive(side)
+			afterQuest(side)
+			return
+		end
+
 		local pick = picker()
-		if pick and pick.name then
+		if pick and pick.name and not GB.PlayerData.finished(pick.name, true) then
 			setTask("pick:" .. pick.name)
 			logDoing("pick", pick.name)
 			GB.Quest.doLive(pick.name)
@@ -8485,8 +8638,6 @@ return function(GB)
 			return
 		end
 
-		local island = snap.CurrentIsland
-		local lv = snap.Level or 0
 		local story = nextStory(island, lv)
 		if story then
 			if lv < GB.QuestData.needLevel(story) then
@@ -12472,6 +12623,12 @@ return function(GB)
 				end
 			end
 		end
+		if t.AttemptCount >= 2 and not isRepeatable(name) then
+			local live = GB.PlayerData and GB.PlayerData.live and GB.PlayerData.live(name)
+			if not live and GB.PlayerData and GB.PlayerData.markLocalDone then
+				GB.PlayerData.markLocalDone(name, err)
+			end
+		end
 		if t.AttemptCount >= 5 then
 			if farmMiss then
 				t.AttemptCount = 0
@@ -13628,6 +13785,9 @@ return function(GB)
 		end
 
 		if not qs.IsAccepted then
+			if not (qs.Repeatable or isRepeatable(name)) and GB.PlayerData.finished(name, true) then
+				return resultRow(name, false, false, "already_complete")
+			end
 			if qs.IsComplete and not (qs.Repeatable or isRepeatable(name)) then
 				return resultRow(name, true, true, "already_complete")
 			end

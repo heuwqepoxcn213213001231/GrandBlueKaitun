@@ -103,6 +103,23 @@ return function(GB)
 		end
 	end
 
+	local function pickSide(island, lv)
+		if not (GB.QuestData and GB.QuestData.SIDES) then
+			return nil
+		end
+		for _, e in ipairs(GB.QuestData.SIDES) do
+			if e.island == island and not GB.Config.SkipQuests[e.name] then
+				if GB.PlayerData.live(e.name) then
+					return e.name
+				end
+				if (not GB.PlayerData.finished(e.name, true)) and GB.QuestData.prereqOk(e.prereq) and lv >= (e.accept or 0) then
+					return e.name
+				end
+			end
+		end
+		return nil
+	end
+
 	local function repeatStartability(name)
 		local start = GB.QuestData and GB.QuestData.repeatStartSpec and GB.QuestData.repeatStartSpec(name) or nil
 		local qs = GB.Quest and GB.Quest.questState and GB.Quest.questState(name) or nil
@@ -806,8 +823,23 @@ return function(GB)
 			return
 		end
 
+		local island = snap.CurrentIsland or M._lastFarmIsland
+		local lv = snap.Level or 0
+		local side = pickSide(island, lv)
+		if side then
+			if M._planQuest ~= side then
+				M._planQuest = side
+				GB.Log.log("PLANNER", "side " .. tostring(side))
+			end
+			setTask("quest:" .. side)
+			logQuestDoing(side)
+			GB.Quest.doLive(side)
+			afterQuest(side)
+			return
+		end
+
 		local pick = picker()
-		if pick and pick.name then
+		if pick and pick.name and not GB.PlayerData.finished(pick.name, true) then
 			setTask("pick:" .. pick.name)
 			logDoing("pick", pick.name)
 			GB.Quest.doLive(pick.name)
@@ -815,8 +847,6 @@ return function(GB)
 			return
 		end
 
-		local island = snap.CurrentIsland
-		local lv = snap.Level or 0
 		local story = nextStory(island, lv)
 		if story then
 			if lv < GB.QuestData.needLevel(story) then

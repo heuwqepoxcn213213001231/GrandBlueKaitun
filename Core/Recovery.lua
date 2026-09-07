@@ -130,6 +130,20 @@ return function(GB)
 				strat = M.advanceStrategy()
 			end
 		end
+		local taskName = tostring(GB.State.track.TaskName or why or "")
+		if string.find(taskName, "pick:", 1, true) or string.find(taskName, "quest_accept", 1, true) then
+			local deadName = string.match(taskName, "pick:(.+)$") or string.match(taskName, "quest_accept:(.+)$")
+			if deadName and GB.PlayerData and GB.PlayerData.markLocalDone and not (GB.QuestData and GB.QuestData.isRepeatable and GB.QuestData.isRepeatable(deadName)) then
+				if not (GB.PlayerData.live and GB.PlayerData.live(deadName)) then
+					GB.PlayerData.markLocalDone(deadName, "recovery_accept")
+					M.markSuccess()
+					return
+				end
+			end
+			if strat == "enemy" then
+				strat = M.advanceStrategy()
+			end
+		end
 		GB.Log.warn("RECOVERY", string.format("level=%d strategy=%s %s", M.level, tostring(strat), tostring(why)))
 		scopedInvalidate(qs)
 

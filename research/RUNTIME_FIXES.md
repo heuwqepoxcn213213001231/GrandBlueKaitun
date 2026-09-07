@@ -1,5 +1,16 @@
 # Runtime Fixes
 
+## 1.1.28 — Stop re-accepting finished story; sides then farm
+
+Lv26 picker looped `Introduction` via Graves flavor / tracker leftover (`Talk to Officer Graves to get started`). Recovery `enemy stuck pick:Introduction` reset accept. Setting Sail is the real next beat (level 30).
+
+**Fix**
+
+- Tracker text cannot become `current` unless the quest is live.
+- `finished()` includes level-implied story completion when Completed Quests is empty.
+- Dead story accept is marked local-done. Recovery does not enemy-unstick accept/pick.
+- Side quests on the island (`Advanced Training`) run if still startable; otherwise farm to the next gate.
+
 ## 1.1.27 — Respawn resume, no 16s scheduler hang
 
 Death mid-farm: `huntUntilDead(16)` blocked `Scheduler.step` (~16382ms), `GameplayPaused` waited 12s more, empty `GetData Quests` wiped live repeats, planner sat `wait_level:Setting Sail`. Telemetry `moved 1613 studs` was the game respawn, then the bot never re-engaged the pack.

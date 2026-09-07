@@ -61,6 +61,27 @@ return function(GB)
 		["The Island's Protector"] = 70,
 	}
 
+	-- If Completed Quests is empty, level still proves these story beats are behind us.
+	M.STORY_DONE_AT = {
+		["Introduction"] = 6,
+		["Basics"] = 6,
+		["Pirate Fan Letter"] = 8,
+		["Gearing Up"] = 8,
+		["The Hoarder"] = 12,
+		["First Upgrade"] = 12,
+		["Tea Party Crashers"] = 14,
+		["Captain's Brat"] = 20,
+		["Feral Dog"] = 24,
+		["Gate of Authority"] = 26,
+		["Captive Swordsman"] = 26,
+		["Axe-Handed Tyrant"] = 26,
+		["A Voice in a Shell"] = 26,
+	}
+
+	M.SIDES = {
+		{ name = "Advanced Training", island = "Anchor Town", accept = 0, prereq = "Tea Party Crashers" },
+	}
+
 	M.REPEATS = {
 		{ name = "Bullies in Suits", island = "Anchor Town", accept = 0, full_until = 12, exp = 40, prereq = "Pirate Fan Letter" },
 		{ name = "Officer Termination", island = "Anchor Town", accept = 0, full_until = 30, exp = 105, prereq = "Tea Party Crashers" },
@@ -213,6 +234,7 @@ return function(GB)
 		["Stocked for a Siege"] = "Captain Esopo",
 		["Destroy the Signalers"] = "Captain Esopo",
 		["The Black Noir Raid"] = "Lady Maia",
+		["Advanced Training"] = "Officer Graves [2]",
 		["Bullies in Suits"] = "Koro",
 		["Officer Termination"] = "Maeve",
 		["Granny's Nemesis"] = "Granny Todo",
@@ -234,6 +256,9 @@ return function(GB)
 	for _, e in ipairs(M.REPEATS) do
 		M.QUEST_ISLAND[e.name] = e.island
 	end
+	for _, e in ipairs(M.SIDES) do
+		M.QUEST_ISLAND[e.name] = e.island
+	end
 
 	M.AUTOMATIC = {
 		["Introduction"] = true,
@@ -243,6 +268,7 @@ return function(GB)
 		["The Hoarder"] = true,
 		["First Upgrade"] = true,
 		["Tea Party Crashers"] = true,
+		["Advanced Training"] = true,
 		["Captain's Brat"] = true,
 		["Feral Dog"] = true,
 		["Gate of Authority"] = true,
@@ -296,6 +322,36 @@ return function(GB)
 
 	function M.needLevel(name)
 		return M.GATES[name] or 0
+	end
+
+	function M.impliedFinished(name, lv)
+		if type(name) ~= "string" or name == "" then
+			return false
+		end
+		lv = tonumber(lv) or 0
+		local cut = M.STORY_DONE_AT[name]
+		if cut and lv >= cut then
+			return true
+		end
+		for _, ch in ipairs(M.CHAINS) do
+			local idx
+			for i, n in ipairs(ch.order) do
+				if n == name then
+					idx = i
+					break
+				end
+			end
+			if idx then
+				for j = idx + 1, #ch.order do
+					local g = M.GATES[ch.order[j]]
+					if g and lv >= g then
+						return true
+					end
+				end
+				break
+			end
+		end
+		return false
 	end
 
 	function M.prereqOk(prereq)
