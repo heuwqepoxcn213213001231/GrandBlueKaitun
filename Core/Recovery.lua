@@ -57,7 +57,11 @@ return function(GB)
 		end
 		local gate = GB.Tutorial and GB.Tutorial.GetCurrentGate and GB.Tutorial.GetCurrentGate()
 		if gate and GB.Tutorial.GateTypes and gate.Type == GB.Tutorial.GateTypes.ContinueOverlay then
-			GB.Log.warn("RECOVERY", "skip ContinueOverlay " .. tostring(gate.Id))
+			if os.clock() - (M.lastSkipAt or 0) > 8 then
+				M.lastSkipAt = os.clock()
+				GB.Log.warn("RECOVERY", "skip ContinueOverlay " .. tostring(gate.Id))
+			end
+			M.last = os.clock()
 			return
 		end
 		if M.outcome == "BLOCKING_GATE_UNRESOLVED" then

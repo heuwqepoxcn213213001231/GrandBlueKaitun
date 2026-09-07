@@ -446,6 +446,10 @@ return function(GB)
 			end
 		end
 		GB.State._continueStrategy = STRATS[(M.continueAttempts % #STRATS) + 1]
+		local stageName, stageBefore, stageTotal = nil, 0, 0
+		if GB.State.overlayStage then
+			stageName, stageBefore, stageTotal = GB.State.overlayStage(gate.Instance)
+		end
 		local _, _, method = GB.State.dismissTutorialOverlay()
 		if method == "wait_listener" or method == "rate" then
 			return false
@@ -460,9 +464,26 @@ return function(GB)
 		M.lastMethod = method
 		M.lastAction = "ContinueOverlay"
 		M.continueAttempts = M.continueAttempts + 1
-		GB.Log.log("UI", string.format("continue %s %s via %s", tostring(gate.Id), tostring(gate.Payload or ""), tostring(method)))
+		local ver = ""
+		pcall(function()
+			ver = tostring(getgenv().GB_VERSION or "")
+		end)
+		GB.Log.log(
+			"UI",
+			string.format(
+				"continue %s %s via %s ver=%s",
+				tostring(gate.Id),
+				tostring(gate.Payload or stageName or ""),
+				tostring(method),
+				ver
+			)
+		)
+		local linger = 0.55
+		if stageTotal > 0 and stageBefore >= stageTotal then
+			linger = 0.9
+		end
 		local t0 = os.clock()
-		while os.clock() - t0 < 0.85 do
+		while os.clock() - t0 < linger do
 			if M.ValidateGateCompleted(gate) then
 				M.releaseTutorial("cleared")
 				GB.Log.log("GATE", tostring(gate.Id) .. " cleared")
@@ -472,11 +493,27 @@ return function(GB)
 			end
 			task.wait(0.08)
 		end
+		if GB.State.overlayStage then
+			local _, stageAfter = GB.State.overlayStage(gate.Instance)
+			if type(stageAfter) == "number" and stageAfter > (stageBefore or 0) then
+				GB.Log.log(
+					"GATE",
+					string.format(
+						"%s %s stage %d->%d",
+						tostring(gate.Id),
+						tostring(gate.Payload or stageName or ""),
+						stageBefore or 0,
+						stageAfter
+					)
+				)
+				M.continueAttempts = 0
+			end
+		end
 		if M.continueAttempts >= 2 and M.dumpedTree ~= key then
 			M.dumpedTree = key
 			M.DumpTutorialState()
 		end
-		if M.continueAttempts >= 8 then
+		if M.continueAttempts >= 12 then
 			M.unresolved = key
 			if GB.Recovery then
 				GB.Recovery.outcome = "BLOCKING_GATE_UNRESOLVED"

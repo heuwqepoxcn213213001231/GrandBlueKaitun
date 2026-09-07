@@ -261,7 +261,7 @@ if MODE == "REMOTE" then
 	print("[Kaitun][Loader] Base " .. BASE_URL)
 end
 
-local versionText = "1.1.10"
+local versionText = "1.1.11"
 do
 	local ok, raw = pcall(fetch, "VERSION")
 	if ok then

@@ -1,5 +1,22 @@
 # Runtime Fixes
 
+## 1.1.11 — Mining overlay: stop walking UIS.InputBegan
+
+Ảnh 2 (stage 1+2 cùng lúc) là click tay. Bot vẫn loop `_src` + `skip ContinueOverlay`. 1.1.10 vẫn gọi `getconnections(UIS.InputBegan)` — executor index `_src` trên CorePackages `SchedulerHostConfig.default`, engine tick chết trước khi TutorialLocal chạy.
+
+`TutorialLocal`: MouseButton1 / Touch / ButtonX. `gameProcessed=true` return trừ ButtonX. `Background.Active=false` — click nền = `gameProcessed=false` (đường click tay). Mining 3 folder; AdvanceStage không ẩn stage cũ; lần 3 `CloseGUI` + `TutorialEvent:FireServer("Mining")`.
+
+**Fix:** không walk toàn bộ InputBegan. Chỉ invoke fn/conn có `Script.Name` = `TutorialLocal` / `PassiveObtained`. Click VIM vào nền + ButtonX mỗi tick. pcall toàn bộ invoke. Track stage 1→2→3. Không hide GUI.
+
+```
+[Kaitun][Loader] Manifest 1.1.11
+[Kaitun][UI] continue TutorialScreen Mining via InputBegan:TutorialLocal ver=1.1.11
+[Kaitun][GATE] TutorialScreen Mining stage 1->2
+[Kaitun][GATE] TutorialScreen cleared
+```
+
+---
+
 ## 1.1.10 — Mining TutorialScreen: `_src` crash aborted continue
 
 Pickaxe bought. `EquipAndActivate` opened **TutorialScreen Mining** — "Press anywhere to continue", 3 stages (hold / release at top / special materials). Detected ContinueOverlay + UIS.InputBegan. Overlay never closed.

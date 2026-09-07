@@ -248,9 +248,9 @@ return function(GB)
 		return false, nil
 	end
 
-	local OWNER_SCRIPTS = {
-		SkillObtained = { PassiveObtained = true },
-		TutorialScreen = { TutorialLocal = true },
+	local OWNER_NAMES = {
+		TutorialLocal = true,
+		PassiveObtained = true,
 	}
 
 	local function makeInput(kind)
@@ -267,13 +267,23 @@ return function(GB)
 		return t
 	end
 
-	local function connScript(c)
-		local s
+	local function invokeFn(fn, fake, processed)
+		if typeof(fn) ~= "function" then
+			return false
+		end
+		return pcall(fn, fake, processed)
+	end
+
+	local function connOwnerName(c)
+		local name
 		pcall(function()
-			s = c.Script
+			local scr = c.Script
+			if typeof(scr) == "Instance" then
+				name = scr.Name
+			end
 		end)
-		if typeof(s) == "Instance" then
-			return s
+		if type(name) == "string" and OWNER_NAMES[name] then
+			return name
 		end
 		local fn
 		pcall(function()
@@ -282,52 +292,16 @@ return function(GB)
 		if typeof(fn) == "function" and typeof(getfenv) == "function" then
 			pcall(function()
 				local env = getfenv(fn)
-				s = env and env.script
-			end)
-		end
-		if typeof(s) ~= "Instance" and typeof(fn) == "function" and debug and debug.info then
-			pcall(function()
-				local src = debug.info(fn, "s")
-				if type(src) == "string" and #src > 0 then
-					s = { Name = src:match("([^%.]+)$") or src, _src = src }
+				local scr = env and env.script
+				if typeof(scr) == "Instance" then
+					name = scr.Name
 				end
 			end)
 		end
-		return s
-	end
-
-	local function ownerMatch(ui, scr)
-		if not scr then
-			return false
+		if type(name) == "string" and OWNER_NAMES[name] then
+			return name
 		end
-		local allow = OWNER_SCRIPTS[ui and ui.Name] or OWNER_SCRIPTS.SkillObtained
-		if typeof(scr) == "Instance" then
-			if allow[scr.Name] then
-				return true
-			end
-			local ok, inside = pcall(function()
-				return ui and scr:IsDescendantOf(ui)
-			end)
-			return ok and inside == true
-		end
-		if type(scr) == "table" then
-			local src = rawget(scr, "_src")
-			if type(src) == "string" then
-				for n in pairs(allow) do
-					if string.find(src, n, 1, true) then
-						return true
-					end
-				end
-			end
-		end
-		return false
-	end
-
-	local function invokeFn(fn, fake, processed)
-		if typeof(fn) ~= "function" then
-			return false
-		end
-		return pcall(fn, fake, processed)
+		return nil
 	end
 
 	local function invokeConn(c, fake, processed)
@@ -360,14 +334,14 @@ return function(GB)
 		return invokeFn(fn, fake, processed)
 	end
 
-	-- PassiveObtained + TutorialLocal both test ButtonX AND MouseButton1/Touch.
+	-- TutorialLocal / PassiveObtained InputBegan: ButtonX + MouseButton1/Touch.
 	local function overlayInputFn(fn)
 		if typeof(fn) ~= "function" or typeof(getconstants) ~= "function" then
-			return nil
+			return false
 		end
 		local ok, cs = pcall(getconstants, fn)
 		if not (ok and type(cs) == "table") then
-			return nil
+			return false
 		end
 		local hasX, hasClick = false, false
 		for _, c in ipairs(cs) do
@@ -382,60 +356,189 @@ return function(GB)
 				hasClick = true
 			end
 		end
-		if hasX and hasClick then
-			return true
-		end
-		return false
+		return hasX and hasClick
 	end
 
-	local function nparamsOf(fn)
-		if not (debug and debug.info) then
-			return nil
+	local function scriptNameOfFn(fn)
+		local name
+		if typeof(getfenv) == "function" then
+			pcall(function()
+				local env = getfenv(fn)
+				local scr = env and env.script
+				if typeof(scr) == "Instance" then
+					name = scr.Name
+				end
+			end)
 		end
-		local n
+		if type(name) == "string" then
+			return name
+		end
+		if debug and debug.info then
+			pcall(function()
+				local src = debug.info(fn, "s")
+				if type(src) == "string" then
+					name = src:match("([^\\/]+)$") or src
+					name = name:match("([^%.]+)$") or name
+				end
+			end)
+		end
+		return name
+	end
+
+	local function clickViewport(vim)
+		if not (vim and vim.SendMouseButtonEvent) then
+			return false
+		end
+		local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize
+		local w = (vp and vp.X) or 800
+		local h = (vp and vp.Y) or 600
+		-- Background.Active=false — click the dimmer, not the card. Same as a hand click.
+		local pts = {
+			{ w * 0.12, h * 0.55 },
+			{ w * 0.50, h * 0.92 },
+			{ w * 0.88, h * 0.18 },
+		}
 		pcall(function()
-			n = debug.info(fn, "a")
+			for _, p in ipairs(pts) do
+				if vim.SendMouseMoveEvent then
+					vim:SendMouseMoveEvent(p[1], p[2], game)
+				end
+				vim:SendMouseButtonEvent(p[1], p[2], 0, true, game, 1)
+				task.wait(0.02)
+				vim:SendMouseButtonEvent(p[1], p[2], 0, false, game, 1)
+				task.wait(0.04)
+			end
 		end)
-		return n
+		return true
 	end
 
-	-- Invoke PassiveObtained / TutorialLocal InputBegan. Never hide GUI.
-	-- Mouse on the card sets gameProcessed=true and the handler no-ops unless ButtonX.
-	function M.invokeContinueInput(ui, strategy)
-		strategy = strategy or "owner"
+	-- Highest visible numbered stage under Tutorials/<Title>. AdvanceStage does not hide prior stages.
+	function M.overlayStage(ui)
+		if not ui then
+			return nil, 0, 0
+		end
+		local tutorials = ui:FindFirstChild("Tutorials")
+		if not tutorials then
+			return nil, 0, 0
+		end
+		local title = ui:FindFirstChild("Title")
+		local name = title and guiText(title)
+		local folder = (type(name) == "string" and name ~= "" and tutorials:FindFirstChild(name)) or nil
+		if not folder then
+			for _, ch in ipairs(tutorials:GetChildren()) do
+				if ch:IsA("GuiObject") and ch.Visible then
+					folder = ch
+					name = ch.Name
+					break
+				end
+			end
+		end
+		if not folder then
+			return name, 0, 0
+		end
+		local maxVis, total = 0, 0
+		for _, ch in ipairs(folder:GetChildren()) do
+			local n = tonumber(ch.Name)
+			if n then
+				total = total + 1
+				local vis = false
+				if ch:IsA("GuiObject") and ch.Visible then
+					vis = true
+				end
+				if not vis then
+					for _, d in ipairs(ch:GetDescendants()) do
+						if d:IsA("GuiObject") and d.Visible then
+							vis = true
+							break
+						end
+					end
+				end
+				if vis and n > maxVis then
+					maxVis = n
+				end
+			end
+		end
+		return name, maxVis, total
+	end
+
+	-- Invoke TutorialLocal / PassiveObtained InputBegan only. Never hide GUI.
+	-- Do not walk all UIS.InputBegan connections — CorePackages Scheduler ModuleScripts
+	-- throw `_src` on this executor and abort the engine tick.
+	function M.invokeContinueInput(ui, _strategy)
 		local fakeMb = makeInput("mb1")
 		local fakeX = makeInput("x")
 		local method, invoked = nil, 0
 		local UIS = game:GetService("UserInputService")
 		local sig = rbxSignal(UIS, "InputBegan")
+		local want = (ui and ui.Name == "SkillObtained") and "PassiveObtained" or "TutorialLocal"
 
-		local function takeConn(c)
-			local scr = connScript(c)
-			if typeof(scr) == "Instance" then
-				local ok, full = pcall(function()
-					return scr:GetFullName()
-				end)
-				if ok and type(full) == "string" and string.find(full, "CorePackages", 1, true) then
-					return false
-				end
+		local function hitOwner(fn)
+			if typeof(fn) ~= "function" then
+				return false
 			end
-			local fn
-			pcall(function()
-				fn = c.Function
-			end)
-			return ownerMatch(ui, scr) or overlayInputFn(fn) == true
-		end
-
-		local function fireOverlay(c)
-			if invokeConn(c, fakeX, false) or invokeConn(c, fakeX, true) or invokeConn(c, fakeMb, false) then
+			local sn = scriptNameOfFn(fn)
+			if sn ~= want then
+				return false
+			end
+			if not overlayInputFn(fn) then
+				return false
+			end
+			if invokeFn(fn, fakeX, false) or invokeFn(fn, fakeX, true) or invokeFn(fn, fakeMb, false) then
 				invoked = invoked + 1
+				method = "InputBegan:" .. tostring(sn)
 				return true
 			end
 			return false
 		end
 
-		-- ButtonX first. TutorialLocal ignores gameProcessed only for ButtonX.
-		-- Conn walk must not run before this — a property error used to abort the tick.
+		-- 1) Direct owner fn via getgc (name-gated). Same path that closed SkillObtained.
+		if typeof(getgc) == "function" then
+			local ok, gc = pcall(getgc, false)
+			if not ok then
+				ok, gc = pcall(getgc)
+			end
+			if ok and type(gc) == "table" then
+				for _, fn in ipairs(gc) do
+					if invoked >= 2 then
+						break
+					end
+					pcall(hitOwner, fn)
+				end
+			end
+		end
+
+		-- 2) Name-gated connection only. Never fingerprint CorePackages.
+		if invoked == 0 and typeof(getconnections) == "function" and typeof(sig) == "RBXScriptSignal" then
+			local ok, conns = pcall(getconnections, sig)
+			if ok and type(conns) == "table" then
+				for _, c in pairs(conns) do
+					if invoked >= 2 then
+						break
+					end
+					pcall(function()
+						local sn = connOwnerName(c)
+						if sn ~= want then
+							return
+						end
+						if invokeConn(c, fakeX, false) or invokeConn(c, fakeX, true) or invokeConn(c, fakeMb, false) then
+							invoked = invoked + 1
+							method = method or ("InputBegan:" .. sn)
+						end
+					end)
+				end
+			end
+		end
+
+		-- 3) firesignal — some executors no-op; still try.
+		if typeof(firesignal) == "function" and typeof(sig) == "RBXScriptSignal" then
+			pcall(firesignal, sig, fakeX, false)
+			pcall(firesignal, sig, fakeX, true)
+			pcall(firesignal, sig, fakeMb, false)
+			method = method or "InputBegan:firesignal"
+		end
+
+		-- 4) Real input. ButtonX is the only key accepted when gameProcessed=true.
+		--    Mouse on Background (Active=false) is gameProcessed=false — hand-click path.
 		local vim = game:GetService("VirtualInputManager")
 		if vim and vim.SendKeyEvent then
 			pcall(function()
@@ -445,63 +548,12 @@ return function(GB)
 			end)
 			method = method or "VirtualInput:ButtonX"
 		end
-
-		if strategy ~= "synth" and typeof(getconnections) == "function" and typeof(sig) == "RBXScriptSignal" then
-			local ok, conns = pcall(getconnections, sig)
-			if ok and type(conns) == "table" then
-				for _, c in pairs(conns) do
-					if invoked >= 8 then
-						break
-					end
-					local hit
-					pcall(function()
-						if takeConn(c) and fireOverlay(c) then
-							hit = true
-						end
-					end)
-					if hit then
-						method = method or "InputBegan:connection"
-					end
-				end
-			end
+		if clickViewport(vim) then
+			method = method or "VirtualInput:Mouse1"
 		end
-
-		if invoked == 0 and (strategy == "getgc" or strategy == "consts" or strategy == "auto") then
-			if typeof(getgc) == "function" then
-				local ok, gc = pcall(getgc, false)
-				if not ok then
-					ok, gc = pcall(getgc)
-				end
-				if ok and type(gc) == "table" then
-					for _, fn in ipairs(gc) do
-						if invoked >= 6 then
-							break
-						end
-						if typeof(fn) == "function" and overlayInputFn(fn) == true then
-							local n = nparamsOf(fn)
-							if n == 2 or n == nil then
-								if invokeFn(fn, fakeX, false) or invokeFn(fn, fakeX, true) or invokeFn(fn, fakeMb, false) then
-									invoked = invoked + 1
-									method = method or "InputBegan:getgc"
-								end
-							end
-						end
-					end
-				end
-			end
-		end
-
-		if strategy == "synth" then
-			if typeof(firesignal) == "function" and typeof(sig) == "RBXScriptSignal" then
-				pcall(firesignal, sig, fakeX, false)
-				pcall(firesignal, sig, fakeX, true)
-				pcall(firesignal, sig, fakeMb, false)
-				method = method or "InputBegan:firesignal"
-			end
-			if typeof(mouse1click) == "function" then
-				pcall(mouse1click)
-				method = method or "mouse1click"
-			end
+		if typeof(mouse1click) == "function" then
+			pcall(mouse1click)
+			method = method or "mouse1click"
 		end
 
 		return invoked > 0 or method ~= nil, method or "none", invoked
@@ -645,7 +697,13 @@ return function(GB)
 			return false, ui, "rate"
 		end
 		M._overlayAt = now
-		local ok, method, n = M.invokeContinueInput(ui, M._continueStrategy or "owner")
+		local pok, ok, method, n = pcall(M.invokeContinueInput, ui, M._continueStrategy or "owner")
+		if not pok then
+			if GB.Log then
+				GB.Log.warn("GATE", "continue invoke " .. tostring(ok))
+			end
+			return false, ui, "err", 0
+		end
 		return ok, ui, method, n
 	end
 
