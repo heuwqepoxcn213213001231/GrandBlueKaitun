@@ -1679,6 +1679,84 @@ return function(GB)
 		return nil
 	end
 
+	function M.findLoosePlace(needles, island)
+		if type(needles) ~= "table" or #needles == 0 then
+			return nil
+		end
+		local now = os.clock()
+		local key = table.concat(needles, "|") .. "|" .. tostring(island or "")
+		if M._looseCache and M._looseKey == key and now - (M._looseAt or 0) < 2.5 and M._looseCache.Parent then
+			return M._looseCache
+		end
+		local function nameHit(inst)
+			if not (inst and inst.Parent) or M.isMarkerContainer(inst) then
+				return false
+			end
+			local n = string.lower(tostring(inst.Name or ""))
+			for i = 1, #needles do
+				local nd = string.lower(tostring(needles[i] or ""))
+				if #nd >= 4 and string.find(n, nd, 1, true) then
+					if string.find(n, "marker", 1, true) or string.find(n, "camp", 1, true) or string.find(n, "footstep", 1, true) then
+						return true
+					end
+					if not string.find(n, "pirate", 1, true) and not string.find(n, "officer", 1, true) then
+						return true
+					end
+				end
+			end
+			return false
+		end
+		local okTags, tags = pcall(function()
+			return CS:GetRegisteredTags()
+		end)
+		if okTags and type(tags) == "table" then
+			for i = 1, #tags do
+				local t = tags[i]
+				if nameHit({ Name = t, Parent = workspace }) then
+					local hit = M.taggedAny(t)
+					if hit then
+						M._looseKey = key
+						M._looseAt = now
+						M._looseCache = hit
+						return hit
+					end
+				end
+			end
+		end
+		local roots = {}
+		local isles = workspace:FindFirstChild("Islands")
+		if isles and type(island) == "string" and island ~= "" then
+			roots[#roots + 1] = isles:FindFirstChild(island)
+		end
+		roots[#roots + 1] = workspace:FindFirstChild("AA IMPORTANT")
+		roots[#roots + 1] = workspace:FindFirstChild("Markers")
+		for _, root in ipairs(roots) do
+			if root then
+				local q = { root }
+				local i = 1
+				local seen = 0
+				while i <= #q and seen < 360 do
+					local inst = q[i]
+					i = i + 1
+					seen = seen + 1
+					if nameHit(inst) then
+						M._looseKey = key
+						M._looseAt = now
+						M._looseCache = inst
+						return inst
+					end
+					for _, ch in ipairs(inst:GetChildren()) do
+						q[#q + 1] = ch
+					end
+				end
+			end
+		end
+		M._looseKey = key
+		M._looseAt = now
+		M._looseCache = nil
+		return nil
+	end
+
 	function M.findQuestBeam(questName, tag)
 		local now = os.clock()
 		local key = tostring(questName or "") .. "|" .. tostring(tag or "")

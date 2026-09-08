@@ -133,7 +133,7 @@ def main() -> int:
         fail("Resolver.findQuestBeam missing")
     if "function M.scanMarkerFolder" not in resolver:
         fail("Resolver.scanMarkerFolder missing")
-    if "zone-only" not in quest:
+    if "GB.Remotes.enterZone(zone)" not in quest:
         fail("Investigate must Enter Zone even on marker miss")
     if "INVESTIGATE_ORIGIN" not in read("Game/QuestData.lua"):
         fail("Investigate origin fallback missing")
@@ -159,7 +159,9 @@ def main() -> int:
         fail("loader missing latest.txt log path")
     if "_GBKaitunLogWrite" not in read("Core/Logger.lua"):
         fail("Logger must tee suppressed lines to writefile")
-    if 'GB.Resolver.enemies("Black Noir Pirate")' in quest:
+    if "camp-near-pirate" not in quest:
+        fail("Investigate must stream-bait from pirate offset")
+    if "goPlace(mob)" in quest or "standOn(mob" in quest:
         fail("Investigate must not teleport onto a pirate")
     if "usableInvestigateDest" not in quest:
         fail("Investigate dest filter missing")
@@ -183,6 +185,12 @@ def main() -> int:
         fail("Investigate must hop HUD to stream camp")
     if "onWantedIsland" not in quest:
         fail("Investigate must not stream-pull Maple spawn while already there")
+    if "function M.findLoosePlace" not in resolver:
+        fail("Resolver.findLoosePlace missing")
+    if "function M.goPos" not in world:
+        fail("World.goPos missing")
+    if "investigate sweep" not in quest:
+        fail("Investigate must sweep Maple when dest is none")
     if "GB.World.pullStream(wantIsland)" in quest and "onWantedIsland" not in quest:
         fail("pullStream Maple spawn loop still unguarded")
 

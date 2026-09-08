@@ -993,7 +993,7 @@ return function(GB)
 				return nil
 			end
 			local n = string.lower(tostring(inst.Name or ""))
-			if string.find(n, "camp", 1, true) or string.find(n, "footstep", 1, true) then
+			if string.find(n, "camp", 1, true) or string.find(n, "footstep", 1, true) or string.find(n, "marker", 1, true) then
 				return inst
 			end
 			if string.find(n, "pirate", 1, true) or string.find(n, "officer", 1, true) then
@@ -1031,26 +1031,48 @@ return function(GB)
 			end
 			return true
 		end
-		local inst = usableInvestigateDest(resolveMarkerLeaf(tag, questName))
-		if not inst and origin then
-			inst = usableInvestigateDest(resolveMarkerLeaf(origin, questName))
-		end
-		if not inst and origin and GB.Resolver.findPlace then
-			inst = usableInvestigateDest(GB.Resolver.findPlace(origin, wantIsland))
-		end
-		if not inst and GB.Resolver.findPlace then
-			inst = usableInvestigateDest(GB.Resolver.findPlace(tag, wantIsland))
-		end
-		if not inst and GB.Resolver.findQuestBeam then
-			inst = usableInvestigateDest(GB.Resolver.findQuestBeam(questName, typ))
-		end
-		if not inst and GB.Resolver.findHudAdornee then
-			inst = usableInvestigateDest(GB.Resolver.findHudAdornee(questName))
+		local now = os.clock()
+		local inst
+		if now - (M._investSearchAt or 0) >= 1.2 then
+			M._investSearchAt = now
+			inst = usableInvestigateDest(resolveMarkerLeaf(origin or tag, questName))
+			if not inst then
+				inst = usableInvestigateDest(resolveMarkerLeaf(tag, questName))
+			end
+			if not inst and origin and GB.Resolver.findPlace then
+				inst = usableInvestigateDest(GB.Resolver.findPlace(origin, wantIsland))
+			end
+			if not inst and GB.Resolver.findPlace then
+				inst = usableInvestigateDest(GB.Resolver.findPlace(tag, wantIsland))
+			end
+			if not inst and GB.Resolver.findPlace then
+				inst = usableInvestigateDest(GB.Resolver.findPlace("Black Noir Pirate Marker", wantIsland))
+			end
+			if not inst and GB.Resolver.findLoosePlace then
+				inst = usableInvestigateDest(GB.Resolver.findLoosePlace({
+					"Campsite",
+					"Footsteps",
+					"Black Noir Camp",
+					"Pirate Marker",
+				}, wantIsland))
+			end
+			if not inst and GB.Resolver.findQuestBeam then
+				inst = usableInvestigateDest(GB.Resolver.findQuestBeam(questName, typ))
+			end
+			if not inst and GB.Resolver.findHudAdornee then
+				inst = usableInvestigateDest(GB.Resolver.findHudAdornee(questName))
+			end
+			M._investInst = inst
+		else
+			inst = M._investInst
+			if inst and not inst.Parent then
+				inst = nil
+				M._investInst = nil
+			end
 		end
 		if inst and GB.World.goPlace then
 			local pos = GB.Resolver.positionOf and GB.Resolver.positionOf(inst)
 			local key = tostring(inst.Name) .. ":" .. tostring(pos and math.floor(pos.X) or 0)
-			local now = os.clock()
 			if M._investStandKey ~= key or now - (M._investStandAt or 0) > 4 then
 				M._investStandKey = key
 				M._investStandAt = now
@@ -1062,14 +1084,106 @@ return function(GB)
 			local hint = (GB.Resolver.findHudAdornee and GB.Resolver.findHudAdornee(questName))
 				or (GB.Resolver.findQuestBeam and GB.Resolver.findQuestBeam(questName, typ))
 			local hintPos = hint and GB.Resolver.positionOf and GB.Resolver.positionOf(hint)
-			if hintPos and os.clock() - (M._investHudAt or 0) > 8 then
-				M._investHudAt = os.clock()
+			if hintPos and now - (M._investHudAt or 0) > 6 then
+				M._investHudAt = now
 				GB.Log.log("TRAVEL", "investigate stream HUD " .. tostring(hint.Name))
-				GB.World.setPos(hintPos, { AllowFar = true })
+				if GB.World.goPos then
+					GB.World.goPos(hintPos, hint.Name)
+				else
+					GB.World.setPos(hintPos, { AllowFar = true })
+				end
+			elseif now - (M._investSweepAt or 0) > 3.2 then
+				M._investSweepAt = now
+				local hopped = false
+				if GB.Resolver.enemies then
+					local campMobName = "Black Noir Pirate"
+					local mobs = GB.Resolver.enemies(campMobName)
+					local mob = mobs and mobs[1]
+					local mpos = mob and GB.Resolver.positionOf and GB.Resolver.positionOf(mob)
+					if mpos and GB.World.goPos then
+						local spawn = GB.World.islandSpawn and GB.World.islandSpawn(wantIsland)
+						local dest = Vector3.new(mpos.X, mpos.Y, mpos.Z)
+						if spawn then
+							local dir = Vector3.new(spawn.X - mpos.X, 0, spawn.Z - mpos.Z)
+							if dir.Magnitude > 1 then
+								dest = mpos + dir.Unit * 14
+							end
+						else
+							dest = Vector3.new(mpos.X + 14, mpos.Y, mpos.Z)
+						end
+						GB.Log.log("TRAVEL", "investigate camp-near-pirate")
+						GB.World.goPos(dest, "camp-near-pirate")
+						hopped = true
+					end
+				end
+				if not hopped then
+					local pts = M._investSweepPts
+					if type(pts) ~= "table" or #pts == 0 then
+						pts = {}
+						local minV, maxV, center, radius = nil, nil, nil, nil
+						if GB.World.GetIslandBounds then
+							minV, maxV, center, radius = GB.World.GetIslandBounds(wantIsland)
+						end
+						local spawn = GB.World.islandSpawn and GB.World.islandSpawn(wantIsland)
+						local c = center or spawn
+						local y = (c and c.Y) or 18
+						if y < 10 or y > 80 then
+							y = 18
+						end
+						if c then
+							local rx, rz = 280, 280
+							if minV and maxV then
+								rx = math.max(280, (maxV.X - minV.X) * 0.48)
+								rz = math.max(280, (maxV.Z - minV.Z) * 0.48)
+							end
+							if type(radius) == "number" and radius > 80 then
+								rx = math.max(rx, radius * 0.55)
+								rz = math.max(rz, radius * 0.55)
+							end
+							local ring = {
+								Vector3.new(c.X + rx, y, c.Z),
+								Vector3.new(c.X - rx, y, c.Z),
+								Vector3.new(c.X, y, c.Z + rz),
+								Vector3.new(c.X, y, c.Z - rz),
+								Vector3.new(c.X + rx, y, c.Z + rz),
+								Vector3.new(c.X - rx, y, c.Z - rz),
+								Vector3.new(c.X + rx * 1.55, y, c.Z),
+								Vector3.new(c.X, y, c.Z + rz * 1.55),
+								Vector3.new(c.X - rx * 1.55, y, c.Z),
+								Vector3.new(c.X, y, c.Z - rz * 1.55),
+							}
+							for i = 1, #ring do
+								pts[#pts + 1] = ring[i]
+							end
+						end
+						M._investSweepPts = pts
+					end
+					if #pts > 0 then
+						M._investSweepI = ((M._investSweepI or 0) % #pts) + 1
+						local dest = pts[M._investSweepI]
+						GB.Log.log(
+							"TRAVEL",
+							string.format("investigate sweep %d/%d", M._investSweepI, #pts)
+						)
+						if GB.World.goPos then
+							GB.World.goPos(dest, "Maple hunt " .. tostring(M._investSweepI))
+						end
+					end
+				end
 			end
-			if os.clock() - (M._investMissAt or 0) > 4 then
-				M._investMissAt = os.clock()
-				GB.Log.warn("QUEST", "marker miss " .. tostring(tag) .. " zone-only")
+			if now - (M._investMissAt or 0) > 6 then
+				M._investMissAt = now
+				local hrp = GB.World.hrp and GB.World.hrp()
+				local p = hrp and hrp.Position
+				GB.Log.warn(
+					"QUEST",
+					string.format(
+						"marker miss %s pos=%.0f,%.0f",
+						tostring(tag),
+						p and p.X or 0,
+						p and p.Z or 0
+					)
+				)
 			end
 		end
 		local zone = origin or tag or typ

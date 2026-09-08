@@ -1220,6 +1220,21 @@ return function(GB)
 		return M.setPos(dest, { AllowFar = true, SkipGround = true })
 	end
 
+	function M.goPos(pos, label)
+		if typeof(pos) ~= "Vector3" then
+			return false
+		end
+		if not M.posSane(pos) then
+			pos = Vector3.new(pos.X, math.clamp(pos.Y, 8, 80), pos.Z)
+		end
+		if not M.posSane(pos) then
+			return false
+		end
+		local dest = M.floorAt(pos, pos.Y) or pos
+		GB.Log.log("TRAVEL", "Teleport -> " .. tostring(label or "point"))
+		return M.setPos(dest, { AllowFar = true, SkipGround = true })
+	end
+
 	function M.ToInteractable(inst, range)
 		range = range or 4
 		if GB.Resolver and GB.Resolver.isMarkerContainer and GB.Resolver.isMarkerContainer(inst) then
