@@ -46,6 +46,8 @@ return function(GB)
 	local SWING_RANGE_PAD = 1.8
 	local APPROACH_SWING_PAD = 10
 	local APPROACH_SWING_GAP = 0.95
+	local DASH_WEAVE_GAP = 0.12
+	local DASH_HOLD = 0.25
 	local QUEST_CHECK_MIN_GAP = 0.32
 	local QUEST_CHECK_SAFETY = 2.8
 	M._tel = { attempt = 0, accepted = 0, reject = 0, damage = 0, at = 0 }
@@ -963,6 +965,47 @@ return function(GB)
 		end
 	end
 
+	-- Farm weave: Events.Input Dash packet only. No DashNormal velocity (look + vel 95 = sky).
+	function M.dashPulse()
+		if not (GB.Config and GB.Config.CombatDashWeave == true) then
+			return false
+		end
+		if not M.lockMob then
+			return false
+		end
+		if M.preferredAction(M.lockQuest) == "GUN" then
+			return false
+		end
+		if GB.Respawn and GB.Respawn.isBusy and GB.Respawn.isBusy() then
+			return false
+		end
+		local gap = tonumber(GB.Config.CombatDashWeaveGap) or DASH_WEAVE_GAP
+		if os.clock() - (M.lastDashPulse or 0) < gap then
+			return false
+		end
+		if not (GB.World and GB.World.char and GB.World.char()) then
+			return false
+		end
+		if not (GB.Remotes and GB.Remotes.dashInput) then
+			return false
+		end
+		M.lastDashPulse = os.clock()
+		GB.Remotes.dashInput(true)
+		task.delay(DASH_HOLD, function()
+			if GB.dead and GB.dead() then
+				return
+			end
+			if GB.Remotes and GB.Remotes.dashInput then
+				GB.Remotes.dashInput(false)
+			end
+		end)
+		if not M._dashWeaveLog or os.clock() - M._dashWeaveLog > 8 then
+			M._dashWeaveLog = os.clock()
+			GB.Log.log("COMBAT", "dash weave")
+		end
+		return true
+	end
+
 	function M.startLock(mob, questName)
 		if not mob or M.isPet(mob) then
 			return
@@ -1021,6 +1064,7 @@ return function(GB)
 				end
 				M._hpBefore = hp
 				M.swing()
+				M.dashPulse()
 			else
 				M.onTargetDead(mob2, "post-swing")
 			end

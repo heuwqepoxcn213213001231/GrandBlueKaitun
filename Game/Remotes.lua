@@ -317,6 +317,28 @@ return function(GB)
 		return M.invoke("GetEquip")
 	end
 
+	function M.dashInput(state)
+		local r = ev("Input")
+		local char = GB.World and GB.World.char and GB.World.char()
+		if not (r and char) then
+			return false, "missing"
+		end
+		local ok, err = pcall(function()
+			r:FireServer({
+				Input = "Dash",
+				ID = "Dash",
+				State = state == true,
+				Character = char,
+			})
+		end)
+		if not ok then
+			GB.Log.err("ERROR", "Input Dash " .. tostring(err))
+			return false, err
+		end
+		perfCount("DashInput", 1)
+		return true
+	end
+
 	function M.neverBeginQuest()
 		-- rules.never_fire_beginquest
 		return false

@@ -77,6 +77,7 @@ REMOTES = {
     "SellItem": {"Remote": "Events.SellItem", "Args": "(key[, amount])", "Status": "VERIFIED", "Banned": False},
     "Upgrade": {"Remote": "Events.Upgrade", "Args": '("Upgrade", key)', "Status": "VERIFIED", "Banned": False},
     "GetData": {"Remote": "Events.GetData", "Args": '("Quests", "Completed Quests")', "Status": "VERIFIED", "Banned": False},
+    "DashInput": {"Remote": "Events.Input", "Args": '{Input="Dash", ID="Dash", State=bool, Character}', "Status": "VERIFIED", "Banned": False},
 }
 
 DIALOGUE = {

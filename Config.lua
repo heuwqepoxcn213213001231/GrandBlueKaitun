@@ -89,6 +89,8 @@ return function(GB)
 	def("StuckSeconds", 18)
 	def("RecoveryCooldown", 8)
 	def("CombatMode", "SAFE_FAST") -- NORMAL | SAFE_FAST
+	def("CombatDashWeave", true) -- farm-style Input Dash pulse while locked
+	def("CombatDashWeaveGap", 0.12)
 	def("CombatDebug", false)
 	def("ActionTimeout", 25)
 	def("MaxRetries", 3)

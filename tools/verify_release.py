@@ -108,6 +108,10 @@ def main() -> None:
         fail("manifest.order missing Systems/Respawn.lua")
     if "function M.minSwingInterval" not in combat_src:
         fail("Combat missing minSwingInterval")
+    if "function M.dashPulse" not in combat_src:
+        fail("Combat missing dashPulse")
+    if 'def("CombatDashWeave"' not in (root / "Config.lua").read_text(encoding="utf-8"):
+        fail("Config missing CombatDashWeave")
     if 'def("CombatMode"' not in (root / "Config.lua").read_text(encoding="utf-8"):
         fail("Config missing CombatMode")
     if "GB.Scheduler.add(\"stats\"" in kaitun_src:
