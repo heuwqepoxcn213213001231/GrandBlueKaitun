@@ -875,6 +875,31 @@ return function(GB)
 		return inst
 	end
 
+	local function guiTextOf(inst)
+		if not inst then
+			return ""
+		end
+		if inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then
+			local ok, t = pcall(function()
+				return inst.Text
+			end)
+			if ok and type(t) == "string" then
+				return t
+			end
+			return ""
+		end
+		local label = inst:FindFirstChildWhichIsA("TextLabel")
+		if label then
+			local ok, t = pcall(function()
+				return label.Text
+			end)
+			if ok and type(t) == "string" then
+				return t
+			end
+		end
+		return ""
+	end
+
 	local function dismissPartyPrompt()
 		if os.clock() - (M._partyPromptAt or 0) < 2.5 then
 			return
@@ -885,22 +910,21 @@ return function(GB)
 		end
 		for _, gui in ipairs(pg:GetChildren()) do
 			if gui:IsA("LayerCollector") and gui.Enabled then
+				local n = string.lower(gui.Name)
+				if string.find(n, "worldevent", 1, true) or string.find(n, "leaderboard", 1, true) or n == "chat" then
+					continue
+				end
 				local hasParticipate = false
 				local noBtn
 				local ok, desc = pcall(gui.GetDescendants, gui)
 				if ok and type(desc) == "table" then
 					for _, d in ipairs(desc) do
-						local text = ""
-						if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
-							text = tostring(d.Text or "")
-						end
-						local low = string.lower(text)
+						local low = string.lower(guiTextOf(d))
 						if string.find(low, "participate", 1, true) then
 							hasParticipate = true
 						end
 						if d:IsA("GuiButton") then
-							local label = d:FindFirstChildWhichIsA("TextLabel")
-							local bt = string.lower(tostring(d.Text or "") .. " " .. tostring(label and label.Text or ""))
+							local bt = string.lower(guiTextOf(d))
 							if bt == "no" or string.find(bt, "^no%s") or string.find(bt, "%sno%s*$") then
 								noBtn = d
 							end
@@ -911,10 +935,6 @@ return function(GB)
 					M._partyPromptAt = os.clock()
 					if GB.State and GB.State.clickGui then
 						GB.State.clickGui(noBtn)
-					else
-						pcall(function()
-							firesignal(noBtn.MouseButton1Click)
-						end)
 					end
 					GB.Log.log("UI", "dismiss participate")
 					return
@@ -950,7 +970,7 @@ return function(GB)
 		if GB.Combat and GB.Combat.stopLock then
 			GB.Combat.stopLock()
 		end
-		dismissPartyPrompt()
+		pcall(dismissPartyPrompt)
 		local spec = GB.QuestSpecs and GB.QuestSpecs.lookup and GB.QuestSpecs.lookup(questName, stage, typ, target)
 		local tag = spec and spec.marker
 		if (not tag or tag == "" or tag == "Markers") and GB.QuestData.combatMarker then
@@ -3039,7 +3059,8 @@ return function(GB)
 		local out = { pcall(doLiveRaw, name) }
 		pdone("Quest.doLive", t0)
 		if not out[1] then
-			error(out[2])
+			GB.Log.err("ERROR", "Quest.doLive " .. tostring(out[2]))
+			return resultRow(name, true, false, "doLive_error")
 		end
 		return out[2]
 	end

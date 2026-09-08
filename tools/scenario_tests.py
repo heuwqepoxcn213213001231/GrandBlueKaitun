@@ -141,6 +141,12 @@ def main() -> int:
         fail("Resolver.findHudAdornee missing")
     if "dismiss participate" not in quest:
         fail("Investigate must dismiss participate prompt")
+    if "function guiTextOf" not in quest:
+        fail("Quest guiTextOf missing")
+    if "doLive_error" not in quest:
+        fail("doLiveResult must not rethrow into DecisionEngine")
+    if 'tostring(d.Text or "")' in quest:
+        fail("Quest still reads .Text on possibly-ImageButton")
     if '["Investigate The Footsteps (1)"] = "Black Noir Campsite 1"' not in read("Game/QuestData.lua"):
         fail("Investigate (1) must fall back to Black Noir Campsite 1")
     if "waitTaggedLeaf(tag, 0.8)" in quest:
