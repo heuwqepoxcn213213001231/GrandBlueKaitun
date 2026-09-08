@@ -163,6 +163,9 @@ return function(GB)
 
 	local function inHitRange(mob, root)
 		local p = entityRoot(mob)
+		if not (p and p:IsA("BasePart")) and GB.Resolver and GB.Resolver.part then
+			p = GB.Resolver.part(mob)
+		end
 		if not (root and p and p:IsA("BasePart")) then
 			return false
 		end
@@ -189,17 +192,33 @@ return function(GB)
 		return false
 	end
 
-	local function hoverEnabled(mob)
+	local function isObjectLock(mob)
+		if M.lockObject then
+			return true
+		end
 		if not mob then
 			return false
 		end
 		if isDummy(mob.Name) then
+			return true
+		end
+		if GB.QuestData and GB.QuestData.isObjectTarget and GB.QuestData.isObjectTarget(mob) then
+			return true
+		end
+		if GB.Resolver and GB.Resolver.isCrateLike and GB.Resolver.isCrateLike(mob, "Supply Crate") then
+			return true
+		end
+		return false
+	end
+
+	local function hoverEnabled(mob)
+		if not mob then
+			return false
+		end
+		if isObjectLock(mob) then
 			return false
 		end
 		if GB.Resolver and GB.Resolver.isMarkerTree and GB.Resolver.isMarkerTree(mob) then
-			return false
-		end
-		if GB.QuestData and GB.QuestData.isObjectTarget and GB.QuestData.isObjectTarget(mob.Name) then
 			return false
 		end
 		if M.preferredAction(M.lockQuest) == "GUN" then
@@ -580,6 +599,7 @@ return function(GB)
 			M.ActiveTarget.Dead = true
 			M.ActiveTarget = nil
 		end
+		M.lockObject = nil
 		if M.lockConn then
 			M.lockConn:Disconnect()
 			M.lockConn = nil
@@ -1520,6 +1540,53 @@ return function(GB)
 		return fired > 0
 	end
 
+	function M.destroyHit(mob)
+		mob = mob or M.lockMob
+		if not mob then
+			return false
+		end
+		M.clearSwingLock()
+		local root = GB.World and GB.World.hrp and GB.World.hrp()
+		local part = GB.Resolver and GB.Resolver.part and GB.Resolver.part(mob)
+		if root and part and GB.World.planarDist and GB.World.planarDist(root.Position, part.Position) > 10 then
+			if os.clock() - (M._destroyStandAt or 0) > 2 and GB.World.goPlace then
+				M._destroyStandAt = os.clock()
+				GB.World.goPlace(mob)
+			end
+		end
+		local char = GB.World and GB.World.char and GB.World.char()
+		if char then
+			local atk = loadAttack()
+			if atk and atk.Swing and os.clock() - (M.lastSwing or 0) >= M.minSwingInterval() then
+				M.lastSwing = os.clock()
+				atk.Swing(char)
+			end
+		end
+		if char and root and inHitRange(mob, root) and GB.Remotes and GB.Remotes.attackPlayer then
+			local gap = tonumber(GB.Config and GB.Config.CombatAttackPulseGap) or ATTACK_PULSE_GAP
+			if os.clock() - (M.lastAttackPulse or 0) >= gap then
+				M.lastAttackPulse = os.clock()
+				local now = serverTick()
+				GB.Remotes.attackPlayer({
+					startTime = now,
+					currentTime = now,
+					targets = { mob },
+					style = "Basic",
+					combo = 1,
+					id = tostring(tick()) .. "/Client/" .. char.Name,
+					attackType = "LightAttack",
+					TerrainDamage = true,
+				})
+			end
+		end
+		local t = os.clock()
+		if not M._destroyHitLog or t - M._destroyHitLog > 3 then
+			M._destroyHitLog = t
+			GB.Log.log("COMBAT", "destroy hit " .. tostring(mob.Name))
+		end
+		return true
+	end
+
 	function M.startLock(mob, questName)
 		if not mob or M.isPet(mob) then
 			return
@@ -1593,8 +1660,14 @@ return function(GB)
 					M._noCredit = 0
 				end
 				M._hpBefore = hp
-				if isDummy(mob2.Name) or (GB.QuestData and GB.QuestData.isObjectTarget and GB.QuestData.isObjectTarget(mob2.Name)) then
-					M.swing()
+				if isObjectLock(mob2) then
+					M.destroyHit(mob2)
+					if M.ActiveTarget and os.clock() - (M.ActiveTarget.AcquiredAt or 0) > 10 then
+						if not (M.lockQuest and M.objectiveFilled(M.lockQuest)) then
+							M.markDead(mob2, "destroy_timeout")
+							M.stopLock()
+						end
+					end
 				else
 					M.attackPulse(mob2)
 				end
@@ -1662,6 +1735,7 @@ return function(GB)
 			M.markDead(mob, "post-travel")
 			return false
 		end
+		M.lockObject = objectHunt == true
 		M.startLock(mob, questName)
 		return true
 	end

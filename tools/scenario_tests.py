@@ -220,6 +220,12 @@ def main() -> int:
         fail("scoreActive missing Destroy bias")
     if 'o.Type == "Destroy"' not in recovery:
         fail("Recovery must not enemy-hunt during Destroy")
+    if "isObjectLock" not in combat:
+        fail("Combat isObjectLock missing")
+    if "function M.destroyHit" not in combat:
+        fail("Combat.destroyHit missing")
+    if "supplycrate" not in read("Game/QuestData.lua"):
+        fail("isObjectTarget must match SupplyCrateObjectId")
 
     if FAILS:
         print("FAIL scenario_tests")

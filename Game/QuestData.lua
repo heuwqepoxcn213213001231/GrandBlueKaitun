@@ -633,7 +633,49 @@ return function(GB)
 	end
 
 	function M.isObjectTarget(target)
-		return type(target) == "string" and M.OBJECT_TARGETS[target] ~= nil
+		if typeof(target) == "Instance" then
+			if M.OBJECT_TARGETS[target.Name] then
+				return true
+			end
+			if GB and GB.Resolver and GB.Resolver.isCrateLike and GB.Resolver.isCrateLike(target, "Supply Crate") then
+				return true
+			end
+			local n = string.lower(tostring(target.Name or ""))
+			if string.find(n, "supplycrate", 1, true) or (string.find(n, "crate", 1, true) and string.find(n, "objectid", 1, true)) then
+				return true
+			end
+			for _, spec in pairs(M.OBJECT_TARGETS) do
+				local tags = spec and spec.Tags
+				if type(tags) == "table" then
+					for i = 1, #tags do
+						local ok, hit = pcall(function()
+							return target:HasTag(tags[i])
+						end)
+						if ok and hit then
+							return true
+						end
+					end
+				end
+			end
+			return M.isObjectTarget(target.Name)
+		end
+		if type(target) ~= "string" or target == "" then
+			return false
+		end
+		if M.OBJECT_TARGETS[target] then
+			return true
+		end
+		local compact = string.lower((string.gsub(target, "[%s%-%_]", "")))
+		if string.find(compact, "supplycrate", 1, true) then
+			return true
+		end
+		for key in pairs(M.OBJECT_TARGETS) do
+			local k = string.lower((string.gsub(key, "[%s%-%_]", "")))
+			if #k >= 8 and string.find(compact, k, 1, true) then
+				return true
+			end
+		end
+		return false
 	end
 
 	function M.isHiddenKill(name)
