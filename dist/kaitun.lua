@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
--- Version: 1.1.36
--- Commit: 1b04f89
--- BuiltAt: 2026-09-08T14:45:48+07:00
+-- Version: 1.1.37
+-- Commit: 7ea2e48
+-- BuiltAt: 2026-09-08T14:51:30+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -35,9 +35,9 @@ return function(meta)
 
 	stopPreviousInstance()
 
-	local BUILD_VERSION = "1.1.36"
-	local BUILD_COMMIT = "1b04f89"
-	local BUILD_AT = "2026-09-08T14:45:48+07:00"
+	local BUILD_VERSION = "1.1.37"
+	local BUILD_COMMIT = "7ea2e48"
+	local BUILD_AT = "2026-09-08T14:51:30+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -6746,21 +6746,86 @@ return function(GB)
 		return nil, sites
 	end
 
-	function M.findJailBreakTarget(kind)
+	function M.jailCageReady(cage)
+		if not (cage and cage.Parent) then
+			return false
+		end
+		if cage:GetAttribute("Crashed") == true then
+			return true
+		end
+		local pr
+		pcall(function()
+			pr = cage:FindFirstChildWhichIsA("ProximityPrompt", true)
+		end)
+		return pr ~= nil and pr.Enabled == true
+	end
+
+	function M.jailContainerLive(container)
+		if not (container and container.Parent) then
+			return false
+		end
+		if GB.Combat and GB.Combat.hasDeadFlag and GB.Combat.hasDeadFlag(container) then
+			return false
+		end
+		if GB.Combat and GB.Combat.isRecentlyDead and GB.Combat.isRecentlyDead(container) then
+			return false
+		end
+		local hp = GB.Combat and GB.Combat.readHealth and GB.Combat.readHealth(container)
+		if type(hp) == "number" and hp <= 0 then
+			return false
+		end
+		return true
+	end
+
+	function M.findJailBreakTarget(kind, preferJail)
 		local sites = M.findJailSites(kind)
-		for _, site in ipairs(sites) do
-			if site.Container and site.Container.Parent then
-				local hp = GB.Combat and GB.Combat.readHealth and select(1, GB.Combat.readHealth(site.Container))
-				if type(hp) ~= "number" or hp > 0 then
-					if not (GB.Combat and GB.Combat.hasDeadFlag and GB.Combat.hasDeadFlag(site.Container)) then
-						return site.Container, "Cage Container", site
-					end
-				end
+		local function fromSite(site)
+			if not site or not site.Jail or site.Jail:GetAttribute("Freed") == true then
+				return nil
+			end
+			if M.jailCageReady(site.Cage) then
+				return site.Cage, "Cage", site
+			end
+			if M.jailContainerLive(site.Container) then
+				return site.Container, "Cage Container", site
 			end
 			if site.Cage and site.Cage.Parent then
-				if site.Cage:GetAttribute("Crashed") == true or not site.Container then
-					return site.Cage, "Cage", site
+				return site.Cage, "Cage", site
+			end
+			return nil
+		end
+		if preferJail and preferJail.Parent and preferJail:GetAttribute("Freed") ~= true then
+			for _, site in ipairs(sites) do
+				if site.Jail == preferJail then
+					local inst, phase = fromSite(site)
+					if inst then
+						return inst, phase, site
+					end
+					return nil, nil, site
 				end
+			end
+			local container, cage, hostage = M.jailParts(preferJail)
+			local forced = {
+				Jail = preferJail,
+				Container = container,
+				Cage = cage,
+				Hostage = hostage,
+				Kind = M.jailKind(preferJail),
+			}
+			local inst, phase = fromSite(forced)
+			if inst then
+				return inst, phase, forced
+			end
+		end
+		for _, site in ipairs(sites) do
+			if M.jailCageReady(site.Cage) then
+				return site.Cage, "Cage", site
+			end
+		end
+		for _, site in ipairs(sites) do
+			local inst, phase = fromSite(site)
+			if inst then
+				return inst, phase, site
 			end
 		end
 		return nil, nil, sites[1]
@@ -10997,8 +11062,13 @@ return function(GB)
 			return attr, target:GetAttribute("MaxHealth")
 		end
 		local nv = target:FindFirstChild("Health")
-		if nv and nv:IsA("NumberValue") then
-			return nv.Value, nil
+		if nv and (nv:IsA("NumberValue") or nv:IsA("IntValue")) then
+			local maxv = target:FindFirstChild("MaxHealth")
+			return nv.Value, maxv and maxv.Value or target:GetAttribute("MaxHealth")
+		end
+		local hpAttr = target:GetAttribute("HP") or target:GetAttribute("CurrentHealth")
+		if type(hpAttr) == "number" then
+			return hpAttr, target:GetAttribute("MaxHealth")
 		end
 		return nil, nil
 	end
@@ -13253,23 +13323,51 @@ return function(GB)
 		return "any"
 	end
 
+	local function cagePhaseOf(inst)
+		if not inst then
+			return nil
+		end
+		local ot = string.lower(tostring(inst:GetAttribute("ObjectType") or ""))
+		local n = string.lower(tostring(inst.Name or ""))
+		if n == "cage container" or ot == "cage container" then
+			return "Cage Container"
+		end
+		if n == "cage" or ot == "cage" then
+			return "Cage"
+		end
+		return nil
+	end
+
 	local function stayAndFree(questName, target)
 		local kind = captiveKind(target)
+		if M._freeJail and (not M._freeJail.Parent or M._freeJail:GetAttribute("Freed") == true) then
+			M._freeJail = nil
+		end
 		local lock = GB.Combat and GB.Combat.lockMob
-		if lock and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(lock) then
-			local ot = lock:GetAttribute("ObjectType")
-			local n = string.lower(tostring(lock.Name or "") .. " " .. tostring(ot or ""))
-			if n == "cage container" or n == "cage" or string.find(n, "cage", 1, true) then
+		if lock then
+			local phaseLock = cagePhaseOf(lock)
+			local alive = GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(lock)
+			if phaseLock == "Cage Container" and alive then
+				local jail = lock.Parent
+				local cage = jail and GB.Resolver.jailParts and select(2, GB.Resolver.jailParts(jail))
+				if GB.Resolver.jailCageReady and GB.Resolver.jailCageReady(cage) then
+					GB.Combat.stopLock()
+				else
+					M._freeJail = jail
+					M._freeStandAt = os.clock()
+					return true
+				end
+			elseif phaseLock == "Cage" and alive then
+				M._freeJail = lock.Parent
 				M._freeStandAt = os.clock()
 				return true
+			elseif GB.Combat.stopLock then
+				GB.Combat.stopLock()
 			end
-		end
-		if GB.Combat and GB.Combat.stopLock then
-			GB.Combat.stopLock()
 		end
 		local inst, phase, site
 		if GB.Resolver.findJailBreakTarget then
-			inst, phase, site = GB.Resolver.findJailBreakTarget(kind)
+			inst, phase, site = GB.Resolver.findJailBreakTarget(kind, M._freeJail)
 		end
 		if not inst then
 			local sites = GB.Resolver.findJailSites and GB.Resolver.findJailSites(kind) or {}
@@ -13277,14 +13375,10 @@ return function(GB)
 				sites = GB.Resolver.findJailSites("any")
 			end
 			local park = sites[1] and (sites[1].Jail or sites[1].Hostage)
-			if park and GB.World then
-				if GB.World.ToEnemy then
-					GB.World.ToEnemy(park, 6)
-				elseif GB.World.moveTo then
-					GB.World.moveTo(park, 8)
-				end
+			if park and GB.World and GB.World.moveTo then
+				GB.World.moveTo(park, 8)
 				if GB.Resolver.findJailBreakTarget then
-					inst, phase, site = GB.Resolver.findJailBreakTarget(kind)
+					inst, phase, site = GB.Resolver.findJailBreakTarget(kind, M._freeJail)
 				end
 			end
 		end
@@ -13298,19 +13392,27 @@ return function(GB)
 			M.noteFail(questName, "resolve miss Cage Container")
 			return false
 		end
+		if site and site.Jail then
+			M._freeJail = site.Jail
+		end
 		M._freeStandAt = os.clock()
 		M._freeStandInst = inst
-		local hp = GB.Combat and GB.Combat.readHealth and GB.Combat.readHealth(inst)
-		local tagged = 0
-		pcall(function()
-			tagged = #game:GetService("CollectionService"):GetTagged("Jail")
-		end)
-		GB.Log.log(
-			"QUEST",
-			string.format("Jail tagged=%d break %s hp=%s kind=%s", tagged, tostring(phase), tostring(hp or "?"), tostring(kind))
-		)
+		if not M._jailBreakLog or os.clock() - M._jailBreakLog > 2.2 then
+			M._jailBreakLog = os.clock()
+			local hp = GB.Combat and GB.Combat.readHealth and GB.Combat.readHealth(inst)
+			local crashed = inst:GetAttribute("Crashed")
+			GB.Log.log(
+				"QUEST",
+				string.format(
+					"break %s hp=%s crashed=%s kind=%s",
+					tostring(phase),
+					tostring(hp or "?"),
+					tostring(crashed),
+					tostring(kind)
+				)
+			)
+		end
 		local qs = M.questState(questName)
-		local before = M.signature(qs)
 		local beforeCur = qs and qs.Objective and qs.Objective.Current or 0
 		local plan = {
 			Quest = questName,
@@ -13323,30 +13425,9 @@ return function(GB)
 			Object = true,
 		}
 		local ok = GB.Combat and GB.Combat.hunt and GB.Combat.hunt(phase, questName, plan)
-		if phase == "Cage" and site and site.Cage then
-			local pr = GB.Resolver.prompt
-				and (
-					GB.Resolver.prompt(site.Cage, "Cage")
-					or GB.Resolver.prompt(site.Cage, "Open Cage")
-					or GB.Resolver.prompt(site.Cage)
-				)
-			if pr and pr.Enabled and GB.World and GB.World.firePrompt then
-				GB.Log.log("QUEST", "Open Cage prompt")
-				GB.World.firePrompt(pr, pr.HoldDuration or 0, site.Cage)
-			end
-		end
-		if GB.PlayerData and GB.PlayerData.forceQuestRefresh then
-			GB.PlayerData.forceQuestRefresh("cage_credit")
-		end
 		local after = M.questState(questName)
 		if after.IsComplete or (after.Objective and after.Objective.Current and after.Objective.Current > beforeCur) or after.StageIndex ~= (qs and qs.StageIndex) then
-			M.noteOk(questName)
-			if GB.Recovery and GB.Recovery.markSuccess then
-				GB.Recovery.markSuccess()
-			end
-			return true
-		end
-		if M.waitProgress(questName, before, 1.6) then
+			M._freeJail = nil
 			M.noteOk(questName)
 			if GB.Recovery and GB.Recovery.markSuccess then
 				GB.Recovery.markSuccess()

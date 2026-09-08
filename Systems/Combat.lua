@@ -223,8 +223,13 @@ return function(GB)
 			return attr, target:GetAttribute("MaxHealth")
 		end
 		local nv = target:FindFirstChild("Health")
-		if nv and nv:IsA("NumberValue") then
-			return nv.Value, nil
+		if nv and (nv:IsA("NumberValue") or nv:IsA("IntValue")) then
+			local maxv = target:FindFirstChild("MaxHealth")
+			return nv.Value, maxv and maxv.Value or target:GetAttribute("MaxHealth")
+		end
+		local hpAttr = target:GetAttribute("HP") or target:GetAttribute("CurrentHealth")
+		if type(hpAttr) == "number" then
+			return hpAttr, target:GetAttribute("MaxHealth")
 		end
 		return nil, nil
 	end

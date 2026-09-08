@@ -1850,21 +1850,86 @@ return function(GB)
 		return nil, sites
 	end
 
-	function M.findJailBreakTarget(kind)
+	function M.jailCageReady(cage)
+		if not (cage and cage.Parent) then
+			return false
+		end
+		if cage:GetAttribute("Crashed") == true then
+			return true
+		end
+		local pr
+		pcall(function()
+			pr = cage:FindFirstChildWhichIsA("ProximityPrompt", true)
+		end)
+		return pr ~= nil and pr.Enabled == true
+	end
+
+	function M.jailContainerLive(container)
+		if not (container and container.Parent) then
+			return false
+		end
+		if GB.Combat and GB.Combat.hasDeadFlag and GB.Combat.hasDeadFlag(container) then
+			return false
+		end
+		if GB.Combat and GB.Combat.isRecentlyDead and GB.Combat.isRecentlyDead(container) then
+			return false
+		end
+		local hp = GB.Combat and GB.Combat.readHealth and GB.Combat.readHealth(container)
+		if type(hp) == "number" and hp <= 0 then
+			return false
+		end
+		return true
+	end
+
+	function M.findJailBreakTarget(kind, preferJail)
 		local sites = M.findJailSites(kind)
-		for _, site in ipairs(sites) do
-			if site.Container and site.Container.Parent then
-				local hp = GB.Combat and GB.Combat.readHealth and select(1, GB.Combat.readHealth(site.Container))
-				if type(hp) ~= "number" or hp > 0 then
-					if not (GB.Combat and GB.Combat.hasDeadFlag and GB.Combat.hasDeadFlag(site.Container)) then
-						return site.Container, "Cage Container", site
-					end
-				end
+		local function fromSite(site)
+			if not site or not site.Jail or site.Jail:GetAttribute("Freed") == true then
+				return nil
+			end
+			if M.jailCageReady(site.Cage) then
+				return site.Cage, "Cage", site
+			end
+			if M.jailContainerLive(site.Container) then
+				return site.Container, "Cage Container", site
 			end
 			if site.Cage and site.Cage.Parent then
-				if site.Cage:GetAttribute("Crashed") == true or not site.Container then
-					return site.Cage, "Cage", site
+				return site.Cage, "Cage", site
+			end
+			return nil
+		end
+		if preferJail and preferJail.Parent and preferJail:GetAttribute("Freed") ~= true then
+			for _, site in ipairs(sites) do
+				if site.Jail == preferJail then
+					local inst, phase = fromSite(site)
+					if inst then
+						return inst, phase, site
+					end
+					return nil, nil, site
 				end
+			end
+			local container, cage, hostage = M.jailParts(preferJail)
+			local forced = {
+				Jail = preferJail,
+				Container = container,
+				Cage = cage,
+				Hostage = hostage,
+				Kind = M.jailKind(preferJail),
+			}
+			local inst, phase = fromSite(forced)
+			if inst then
+				return inst, phase, forced
+			end
+		end
+		for _, site in ipairs(sites) do
+			if M.jailCageReady(site.Cage) then
+				return site.Cage, "Cage", site
+			end
+		end
+		for _, site in ipairs(sites) do
+			local inst, phase = fromSite(site)
+			if inst then
+				return inst, phase, site
 			end
 		end
 		return nil, nil, sites[1]

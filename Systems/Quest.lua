@@ -515,23 +515,51 @@ return function(GB)
 		return "any"
 	end
 
+	local function cagePhaseOf(inst)
+		if not inst then
+			return nil
+		end
+		local ot = string.lower(tostring(inst:GetAttribute("ObjectType") or ""))
+		local n = string.lower(tostring(inst.Name or ""))
+		if n == "cage container" or ot == "cage container" then
+			return "Cage Container"
+		end
+		if n == "cage" or ot == "cage" then
+			return "Cage"
+		end
+		return nil
+	end
+
 	local function stayAndFree(questName, target)
 		local kind = captiveKind(target)
+		if M._freeJail and (not M._freeJail.Parent or M._freeJail:GetAttribute("Freed") == true) then
+			M._freeJail = nil
+		end
 		local lock = GB.Combat and GB.Combat.lockMob
-		if lock and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(lock) then
-			local ot = lock:GetAttribute("ObjectType")
-			local n = string.lower(tostring(lock.Name or "") .. " " .. tostring(ot or ""))
-			if n == "cage container" or n == "cage" or string.find(n, "cage", 1, true) then
+		if lock then
+			local phaseLock = cagePhaseOf(lock)
+			local alive = GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(lock)
+			if phaseLock == "Cage Container" and alive then
+				local jail = lock.Parent
+				local cage = jail and GB.Resolver.jailParts and select(2, GB.Resolver.jailParts(jail))
+				if GB.Resolver.jailCageReady and GB.Resolver.jailCageReady(cage) then
+					GB.Combat.stopLock()
+				else
+					M._freeJail = jail
+					M._freeStandAt = os.clock()
+					return true
+				end
+			elseif phaseLock == "Cage" and alive then
+				M._freeJail = lock.Parent
 				M._freeStandAt = os.clock()
 				return true
+			elseif GB.Combat.stopLock then
+				GB.Combat.stopLock()
 			end
-		end
-		if GB.Combat and GB.Combat.stopLock then
-			GB.Combat.stopLock()
 		end
 		local inst, phase, site
 		if GB.Resolver.findJailBreakTarget then
-			inst, phase, site = GB.Resolver.findJailBreakTarget(kind)
+			inst, phase, site = GB.Resolver.findJailBreakTarget(kind, M._freeJail)
 		end
 		if not inst then
 			local sites = GB.Resolver.findJailSites and GB.Resolver.findJailSites(kind) or {}
@@ -539,14 +567,10 @@ return function(GB)
 				sites = GB.Resolver.findJailSites("any")
 			end
 			local park = sites[1] and (sites[1].Jail or sites[1].Hostage)
-			if park and GB.World then
-				if GB.World.ToEnemy then
-					GB.World.ToEnemy(park, 6)
-				elseif GB.World.moveTo then
-					GB.World.moveTo(park, 8)
-				end
+			if park and GB.World and GB.World.moveTo then
+				GB.World.moveTo(park, 8)
 				if GB.Resolver.findJailBreakTarget then
-					inst, phase, site = GB.Resolver.findJailBreakTarget(kind)
+					inst, phase, site = GB.Resolver.findJailBreakTarget(kind, M._freeJail)
 				end
 			end
 		end
@@ -560,19 +584,27 @@ return function(GB)
 			M.noteFail(questName, "resolve miss Cage Container")
 			return false
 		end
+		if site and site.Jail then
+			M._freeJail = site.Jail
+		end
 		M._freeStandAt = os.clock()
 		M._freeStandInst = inst
-		local hp = GB.Combat and GB.Combat.readHealth and GB.Combat.readHealth(inst)
-		local tagged = 0
-		pcall(function()
-			tagged = #game:GetService("CollectionService"):GetTagged("Jail")
-		end)
-		GB.Log.log(
-			"QUEST",
-			string.format("Jail tagged=%d break %s hp=%s kind=%s", tagged, tostring(phase), tostring(hp or "?"), tostring(kind))
-		)
+		if not M._jailBreakLog or os.clock() - M._jailBreakLog > 2.2 then
+			M._jailBreakLog = os.clock()
+			local hp = GB.Combat and GB.Combat.readHealth and GB.Combat.readHealth(inst)
+			local crashed = inst:GetAttribute("Crashed")
+			GB.Log.log(
+				"QUEST",
+				string.format(
+					"break %s hp=%s crashed=%s kind=%s",
+					tostring(phase),
+					tostring(hp or "?"),
+					tostring(crashed),
+					tostring(kind)
+				)
+			)
+		end
 		local qs = M.questState(questName)
-		local before = M.signature(qs)
 		local beforeCur = qs and qs.Objective and qs.Objective.Current or 0
 		local plan = {
 			Quest = questName,
@@ -585,30 +617,9 @@ return function(GB)
 			Object = true,
 		}
 		local ok = GB.Combat and GB.Combat.hunt and GB.Combat.hunt(phase, questName, plan)
-		if phase == "Cage" and site and site.Cage then
-			local pr = GB.Resolver.prompt
-				and (
-					GB.Resolver.prompt(site.Cage, "Cage")
-					or GB.Resolver.prompt(site.Cage, "Open Cage")
-					or GB.Resolver.prompt(site.Cage)
-				)
-			if pr and pr.Enabled and GB.World and GB.World.firePrompt then
-				GB.Log.log("QUEST", "Open Cage prompt")
-				GB.World.firePrompt(pr, pr.HoldDuration or 0, site.Cage)
-			end
-		end
-		if GB.PlayerData and GB.PlayerData.forceQuestRefresh then
-			GB.PlayerData.forceQuestRefresh("cage_credit")
-		end
 		local after = M.questState(questName)
 		if after.IsComplete or (after.Objective and after.Objective.Current and after.Objective.Current > beforeCur) or after.StageIndex ~= (qs and qs.StageIndex) then
-			M.noteOk(questName)
-			if GB.Recovery and GB.Recovery.markSuccess then
-				GB.Recovery.markSuccess()
-			end
-			return true
-		end
-		if M.waitProgress(questName, before, 1.6) then
+			M._freeJail = nil
 			M.noteOk(questName)
 			if GB.Recovery and GB.Recovery.markSuccess then
 				GB.Recovery.markSuccess()
