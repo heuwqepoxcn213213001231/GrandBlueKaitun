@@ -129,6 +129,16 @@ def main() -> int:
         fail("WAIT_DATA must not fire while a live quest is cached")
     if 'string.sub(typ, 1, 11) == "Investigate"' not in engine:
         fail("scoreActive missing Investigate bias")
+    if "function M.findQuestBeam" not in resolver:
+        fail("Resolver.findQuestBeam missing")
+    if "function M.scanMarkerFolder" not in resolver:
+        fail("Resolver.scanMarkerFolder missing")
+    if "zone-only" not in quest:
+        fail("Investigate must Enter Zone even on marker miss")
+    if "waitTaggedLeaf(tag, 0.8)" in quest:
+        fail("Investigate still blocks decide on waitTaggedLeaf")
+    if "isInteractLike(o.Type)" not in recovery:
+        fail("Recovery still fingerprint-defers Investigate")
 
     if FAILS:
         print("FAIL scenario_tests")

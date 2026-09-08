@@ -1499,12 +1499,27 @@ return function(GB)
 			end
 			return x:IsA("BasePart") or x:IsA("Model") or x:IsA("Folder") or x:IsA("Attachment")
 		end
-		local exact, taggedLeaf
+		local needles = {}
+		if type(tag) == "string" and tag ~= "" then
+			needles[#needles + 1] = tag
+			for part in string.gmatch(tag, "[^%s]+") do
+				if #part >= 5 then
+					needles[#needles + 1] = part
+				end
+			end
+		end
+		local exact, taggedLeaf, named, near, nearD
+		local origin
+		local hrp = GB.World and GB.World.hrp and GB.World.hrp()
+		if hrp then
+			origin = hrp.Position
+		end
 		local function consider(x)
 			if not usableLeaf(x) then
 				return
 			end
-			if tag and (x.Name == tag or M.displayName(x) == tag) then
+			local disp = M.displayName(x)
+			if tag and (x.Name == tag or disp == tag) then
 				exact = exact or x
 				return
 			end
@@ -1516,6 +1531,21 @@ return function(GB)
 			end
 			if tagged then
 				taggedLeaf = taggedLeaf or x
+			end
+			for _, n in ipairs(needles) do
+				if n ~= tag and (string.find(x.Name, n, 1, true) or (disp and string.find(disp, n, 1, true))) then
+					named = named or x
+					break
+				end
+			end
+			if origin then
+				local pos = M.positionOf(x)
+				if pos then
+					local d = (pos - origin).Magnitude
+					if d <= 45 and (not nearD or d < nearD) then
+						near, nearD = x, d
+					end
+				end
 			end
 		end
 		if not M.isMarkerContainer(inst) then
@@ -1533,7 +1563,7 @@ return function(GB)
 				end
 			end
 		end
-		return taggedLeaf
+		return taggedLeaf or named or near
 	end
 
 	function M.taggedAny(tag)
@@ -1558,54 +1588,129 @@ return function(GB)
 		return nil
 	end
 
+	function M.scanMarkerFolder(tag)
+		if type(tag) ~= "string" or tag == "" or MARKER_CONTAINERS[tag] then
+			return nil
+		end
+		local roots = {}
+		local aa = workspace:FindFirstChild("AA IMPORTANT")
+		if aa then
+			roots[#roots + 1] = aa:FindFirstChild("Markers")
+		end
+		roots[#roots + 1] = workspace:FindFirstChild("Markers")
+		for _, folder in ipairs(roots) do
+			if folder then
+				local leaf = M.markerLeafOf(folder, tag)
+				if leaf then
+					return leaf
+				end
+			end
+		end
+		return nil
+	end
+
+	function M.findQuestBeam(questName, tag)
+		local now = os.clock()
+		local key = tostring(questName or "") .. "|" .. tostring(tag or "")
+		if M._beamCache and M._beamKey == key and now - (M._beamAt or 0) < 1.2 and M._beamCache.Parent then
+			return M._beamCache
+		end
+		local needles = {}
+		if type(questName) == "string" and questName ~= "" then
+			needles[#needles + 1] = questName
+		end
+		if type(tag) == "string" and tag ~= "" then
+			needles[#needles + 1] = tag
+		end
+		if #needles == 0 then
+			return nil
+		end
+		local function hitText(s)
+			if type(s) ~= "string" or s == "" then
+				return false
+			end
+			for i = 1, #needles do
+				if string.find(s, needles[i], 1, true) then
+					return true
+				end
+			end
+			return false
+		end
+		local function fromBillboard(bb)
+			if not bb then
+				return nil
+			end
+			local adornee = bb.Adornee
+			if adornee and adornee.Parent and not M.isMarkerContainer(adornee) then
+				return adornee
+			end
+			local p = bb.Parent
+			if p and p.Parent and not M.isMarkerContainer(p) then
+				if p:IsA("BasePart") or p:IsA("Model") or p:IsA("Attachment") then
+					return p
+				end
+			end
+			return nil
+		end
+		local function scan(root)
+			if not root then
+				return nil
+			end
+			local ok, desc = pcall(root.GetDescendants, root)
+			if not (ok and type(desc) == "table") then
+				return nil
+			end
+			for _, d in ipairs(desc) do
+				if d:IsA("BillboardGui") then
+					if hitText(d.Name) then
+						local inst = fromBillboard(d)
+						if inst then
+							return inst
+						end
+					end
+					for _, c in ipairs(d:GetChildren()) do
+						if (c:IsA("TextLabel") or c:IsA("TextButton") or c:IsA("TextBox")) and hitText(c.Text) then
+							local inst = fromBillboard(d)
+							if inst then
+								return inst
+							end
+						end
+					end
+				elseif (d:IsA("TextLabel") or d:IsA("TextButton")) and hitText(d.Text) then
+					local bb = d:FindFirstAncestorOfClass("BillboardGui")
+					local inst = fromBillboard(bb)
+					if inst then
+						return inst
+					end
+				end
+			end
+			return nil
+		end
+		local aa = workspace:FindFirstChild("AA IMPORTANT")
+		local hit = scan(aa and aa:FindFirstChild("Markers")) or scan(workspace:FindFirstChild("Markers"))
+		local pg = GB.lp and GB.lp.PlayerGui
+		if not hit and pg then
+			hit = scan(pg:FindFirstChild("Markers")) or scan(pg:FindFirstChild("QuestMarkers"))
+		end
+		M._beamKey = key
+		M._beamAt = now
+		M._beamCache = hit
+		return hit
+	end
+
 	function M.taggedLeaf(tag)
 		if type(tag) ~= "string" or tag == "" or MARKER_CONTAINERS[tag] then
 			return nil
 		end
 		local leaf = M.taggedAny(tag)
 		if leaf and not M.isMarkerContainer(leaf) then
-			if leaf.Name == tag or M.displayName(leaf) == tag then
-				return leaf
-			end
-			local unwrapped = M.markerLeafOf(leaf, tag)
-			if unwrapped then
-				return unwrapped
-			end
 			return leaf
 		end
-		local pack = M.resolveMarker and M.resolveMarker(tag, { ExpectedRole = "marker", kind = "marker" })
-		local inst = pack and pack.Instance
-		if inst and M.isMarkerContainer(inst) then
-			inst = M.markerLeafOf(inst, tag)
-		end
-		if inst and not M.isMarkerContainer(inst) then
-			return inst
-		end
-		local by = M.byName(tag, "marker")
-		if by and M.isMarkerContainer(by) then
-			by = M.markerLeafOf(by, tag)
-		end
-		if by and not M.isMarkerContainer(by) then
-			return by
-		end
-		return nil
+		return M.scanMarkerFolder(tag)
 	end
 
 	function M.waitTaggedLeaf(tag, timeout)
-		timeout = timeout or 0.8
-		local hit = M.taggedLeaf(tag)
-		if hit then
-			return hit
-		end
-		local t0 = os.clock()
-		while os.clock() - t0 < timeout do
-			hit = M.taggedLeaf(tag)
-			if hit then
-				return hit
-			end
-			task.wait(0.1)
-		end
-		return nil
+		return M.taggedLeaf(tag)
 	end
 
 	function M.isMarkerTree(inst)

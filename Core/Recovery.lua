@@ -208,6 +208,12 @@ return function(GB)
 			M._fpN = 1
 		end
 		if M._fp[fp] >= 4 and cur and GB.Quest then
+			if o and isInteractLike(o.Type) then
+				M.resetStrategy()
+				M.level = 0
+				GB.State.track.TaskStartedAt = os.clock()
+				return
+			end
 			GB.Quest.deferUntil = GB.Quest.deferUntil or {}
 			GB.Quest.deferReason = GB.Quest.deferReason or {}
 			GB.Quest.deferUntil[cur] = os.clock() + 40

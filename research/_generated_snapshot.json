@@ -1,7 +1,7 @@
 {
-  "version": "1.2.2",
-  "commit": "ce0a258",
-  "built_at": "2026-09-08T21:50:52+07:00",
+  "version": "1.2.3",
+  "commit": "efbd47d",
+  "built_at": "2026-09-08T21:57:50+07:00",
   "coverage": {
     "quests": 151,
     "all": {

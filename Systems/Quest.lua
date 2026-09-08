@@ -855,19 +855,16 @@ return function(GB)
 		return ok == true
 	end
 
-	local function resolveMarkerLeaf(tag)
+	local function resolveMarkerLeaf(tag, questName)
 		if not tag or tag == "" or tag == "Markers" then
 			return nil
 		end
 		local inst = GB.Resolver.taggedLeaf and GB.Resolver.taggedLeaf(tag)
-		if not inst and GB.Resolver.waitTaggedLeaf then
-			inst = GB.Resolver.waitTaggedLeaf(tag, 0.8)
+		if not inst and GB.Resolver.scanMarkerFolder then
+			inst = GB.Resolver.scanMarkerFolder(tag)
 		end
-		if not inst and GB.Resolver.taggedAny then
-			inst = GB.Resolver.taggedAny(tag)
-		end
-		if not inst and GB.Resolver.byName then
-			inst = GB.Resolver.byName(tag, "marker")
+		if not inst and GB.Resolver.findQuestBeam then
+			inst = GB.Resolver.findQuestBeam(questName, tag)
 		end
 		if inst and GB.Resolver.markerLeafOf then
 			inst = GB.Resolver.markerLeafOf(inst, tag) or inst
@@ -885,6 +882,7 @@ return function(GB)
 		local inst = resolveMarkerLeaf(tag)
 		if not inst then
 			GB.Log.warn("QUEST", "marker miss " .. tostring(tag))
+			GB.Remotes.enterZone(tag)
 			return false
 		end
 		if GB.World.interact then
@@ -913,17 +911,19 @@ return function(GB)
 			tag = GB.QuestData.markerOf(typ, target)
 		end
 		if not tag or tag == "" or tag == "Markers" then
-			GB.Log.warn("QUEST", "investigate tag miss " .. tostring(typ))
-			return false
+			tag = typ
 		end
-		local inst = resolveMarkerLeaf(tag)
-		if not inst then
-			GB.Log.warn("QUEST", "marker miss " .. tostring(tag))
-			return false
+		local inst = resolveMarkerLeaf(tag, questName)
+		if not inst and GB.Resolver.findQuestBeam then
+			inst = GB.Resolver.findQuestBeam(questName, typ)
 		end
-		local arrived = GB.World.standOn and GB.World.standOn(inst, 8)
-		if not arrived then
-			return false
+		if inst and GB.World.standOn then
+			GB.World.standOn(inst, 8)
+		elseif not inst then
+			if os.clock() - (M._investMissAt or 0) > 4 then
+				M._investMissAt = os.clock()
+				GB.Log.warn("QUEST", "marker miss " .. tostring(tag) .. " zone-only")
+			end
 		end
 		M._investZoneN = (M._investZoneN or 0) + 1
 		local names = { tag }
@@ -932,9 +932,11 @@ return function(GB)
 		end
 		local zone = names[((M._investZoneN - 1) % #names) + 1]
 		GB.Remotes.enterZone(zone)
-		local pr = GB.Resolver.prompt and GB.Resolver.prompt(inst)
-		if pr and GB.World.firePrompt then
-			GB.World.firePrompt(pr)
+		if inst then
+			local pr = GB.Resolver.prompt and GB.Resolver.prompt(inst)
+			if pr and GB.World.firePrompt then
+				GB.World.firePrompt(pr)
+			end
 		end
 		if GB.PlayerData and GB.PlayerData.requestLive then
 			GB.PlayerData.requestLive("investigate:" .. tostring(questName) .. ":" .. tostring(typ))
@@ -1056,6 +1058,9 @@ return function(GB)
 			return true
 		end
 		if o and o.Type == "Free" then
+			return true
+		end
+		if o and type(o.Type) == "string" and string.sub(o.Type, 1, 11) == "Investigate" then
 			return true
 		end
 		if o and o.TargetName and GB.QuestData and GB.QuestData.isObjectTarget and GB.QuestData.isObjectTarget(o.TargetName) then
