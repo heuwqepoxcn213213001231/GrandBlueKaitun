@@ -291,8 +291,18 @@ return function(GB)
 		if not root then
 			return
 		end
-		local y = root.Position.Y
-		local wet = (not M.posSane(root.Position)) or y < M.waterY() + 4 or y > 240
+		local pos = root.Position
+		local y = pos.Y
+		local yMax = tonumber(GB.Config.DestYMax) or 260
+		local hover = tonumber(GB.Config.CombatHoverHeight) or 18
+		local locked = GB.Combat and GB.Combat.lockConn ~= nil
+		if locked and M.posSane(pos) then
+			M.rememberSafe()
+			return
+		end
+		local tooLow = y < M.waterY() + 4
+		local tooHigh = y > (yMax + hover + 12)
+		local wet = (not M.posSane(pos)) or tooLow or tooHigh
 		if not wet then
 			M.rememberSafe()
 			return

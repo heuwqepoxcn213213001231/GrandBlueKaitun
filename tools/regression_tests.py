@@ -74,6 +74,11 @@ def main() -> int:
         fail("objectiveFilled still treats missing live as done")
     if "hoverBaseY" not in combat:
         fail("hoverBaseY missing")
+    world = read("Game/World.lua")
+    if "y > 240" in world:
+        fail("rescue still treats y>240 as void")
+    if 'def("DestYMax", 320)' not in config:
+        fail("DestYMax not raised for hover")
     if "pickTurnInActive" not in engine:
         fail("planner missing pickTurnInActive")
     if "not GB.QuestData.conditionComplete(cond)" not in quest:

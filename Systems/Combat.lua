@@ -1170,23 +1170,14 @@ return function(GB)
 			return false
 		end
 		local look = part.Position
-		local dist = (root.Position - dest).Magnitude
-		local speed = tonumber(GB.Config.TweenSpeed) or 95
-		local maxDur = tonumber(GB.Config.TweenMaxDur) or 1.8
-		local maxStep = speed * maxDur
-		if dist > maxStep + 10 then
-			local delta = dest - root.Position
-			if delta.Magnitude > 1 then
-				local mid = root.Position + delta.Unit * maxStep
-				if GB.World.destOk(mid) then
-					GB.World.tweenTo(mid, look, { wait = true, range = 3, look3d = true })
-				end
-			end
-		end
-		if GB.World.tweenTo then
-			return GB.World.tweenTo(dest, look, { wait = true, range = 2.2, look3d = true })
-		end
+		pcall(function()
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+		end)
 		root.CFrame = CFrame.new(dest, look)
+		if GB.World.rememberSafe then
+			GB.World.rememberSafe()
+		end
 		return true
 	end
 
