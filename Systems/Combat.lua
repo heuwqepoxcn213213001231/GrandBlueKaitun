@@ -196,6 +196,9 @@ return function(GB)
 		if isDummy(mob.Name) then
 			return false
 		end
+		if GB.Resolver and GB.Resolver.isMarkerTree and GB.Resolver.isMarkerTree(mob) then
+			return false
+		end
 		if GB.QuestData and GB.QuestData.isObjectTarget and GB.QuestData.isObjectTarget(mob.Name) then
 			return false
 		end
@@ -1016,28 +1019,56 @@ return function(GB)
 		return M.huntNearestOf(names, 0, questOf, planOf)
 	end
 
-	local function hoverBaseY(part)
+	local function hoverFloorY(part, mob)
 		if not (part and part:IsA("BasePart")) then
 			return nil
 		end
-		local y = part.Position.Y
-		local minY = (tonumber(GB.Config and GB.Config.DestYMin) or 0) + 6
-		if y ~= y or y < minY then
+		local x, z = part.Position.X, part.Position.Z
+		local partY = part.Position.Y
+		if partY ~= partY then
 			return nil
 		end
-		if M.lastTargetPos and (M.lastTargetPos.Y - y) > 18 then
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		local skip = {}
+		local c = GB.World and GB.World.char and GB.World.char()
+		if c then
+			skip[#skip + 1] = c
+		end
+		if mob then
+			skip[#skip + 1] = mob
+		end
+		params.FilterDescendantsInstances = skip
+		local function rayFrom(oy, dist)
+			local hit = workspace:Raycast(Vector3.new(x, oy, z), Vector3.new(0, -dist, 0), params)
+			if not (hit and hit.Position) then
+				return nil
+			end
+			if hit.Material == Enum.Material.Water then
+				return nil
+			end
+			if hit.Instance and string.find(string.lower(hit.Instance.Name), "water", 1, true) then
+				return nil
+			end
+			return hit.Position.Y + 3
+		end
+		local y = rayFrom(partY + 8, 70)
+		if (not y) or math.abs(y - partY) > 40 then
+			y = rayFrom(80, 110) or y
+		end
+		if not y then
+			if partY > 80 then
+				return nil
+			end
+			y = partY
+		end
+		if y > 140 then
+			y = rayFrom(90, 120) or y
+		end
+		if y > 140 then
 			return nil
 		end
-		local safe = GB.World and GB.World.lastSafe and GB.World.lastSafe.Position
-		if safe and y < safe.Y - 14 then
-			y = safe.Y
-		end
-		if M._hoverGroundY and y < M._hoverGroundY - 14 then
-			y = M._hoverGroundY
-		end
-		if y < minY then
-			return nil
-		end
+		M._hoverGroundY = y
 		return y
 	end
 
@@ -1048,15 +1079,17 @@ return function(GB)
 		end
 		local dest
 		if hoverEnabled(mob) then
-			local baseY = hoverBaseY(part)
+			local baseY = hoverFloorY(part, mob)
 			if not baseY then
 				return nil
 			end
 			dest = Vector3.new(part.Position.X, baseY + hoverHeight(), part.Position.Z)
+			if dest.Y > baseY + hoverHeight() + 2 then
+				dest = Vector3.new(dest.X, baseY + hoverHeight(), dest.Z)
+			end
 			if not (GB.World.destOk(dest) and GB.World.posSane and GB.World.posSane(dest)) then
 				return nil
 			end
-			M._hoverGroundY = baseY
 			return dest, part
 		end
 		if isDummy(mob.Name) then
@@ -1149,13 +1182,18 @@ return function(GB)
 		if dest.Y < ((tonumber(GB.Config and GB.Config.DestYMin) or 0) + 8) then
 			return false
 		end
+		local drift = (root.Position - dest).Magnitude
+		if drift <= 1.8 then
+			local delta = part.Position - root.Position
+			if delta.Magnitude > 0.2 and (root.CFrame.LookVector - delta.Unit).Magnitude > 0.35 then
+				root.CFrame = CFrame.new(root.Position, part.Position)
+			end
+			return true
+		end
 		root.CFrame = CFrame.new(dest, part.Position)
 		local hum = GB.World.hum and GB.World.hum()
 		if hum then
 			hum.AutoRotate = false
-		end
-		if GB.World.rememberSafe then
-			GB.World.rememberSafe()
 		end
 		return true
 	end
@@ -1175,9 +1213,6 @@ return function(GB)
 			root.AssemblyAngularVelocity = Vector3.zero
 		end)
 		root.CFrame = CFrame.new(dest, look)
-		if GB.World.rememberSafe then
-			GB.World.rememberSafe()
-		end
 		return true
 	end
 

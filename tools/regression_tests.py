@@ -72,8 +72,10 @@ def main() -> int:
         fail("objectiveFilled missing")
     if "cycleFinished(questName, true)" in combat.split("function M.objectiveFilled", 1)[1][:400]:
         fail("objectiveFilled still treats missing live as done")
-    if "hoverBaseY" not in combat:
-        fail("hoverBaseY missing")
+    if "hoverFloorY" not in combat:
+        fail("hoverFloorY missing")
+    if "lastSafe" in combat.split("local function hoverFloorY", 1)[-1][:800]:
+        fail("hover floor still uses lastSafe")
     world = read("Game/World.lua")
     if "y > 240" in world:
         fail("rescue still treats y>240 as void")
