@@ -2,8 +2,8 @@
   "name": "GrandBlueKaitun",
   "version": "1.2.1",
   "build": {
-    "commit": "8e01577",
-    "built_at": "2026-09-08T21:39:30+07:00",
+    "commit": "b7ecf75",
+    "built_at": "2026-09-08T21:39:40+07:00",
     "generated": "1.2.1",
     "bundle": "dist/kaitun.lua"
   },
