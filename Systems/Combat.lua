@@ -1,6 +1,6 @@
 -- FindTarget / MoveToTarget / AttackTarget / ValidateKill / RecoverCombat.
 -- Death = Dead attribute / Health<=0 / StateService Dead. Parent nil is despawn, not death.
--- AttackModule.Swing only at CanSwing. Melee lock: hover ~20 above head, look down.
+-- AttackModule.Swing only at CanSwing. Melee lock: hover ~15 above head, look down.
 
 return function(GB)
 	local RS = game:GetService("ReplicatedStorage")
@@ -136,7 +136,7 @@ return function(GB)
 	end
 
 	local function hoverHeight()
-		return tonumber(GB.Config and GB.Config.CombatHoverHeight) or 20
+		return tonumber(GB.Config and GB.Config.CombatHoverHeight) or 15
 	end
 
 	local function hoverEnabled(mob)
