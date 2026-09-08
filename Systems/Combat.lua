@@ -747,12 +747,40 @@ return function(GB)
 		end
 	end
 
+	local function isZoneMarker(name)
+		if type(name) ~= "string" or name == "" then
+			return false
+		end
+		local n = string.lower(name)
+		return string.find(n, "campsite", 1, true) ~= nil
+	end
+
 	local function markerForPlan(plan)
 		if type(plan) ~= "table" then
 			return nil
 		end
 		local marker = plan.Marker
 		if type(marker) ~= "string" or marker == "" then
+			return nil
+		end
+		if GB.Resolver.findPlace then
+			local place = GB.Resolver.findPlace(marker, plan.Island)
+			if place then
+				return place
+			end
+		end
+		if isZoneMarker(marker) then
+			if GB.Resolver.findLoosePlace then
+				local loose = GB.Resolver.findLoosePlace({
+					marker,
+					"Supply Crate",
+					"Signal Fire",
+					"Pirate Marker",
+				}, plan.Island)
+				if loose then
+					return loose
+				end
+			end
 			return nil
 		end
 		local pack = GB.Resolver.resolveMarker and GB.Resolver.resolveMarker(marker, { Island = plan.Island }) or nil
@@ -787,6 +815,51 @@ return function(GB)
 			end
 		end
 		return nil
+	end
+
+	function M.streamHunt(plan, targetName)
+		local now = os.clock()
+		if now - (M._streamHuntAt or 0) < 3.2 then
+			return true
+		end
+		M._streamHuntAt = now
+		local island = type(plan) == "table" and plan.Island or nil
+		local obj = findWorldTarget(targetName, plan)
+		if obj and GB.World and GB.World.goPlace then
+			GB.Log.log("TRAVEL", "combat dest " .. tostring(obj.Name))
+			GB.World.goPlace(obj)
+			return true
+		end
+		local marker = markerForPlan(plan)
+		if marker and GB.World and GB.World.goPlace then
+			GB.Log.log("TRAVEL", "combat camp " .. tostring(marker.Name))
+			GB.World.goPlace(marker)
+			return true
+		end
+		if GB.Resolver and GB.Resolver.enemies then
+			local mobs = GB.Resolver.enemies("Black Noir Pirate")
+			local mob = mobs and mobs[1]
+			local mpos = mob and GB.Resolver.positionOf and GB.Resolver.positionOf(mob)
+			if mpos and GB.World and GB.World.goPos then
+				local spawn = island and GB.World.islandSpawn and GB.World.islandSpawn(island)
+				local dest = Vector3.new(mpos.X, mpos.Y, mpos.Z)
+				if spawn then
+					local dir = Vector3.new(spawn.X - mpos.X, 0, spawn.Z - mpos.Z)
+					if dir.Magnitude > 1 then
+						dest = mpos + dir.Unit * 14
+					end
+				else
+					dest = Vector3.new(mpos.X + 14, mpos.Y, mpos.Z)
+				end
+				GB.Log.log("TRAVEL", "combat camp-near-pirate")
+				GB.World.goPos(dest, "camp-near-pirate")
+				return true
+			end
+		end
+		if island and GB.World and GB.World.sweepIsland then
+			return GB.World.sweepIsland(island, "combat hunt") == true
+		end
+		return false
 	end
 
 	function M.approachMarker(plan, targetName)

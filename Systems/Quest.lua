@@ -2293,9 +2293,18 @@ return function(GB)
 			return targets[1] or preferred, targets
 		end
 		for _, name in ipairs(targets) do
-			local list = GB.Resolver and GB.Resolver.enemies and GB.Resolver.enemies(name)
-			if type(list) == "table" and #list > 0 then
-				return name, targets
+			if GB.QuestData and GB.QuestData.isObjectTarget and GB.QuestData.isObjectTarget(name) then
+				local obj = GB.Resolver and GB.Resolver.findDestroyable and GB.Resolver.findDestroyable(name, {
+					Island = GB.QuestData.islandOf and GB.QuestData.islandOf(questName),
+				})
+				if obj then
+					return name, targets
+				end
+			else
+				local list = GB.Resolver and GB.Resolver.enemies and GB.Resolver.enemies(name)
+				if type(list) == "table" and #list > 0 then
+					return name, targets
+				end
 			end
 		end
 		return targets[1], targets
@@ -2452,13 +2461,17 @@ return function(GB)
 			end
 			if not ok then
 				local waiting = false
-				if GB.Combat and GB.Combat.approachMarker then
+				if GB.Combat and GB.Combat.streamHunt then
+					waiting = GB.Combat.streamHunt(targetPlan, targetPlan.Target) == true
+				elseif GB.Combat and GB.Combat.approachMarker then
 					waiting = GB.Combat.approachMarker(targetPlan, targetPlan.Target) == true
 				end
 				if (not waiting) and before.Island and GB.World and GB.World.pullStream then
-					if os.clock() - (M._killStreamAt or 0) >= 8 then
-						M._killStreamAt = os.clock()
-						GB.World.pullStream(before.Island)
+					if not (GB.World.onIsland and GB.World.onIsland(before.Island)) then
+						if os.clock() - (M._killStreamAt or 0) >= 8 then
+							M._killStreamAt = os.clock()
+							GB.World.pullStream(before.Island)
+						end
 					end
 					waiting = true
 				end

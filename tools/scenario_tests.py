@@ -200,6 +200,18 @@ def main() -> int:
         fail("Investigate must not attack Signal Fire or lock combat")
     if "GB.World.pullStream(wantIsland)" in quest and "onWantedIsland" not in quest:
         fail("pullStream Maple spawn loop still unguarded")
+    if "function M.onIsland" not in world:
+        fail("World.onIsland missing")
+    if "function M.sweepIsland" not in world:
+        fail("World.sweepIsland missing")
+    if "M.onIsland(island)" not in world:
+        fail("pullStream must skip when already on the island")
+    if "function M.streamHunt" not in combat:
+        fail("Combat.streamHunt missing")
+    if "isZoneMarker" not in combat:
+        fail("Combat must not resolve Campsite zone as a marker")
+    if "GB.World.onIsland(before.Island)" not in quest:
+        fail("Kill/Destroy must not spawn-pull while on the quest island")
 
     if FAILS:
         print("FAIL scenario_tests")

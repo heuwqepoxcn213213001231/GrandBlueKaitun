@@ -1371,8 +1371,89 @@ return function(GB)
 		return a and b and a == b
 	end
 
+	function M.onIsland(island)
+		if type(island) ~= "string" or island == "" then
+			return false
+		end
+		local snap = GB.State and GB.State.get and GB.State.get()
+		if snap and snap.PhysicalIsland == island then
+			return true
+		end
+		local spawn = M.islandSpawn(island)
+		local root = M.hrp()
+		if spawn and root and M.planarDist then
+			return M.planarDist(root.Position, spawn) < 600
+		end
+		return false
+	end
+
+	function M.sweepIsland(island, label)
+		if type(island) ~= "string" or island == "" then
+			return false
+		end
+		if not M.goPos then
+			return false
+		end
+		M._sweepPts = M._sweepPts or {}
+		M._sweepI = M._sweepI or {}
+		local pts = M._sweepPts[island]
+		if type(pts) ~= "table" or #pts == 0 then
+			pts = {}
+			local minV, maxV, center, radius = nil, nil, nil, nil
+			if M.GetIslandBounds then
+				minV, maxV, center, radius = M.GetIslandBounds(island)
+			end
+			local spawn = M.islandSpawn(island)
+			local c = center or spawn
+			local y = (c and c.Y) or 18
+			if y < 10 or y > 80 then
+				y = 18
+			end
+			if c then
+				local rx, rz = 280, 280
+				if minV and maxV then
+					rx = math.max(280, (maxV.X - minV.X) * 0.48)
+					rz = math.max(280, (maxV.Z - minV.Z) * 0.48)
+				end
+				if type(radius) == "number" and radius > 80 then
+					rx = math.max(rx, radius * 0.55)
+					rz = math.max(rz, radius * 0.55)
+				end
+				local ring = {
+					Vector3.new(c.X + rx, y, c.Z),
+					Vector3.new(c.X - rx, y, c.Z),
+					Vector3.new(c.X, y, c.Z + rz),
+					Vector3.new(c.X, y, c.Z - rz),
+					Vector3.new(c.X + rx, y, c.Z + rz),
+					Vector3.new(c.X - rx, y, c.Z - rz),
+					Vector3.new(c.X + rx * 1.55, y, c.Z),
+					Vector3.new(c.X, y, c.Z + rz * 1.55),
+					Vector3.new(c.X - rx * 1.55, y, c.Z),
+					Vector3.new(c.X, y, c.Z - rz * 1.55),
+				}
+				for i = 1, #ring do
+					pts[#pts + 1] = ring[i]
+				end
+			end
+			M._sweepPts[island] = pts
+		end
+		if #pts == 0 then
+			return false
+		end
+		M._sweepI[island] = ((M._sweepI[island] or 0) % #pts) + 1
+		local dest = pts[M._sweepI[island]]
+		GB.Log.log(
+			"TRAVEL",
+			string.format("sweep %s %d/%d", tostring(label or island), M._sweepI[island], #pts)
+		)
+		return M.goPos(dest, tostring(label or island) .. " " .. tostring(M._sweepI[island]))
+	end
+
 	function M.pullStream(island)
 		if type(island) ~= "string" or island == "" then
+			return false
+		end
+		if M.onIsland(island) then
 			return false
 		end
 		if GB.Quest and ((GB.Quest.dialogueOpen and GB.Quest.dialogueOpen()) or (GB.Quest.liveTalkName and GB.Quest.liveTalkName())) then
