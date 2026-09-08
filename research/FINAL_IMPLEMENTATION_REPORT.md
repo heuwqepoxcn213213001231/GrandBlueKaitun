@@ -1,10 +1,13 @@
 # FINAL Implementation Report — Grand Blue Kaitun
 
-**Version:** `1.1.6`  
+**Version:** `1.1.42`  
 **Place:** `118635363908336` (Studio connected).  
-**Entry:** `NiaUISilent/Hub/Grand Blue/kaitun.lua`  
+**Entry:** `loader.lua` (REMOTE) / `kaitun.lua` (engine boot).  
 **Ngôn ngữ log:** `[Kaitun][CAT]`.  
-**Runtime fixes:** `research/RUNTIME_FIXES.md`.
+**Runtime fixes:** `research/RUNTIME_FIXES.md`.  
+**Knowledge:** `Game/GeneratedData.lua` + `Game/Knowledge.lua`. Do not treat older 1.1.6 architecture notes below as the load path.
+
+1.1.42 added the compiled GameKnowledge model, validators, DecisionContext, fingerprint defer, BeginQuest hard-ban, item UNKNOWN keep, DumpRuntimeIssue spec dump, and version=GeneratedData integrity. This is **not** a claim that Fresh→Maple is RUNTIME_VERIFIED end-to-end.
 
 ## Architecture
 

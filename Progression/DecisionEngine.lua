@@ -607,6 +607,9 @@ return function(GB)
 	end
 
 	local function afterQuest(name)
+		if GB.Knowledge and GB.Knowledge.invalidateContext then
+			GB.Knowledge.invalidateContext()
+		end
 		if GB.Tutorial and GB.Tutorial.IsBlocking and select(1, GB.Tutorial.IsBlocking()) then
 			return
 		end
@@ -655,6 +658,9 @@ return function(GB)
 		end
 		if GB.PlayerData and GB.PlayerData.refreshLive then
 			GB.PlayerData.refreshLive(false, "engine_cycle")
+		end
+		if GB.Knowledge and GB.Knowledge.buildContext then
+			M.ctx = GB.Knowledge.buildContext()
 		end
 
 		local tutSnap = snap.UI or nil

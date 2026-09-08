@@ -54,6 +54,7 @@ return function(GB)
 
 	local DECLINE_EXACT = {
 		["no"] = true,
+		["no."] = true,
 		["decline"] = true,
 		["cancel"] = true,
 		["bye"] = true,
@@ -253,7 +254,19 @@ return function(GB)
 		if choice.commandDecline and not choice.questLinked then
 			return true
 		end
-		if DECLINE_EXACT[choice.textNorm] or DECLINE_EXACT[choice.textPlain] then
+		local exact = DECLINE_EXACT
+		if GB.Knowledge and GB.Knowledge.dialogueDeclineExact then
+			local extra = GB.Knowledge.dialogueDeclineExact()
+			if type(extra) == "table" then
+				exact = extra
+				for k, v in pairs(DECLINE_EXACT) do
+					if v then
+						exact[k] = true
+					end
+				end
+			end
+		end
+		if exact[choice.textNorm] or exact[choice.textPlain] then
 			return true
 		end
 		if DECLINE_PHRASES[choice.textNorm] or DECLINE_PHRASES[choice.textPlain] then
@@ -431,6 +444,24 @@ return function(GB)
 			end
 		end
 		return nil
+	end
+
+	function M.unfinishedConditions(name)
+		local live = GB.PlayerData and GB.PlayerData.peekLive and GB.PlayerData.peekLive(name)
+		if not live or not (GB.QuestData and GB.QuestData.currentStage) then
+			return {}
+		end
+		local _, st = GB.QuestData.currentStage(live)
+		if not st then
+			return {}
+		end
+		local out = {}
+		for _, cond in ipairs(st.Conditions or st.conditions or {}) do
+			if type(cond) == "table" and not cond.Complete then
+				out[#out + 1] = cond
+			end
+		end
+		return out
 	end
 
 	function M.liveEscortName()
@@ -983,10 +1014,24 @@ return function(GB)
 
 	function M.CurrentBlockers()
 		local out = {}
+		if GB.Knowledge and GB.Knowledge.currentBlockers then
+			for _, b in ipairs(GB.Knowledge.currentBlockers()) do
+				out[#out + 1] = b
+			end
+		end
 		local names = GB.PlayerData.activeNames and GB.PlayerData.activeNames() or {}
-		local cur = GB.PlayerData.current and GB.PlayerData.current() or nil
-		if type(cur) == "string" and cur ~= "" and not table.find(names, cur) then
-			names[#names + 1] = cur
+		local cur = GB.PlayerData._current
+		if type(cur) == "string" and cur ~= "" then
+			local seen = false
+			for _, n in ipairs(names) do
+				if n == cur then
+					seen = true
+					break
+				end
+			end
+			if not seen then
+				names[#names + 1] = cur
+			end
 		end
 		for _, name in ipairs(names) do
 			if name == "Gate of Authority" then
@@ -2068,7 +2113,7 @@ return function(GB)
 			return M.ensureItem(target) or GB.Shop.buy(target)
 		end
 		if typ == "Sell" then
-			return GB.Shop.sellNamed(target)
+			return GB.Shop.sellNamed(target, { Quest = true })
 		end
 		if typ == "Equip" then
 			if not GB.PlayerData.hasItem(target) then
@@ -2719,6 +2764,18 @@ return function(GB)
 				)
 				t.NextRetryAt = os.clock() + 6
 				return resultRow(name, true, false, "unknown_objective")
+			end
+			local conds = M.unfinishedConditions(name)
+			if #conds > 1 then
+				for _, cond in ipairs(conds) do
+					local ctyp = cond.Type or cond.type
+					if HANDLED[ctyp] and ctyp ~= "Required" then
+						local okAlt = M.handleCondition(name, cond, qs.Stage)
+						if okAlt then
+							return resultRow(name, true, true, "alt_condition_progress")
+						end
+					end
+				end
 			end
 			if GB.Planner then
 				local plan = GB.Planner.build(qs)

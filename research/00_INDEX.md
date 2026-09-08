@@ -1,6 +1,6 @@
 # Grand Blue (Eternal Pose) — Research Pack
 
-**Turn scope:** Phase 4 RE + Phase 5–9 Kaitun implemented. Entry `kaitun.lua`. Version **1.1.17** (REMOTE loader must pull this; AutoStats own scheduler + Radar unused). Reports: `FINAL_IMPLEMENTATION_REPORT.md`, `FINAL_CHECKLIST.md`, `REMOTE_REGISTRY.md`, `PROGRESSION_FINAL.md`, `RUNTIME_FIXES.md`, `QUEST_EXECUTION_MATRIX.md`, `QUEST_COVERAGE_REPORT.md`, `TUTORIAL_FLOW.md`.
+**Turn scope:** 1.1.42 knowledge-model hardening. Entry `loader.lua` → modules / `dist/kaitun.lua`. Reports: `KNOWLEDGE_MODEL.md`, `DATA_INTEGRITY_REPORT.md`, `FULL_SYSTEM_AUDIT.md`, `PERFORMANCE_AUDIT.md`, `REGRESSION_TESTS.md`, `FUTURE_UPDATE_GUIDE.md`, plus FINAL / MATRIX / COVERAGE / REMOTE / TUTORIAL / PROGRESSION.
 
 **Place (Studio):** `place 118635363908336 Game.rbxl` — connected. `Workspace.Islands` chỉ có 3 đảo.
 
@@ -25,6 +25,12 @@
 | `skills.json` | Skill/passive rows từ quest |
 | `npcs.json` | NPC ↔ quest |
 | `studio_iteminfo_index.json` | Tên module ItemInfo/Race (Studio, không phải data) |
+| `KNOWLEDGE_MODEL.md` | Normalized GameKnowledge + compiler contract |
+| `DATA_INTEGRITY_REPORT.md` | 151/439 counts + validator result |
+| `FULL_SYSTEM_AUDIT.md` | A_system_map vs runtime status |
+| `PERFORMANCE_AUDIT.md` | Hot-path classification |
+| `REGRESSION_TESTS.md` | Static regression matrix |
+| `FUTURE_UPDATE_GUIDE.md` | Dump-change rebuild flow |
 
 ## Nguồn (thứ tự authority)
 

@@ -1,5 +1,7 @@
 # Quest Execution Matrix
 
+**Runtime table:** `Game/GeneratedData.lua` (`M.Stages`) compiled by `tools/build_game_data.py`. This markdown is the human matrix; do not hand-edit GeneratedData.
+
 Source: `research/quests.json` (QuestInfo Studio dump) + live Studio place `118635363908336`.
 Planner: Goal + AcquireMethod. Collect is not ResolveShop/Item.
 Pirate Fan Letter Collect source = **Corrupt Marine** (QuestInfo marker). Not Strong Marine.

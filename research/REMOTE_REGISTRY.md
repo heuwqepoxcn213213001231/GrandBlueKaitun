@@ -2,6 +2,8 @@
 
 Rule: args only from Studio call sites / data.rules / StatSystem. FireServer ≠ success.
 
+**Enforced at runtime (1.1.42):** `GeneratedData.Remotes` + `Remotes.fire` rejects `BeginQuest`. Status ≠ VERIFIED → do not add a wrapper that fires blindly.
+
 | Action | Remote | Arguments | Evidence | Validation | Status |
 |---|---|---|---|---|---|
 | Talk NPC | `Events.ClientQuest` RE | `("Talk", DisplayName)` | PromptInformation.Dialogue: Humanoid.DisplayName or Name. Graves DisplayName=`Officer Graves` (instance `Officer Graves [2]`) | Live Talk count / stage | VERIFIED |

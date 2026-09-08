@@ -52,17 +52,38 @@ return function(GB)
 		return false
 	end
 
-	function M.sellNamed(name)
+	function M.sellNamed(name, opts)
+		opts = opts or {}
+		if opts.Quest ~= true then
+			local policy = "UNKNOWN"
+			if GB.Knowledge and GB.Knowledge.itemPolicy then
+				policy = select(1, GB.Knowledge.itemPolicy(name))
+			end
+			if policy == "UNKNOWN" or policy == "RARE" or policy == "PROGRESSION" or policy == "QUEST_REQUIRED" then
+				GB.Log.warn("SHOP", "keep " .. tostring(policy) .. " " .. tostring(name))
+				return false
+			end
+		end
 		local inv = GB.PlayerData.cache().Inventory
 		if type(inv) ~= "table" then
 			return false
 		end
+		local beforeGold = (GB.State.get() or {}).Gold or 0
+		local beforeAmt = select(2, GB.PlayerData.hasItem(name))
 		for k, v in pairs(inv) do
 			local nm = type(v) == "table" and v.Name or k
 			if nm == name then
 				local key = type(v) == "table" and (v.Key or k) or k
 				GB.Log.log("SHOP", "Sell " .. tostring(nm))
-				return GB.Remotes.sell(key)
+				local sent = GB.Remotes.sell(key)
+				task.wait(0.35)
+				local afterAmt = select(2, GB.PlayerData.hasItem(name))
+				local afterGold = (GB.State.get() or {}).Gold or 0
+				local progressed = afterAmt < beforeAmt or afterGold > beforeGold
+				if progressed and GB.Recovery and GB.Recovery.markSuccess then
+					GB.Recovery.markSuccess()
+				end
+				return sent == true and progressed
 			end
 		end
 		return false

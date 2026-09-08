@@ -382,8 +382,9 @@ return function(GB)
 				payload = GB.State.guiText and GB.State.guiText(title) or nil
 			end
 			local spec = M.CONTINUE_OVERLAYS[ui.Name]
+			local known = GB.GeneratedData and GB.GeneratedData.Tutorials and GB.GeneratedData.Tutorials[ui.Name]
 			return {
-				Type = M.GateTypes.ContinueOverlay,
+				Type = (known and known.Type) or M.GateTypes.ContinueOverlay,
 				Id = ui.Name,
 				Payload = payload,
 				Instance = ui,

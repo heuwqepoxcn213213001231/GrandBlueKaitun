@@ -8,6 +8,8 @@ Anchor Town  --Setting Sail lv30 + Rowboat 50G-->  Clown Town  --Journey lv70-->
 
 Hard level cap: **UNKNOWN**. Soft visual `LEVEL_SOFT_CAP=125` (radar only). Content dump ends Maple.
 
+Blocked goals (Gate of Authority Strength 100, level gates) yield to another READY story, requirement quest, or classified repeatable farm. They do not monopolize the planner.
+
 ## Fresh (1–7) Anchor
 
 1. **Introduction** — Talk Officer Graves (world instance `Officer Graves [2]`, DisplayName `Officer Graves`) → Dummy×4, Dash, Block → Talk Graves; Strong Punch drop → `PromptSkillEquip` if popup.

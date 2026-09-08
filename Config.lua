@@ -25,6 +25,8 @@ return function(GB)
 	def("PerfDebug", true)
 	def("PerfReportInterval", 35)
 	def("DebugResolverDeepScan", false)
+	def("DebugAcquireDeepScan", false)
+	def("DebugWorldDeepScan", false)
 
 	-- Auto flags
 	def("AutoQuest", true)

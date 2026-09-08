@@ -1,7 +1,7 @@
 # Quest Coverage Report
 
-**Version:** 1.1.24  
-**Source:** `research/quests.json` (151 QuestInfo modules) + planner Goal/AcquireMethod.
+**Version:** 1.1.42  
+**Source:** `research/quests.json` (151 QuestInfo modules) + `tools/build_game_data.py` → `Game/GeneratedData.lua`.
 
 Quests dumped: **151**
 
@@ -31,9 +31,9 @@ Historical `Completed Quests` membership is **not** treated as “already comple
 |---|---|
 | Stages | 439 |
 | Planned | 424 |
-| Implemented | 370 |
+| Implemented | 373 |
 | Runtime verified | 12 |
-| Runtime required | 3 |
+| Runtime required | 0 |
 | Unresolved | 66 |
 
 
@@ -55,9 +55,9 @@ Historical `Completed Quests` membership is **not** treated as “already comple
 |---|---|
 | Stages | 53 |
 | Planned | 53 |
-| Implemented | 52 |
+| Implemented | 53 |
 | Runtime verified | 0 |
-| Runtime required | 1 |
+| Runtime required | 0 |
 | Unresolved | 0 |
 
 
@@ -79,9 +79,9 @@ Historical `Completed Quests` membership is **not** treated as “already comple
 |---|---|
 | Stages | 164 |
 | Planned | 163 |
-| Implemented | 162 |
+| Implemented | 163 |
 | Runtime verified | 12 |
-| Runtime required | 1 |
+| Runtime required | 0 |
 | Unresolved | 1 |
 
 

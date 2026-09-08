@@ -6,6 +6,11 @@ return function(GB)
 	if type(GB) ~= "table" or type(GB.Config) ~= "table" then
 		error("[Kaitun][BOOT] run loader.lua — modules not injected")
 	end
+	local loaderVer = tostring((getgenv()._GBKaitunLoader and getgenv()._GBKaitunLoader.VERSION) or getgenv().GB_VERSION or "")
+	local genVer = GB.GeneratedData and tostring(GB.GeneratedData.Version or "")
+	if genVer and genVer ~= "" and loaderVer ~= "" and genVer ~= loaderVer then
+		error("[Kaitun][BOOT] GeneratedData version mismatch file=" .. loaderVer .. " generated=" .. genVer)
+	end
 	local runtimeEnabled = GB.Config.RuntimeDiagnostics ~= false
 
 	local function perfCount(name, n)
@@ -184,10 +189,19 @@ return function(GB)
 		lastDumpFp = fp
 		dumpByFingerprint[fp] = now
 		capNumberMap(dumpByFingerprint, 120)
+		local kn = GB.Knowledge and GB.Knowledge.buildContext and GB.Knowledge.buildContext() or nil
 		local dump = {
 			Version = tostring(getgenv().GB_VERSION or (getgenv()._GBKaitunLoader and getgenv()._GBKaitunLoader.VERSION) or "unknown"),
 			Commit = tostring(getgenv()._GBKaitunLoader and getgenv()._GBKaitunLoader.COMMIT or "unknown"),
 			BuiltAt = tostring(getgenv()._GBKaitunLoader and getgenv()._GBKaitunLoader.BUILD_AT or "unknown"),
+			GeneratedVersion = GB.GeneratedData and GB.GeneratedData.Version or nil,
+			GeneratedCommit = GB.GeneratedData and GB.GeneratedData.Commit or nil,
+			Fingerprint = fp,
+			StartKind = kn and kn.StartKind or (cur and GB.Knowledge and GB.Knowledge.startKind and GB.Knowledge.startKind(cur) or nil),
+			QuestSpec = kn and kn.QuestSpec or nil,
+			Unfinished = kn and kn.Unfinished or (cur and GB.Quest and GB.Quest.unfinishedConditions and GB.Quest.unfinishedConditions(cur) or nil),
+			Subgoals = GB.Planner and GB.Planner.stack or nil,
+			CurrentGoal = GB.State.track.TaskName,
 			TutorialDump = GB.DumpTutorialState and GB.DumpTutorialState() or nil,
 			PlaceId = game.PlaceId,
 			Level = snap.Level,

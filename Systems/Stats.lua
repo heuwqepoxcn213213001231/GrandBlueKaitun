@@ -80,7 +80,7 @@ return function(GB)
 		if M._guiLabel and M._guiLabel.Parent then
 			return M._guiLabel
 		end
-		perfCount("PlayerGuiFullScan", 1)
+		perfCount("PlayerGuiStatLookup", 1)
 		local lp = GB.lp
 		local pg = lp and lp.PlayerGui
 		if not pg then
@@ -333,6 +333,10 @@ return function(GB)
 	function M.unused()
 		local s = M.ReadStatState()
 		return s.Unused
+	end
+
+	function M.GetSnapshot(opts)
+		return M.ReadStatState(opts)
 	end
 
 	function M.Invest(statName, amount)

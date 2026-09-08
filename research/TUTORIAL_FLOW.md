@@ -2,7 +2,8 @@
 
 **Source:** Studio place `118635363908336` — `RS.Modules.QuestInfo.Functions.TutorialFolder` (14 modules) + `TutorialLocal` + `BackpackLocal` + `ScreenShadow`.
 
-Internal ID = module name. Visible text is fallback only.
+Internal ID = module name. Visible text is fallback only.  
+Compiler registry: `tools/build_game_data.py` `TUTORIALS` → `GeneratedData.Tutorials`. `Tutorial.GetCurrentGate` prefers overlay class name.
 
 | StepId | Visible instruction | Trigger | Required action | Completion condition | Relevant GUI | Relevant callback | Related quest | Status |
 |---|---|---|---|---|---|---|---|---|

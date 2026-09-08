@@ -1,9 +1,9 @@
 {
   "name": "GrandBlueKaitun",
-  "version": "1.1.41",
+  "version": "1.1.42",
   "build": {
-    "commit": "25f33f5",
-    "built_at": "2026-09-08T16:16:29+07:00"
+    "commit": "1dcd986",
+    "built_at": "2026-09-08T16:34:19+07:00"
   },
   "entry": "kaitun.lua",
   "files": {
@@ -23,6 +23,8 @@
     "Game/PlayerData.lua": "Game/PlayerData.lua",
     "Game/World.lua": "Game/World.lua",
     "Game/ItemData.lua": "Game/ItemData.lua",
+    "Game/GeneratedData.lua": "Game/GeneratedData.lua",
+    "Game/Knowledge.lua": "Game/Knowledge.lua",
     "Game/QuestData.lua": "Game/QuestData.lua",
     "Game/QuestSpecs.lua": "Game/QuestSpecs.lua",
     "Game/Inventory.lua": "Game/Inventory.lua",
@@ -125,6 +127,16 @@
     {
       "key": "ItemData",
       "path": "Game/ItemData.lua",
+      "kind": "core"
+    },
+    {
+      "key": "GeneratedData",
+      "path": "Game/GeneratedData.lua",
+      "kind": "core"
+    },
+    {
+      "key": "Knowledge",
+      "path": "Game/Knowledge.lua",
       "kind": "core"
     },
     {

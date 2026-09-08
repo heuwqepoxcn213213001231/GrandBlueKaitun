@@ -1,5 +1,7 @@
 # FINAL Checklist — Acceptance features
 
+**Version 1.1.42:** knowledge compiler + static validators PASS. Live session still required for RUNTIME_VERIFIED rows. Do not mark WORKING from static code alone.
+
 | Feature | Status | Reason |
 |---|---|---|
 | Fresh bootstrap | PARTIAL | Wait character + StatReplication; live quest via GetData+tracker (1.0.6). Overlay dismiss 1.0.7. Planner 1.1.0. Kill-credit EnemyDrop 1.1.1. Dead-target + UI gates 1.1.2. ContinueOverlay InputBegan 1.1.5. Shoot=Gunshot HOLD 1.1.6. Model position-safe 1.1.7. Prompt-anchor stand 1.1.8. Mine destOk + pickaxe shop 1.1.9. Mining overlay _src 1.1.10. Mining dismiss no UIS walk 1.1.11 |

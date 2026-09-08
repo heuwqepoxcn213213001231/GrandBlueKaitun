@@ -1,0 +1,53 @@
+{
+  "version": "1.1.42",
+  "commit": "1dcd986",
+  "built_at": "2026-09-08T16:34:01+07:00",
+  "coverage": {
+    "quests": 151,
+    "all": {
+      "stages": 439,
+      "planned": 424,
+      "implemented": 373,
+      "runtime_verified": 12,
+      "runtime_required": 0,
+      "unresolved": 66
+    },
+    "anchor": {
+      "stages": 58,
+      "planned": 58,
+      "implemented": 58,
+      "runtime_verified": 12,
+      "runtime_required": 0,
+      "unresolved": 0
+    },
+    "clown": {
+      "stages": 53,
+      "planned": 53,
+      "implemented": 53,
+      "runtime_verified": 0,
+      "runtime_required": 0,
+      "unresolved": 0
+    },
+    "maple": {
+      "stages": 53,
+      "planned": 52,
+      "implemented": 52,
+      "runtime_verified": 0,
+      "runtime_required": 0,
+      "unresolved": 1
+    },
+    "main_route": {
+      "stages": 164,
+      "planned": 163,
+      "implemented": 163,
+      "runtime_verified": 12,
+      "runtime_required": 0,
+      "unresolved": 1
+    }
+  },
+  "quests": 151,
+  "stages": 439,
+  "npcs": 156,
+  "items": 88,
+  "skills": 19
+}

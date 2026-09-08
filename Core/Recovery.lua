@@ -167,6 +167,31 @@ return function(GB)
 			end
 		end
 		GB.Log.warn("RECOVERY", string.format("level=%d strategy=%s %s", M.level, tostring(strat), tostring(why)))
+		local fp = string.format(
+			"%s|%s|%s|%s",
+			tostring(cur or "-"),
+			tostring(o and o.Type or "-"),
+			tostring(o and o.TargetName or "-"),
+			tostring(why or strat)
+		)
+		M._fp = M._fp or {}
+		M._fpN = (M._fpN or 0) + 1
+		M._fp[fp] = (M._fp[fp] or 0) + 1
+		if M._fpN > 48 then
+			M._fp = { [fp] = M._fp[fp] }
+			M._fpN = 1
+		end
+		if M._fp[fp] >= 4 and cur and GB.Quest then
+			GB.Quest.deferUntil = GB.Quest.deferUntil or {}
+			GB.Quest.deferReason = GB.Quest.deferReason or {}
+			GB.Quest.deferUntil[cur] = os.clock() + 40
+			GB.Quest.deferReason[cur] = "fingerprint " .. fp
+			GB.Log.warn("RECOVERY", "defer fingerprint " .. fp)
+			M.resetStrategy()
+			M.level = 0
+			GB.State.track.TaskStartedAt = os.clock()
+			return
+		end
 		scopedInvalidate(qs)
 
 		if strat == "lookup" or strat == "enemy" then

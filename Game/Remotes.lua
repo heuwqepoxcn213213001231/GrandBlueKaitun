@@ -22,6 +22,10 @@ return function(GB)
 	end
 
 	function M.fire(name, gap, ...)
+		if name == "BeginQuest" then
+			GB.Log.err("ERROR", "BeginQuest banned")
+			return false, "banned"
+		end
 		if not GB.Retry.rateOk("re:" .. name, gap or 0.55) then
 			return false, "rate"
 		end

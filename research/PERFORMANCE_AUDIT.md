@@ -108,4 +108,22 @@ Scope: static root-cause audit + instrumentation pass on current `main` source, 
 - Confirm `PlayerGuiFullScan`, `ResolverDeepScan`, `WorkspaceDeepScan`, `getgc`, `getconnections` are low in steady state.
 - Confirm spikes print as `[Kaitun][PERF][SPIKE] <op> <ms>`.
 
+## 11) 1.1.42 Knowledge / Hot-path Pass
+
+- **GeneratedData** is compiled once; runtime does not HttpGet research JSON.
+- **Workspace:GetDescendants** remains only behind `DebugAcquireDeepScan` / `DebugWorldDeepScan` / `DebugResolverDeepScan` (default false).
+- **PlayerGuiFullScan** counter renamed to `PlayerGuiStatLookup` — targeted `FindFirstChild`, cached label, no `PlayerGui:GetDescendants`.
+- **DecisionContext** (`Knowledge.buildContext`, 120ms TTL) is built once per engine cycle.
+- Runtime averages (DecisionEngine / Resolver ms) are **not claimed** here. No live session was attached to this pass. Profiler spikes still print `>16ms`.
+
+Steady-state hard rules (source, not live proof):
+
+| Counter | Expected /min after boot |
+|---|---|
+| Workspace deep GetDescendants | 0 |
+| PlayerGui:GetDescendants | 0 |
+| getgc / getconnections | 0 (unless unknown overlay class once) |
+| Source HttpGet | 0 |
+| GetData | dirty/event + slow safety only |
+
 Overall status: IMPLEMENTED instrumentation + root-cause refactors complete in source; runtime verification remains mandatory before claiming `RUNTIME_VERIFIED`.

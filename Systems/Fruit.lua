@@ -49,11 +49,11 @@ return function(GB)
 
 	function M.pickupNearby()
 		local found = taggedFruit() or folderFruit()
-		if not found and os.clock() - (M._deepAt or 0) >= DEEP_SCAN_GAP then
+		if not found and GB.Config and GB.Config.DebugWorldDeepScan == true and os.clock() - (M._deepAt or 0) >= DEEP_SCAN_GAP then
 			M._deepAt = os.clock()
 			perfCount("WorkspaceDeepScan", 1)
 			pcall(function()
-				for _, d in ipairs(workspace:GetDescendants()) do
+				for _, d in ipairs(workspace:GetDescendants()) do -- diagnostic DebugWorldDeepScan only
 					if isFruit(d) then
 						found = d
 						break

@@ -159,9 +159,9 @@ return function(GB)
 			end
 		end
 
-		if #hits == 0 and now - (M.dropMiss[item] or 0) > 2.5 then
+		if #hits == 0 and GB.Config and GB.Config.DebugAcquireDeepScan == true and now - (M.dropMiss[item] or 0) > 2.5 then
 			perfCount("WorkspaceDeepScan", 1)
-			for _, d in ipairs(workspace:GetDescendants()) do
+			for _, d in ipairs(workspace:GetDescendants()) do -- diagnostic DebugAcquireDeepScan only
 				if d:IsA("ProximityPrompt") and not inRS(d) then
 					local parent = d.Parent
 					if parent and itemMatch(parent, item) then

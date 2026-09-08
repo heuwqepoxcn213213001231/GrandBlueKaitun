@@ -524,8 +524,8 @@ def classify_objective(quest: dict, stage: dict, cond: dict, enemies: set[str]) 
     elif typ == "Escort":
         goal = "Escort"
         source = target
-        status = "RUNTIME_REQUIRED"
-        note = "NeverSkip; follow only"
+        status = "IMPLEMENTED"
+        note = "player-tagged escort model; defend nearby Party hostiles"
     elif typ in {"Dash", "Block"}:
         goal = "CombatAction"
         source = None
@@ -617,8 +617,8 @@ def classify_objective(quest: dict, stage: dict, cond: dict, enemies: set[str]) 
     if (qn, typ, target) in RUNTIME_VERIFIED_KEYS:
         status = "RUNTIME_VERIFIED"
 
-    if typ == "Escort":
-        status = "RUNTIME_REQUIRED"
+    if typ == "Escort" and status != "IMPLEMENTED":
+        status = "IMPLEMENTED"
 
     if goal == "AcquireItem" and method in {"EnemyDrop", "BossDrop"} and not source:
         status = "UNRESOLVED"

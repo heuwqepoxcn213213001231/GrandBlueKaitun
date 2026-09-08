@@ -1,11 +1,29 @@
 # Tools
 
+## Hardening suite
+
+From repo root:
+
+```bash
+python3 tools/run_hardening.py
+```
+
+That compiles `Game/GeneratedData.lua` from research JSON, then runs:
+
+- `tools/validate_game_data.py`
+- `tools/quest_route_validator.py`
+- `tools/perf_static_audit.py`
+- `tools/regression_tests.py`
+- `tools/diff_game_data.py`
+
+Do **not** run `gen_quest_artifacts.py` unless you re-apply escort marker overrides (`Mayor Kiyoshi Escort`). Runtime overlays live in `tools/build_game_data.py`.
+
 ## Quest route validator
 
 From repo root:
 
 ```bash
-python3 tools/gen_quest_artifacts.py
+python3 tools/build_game_data.py
 python3 tools/quest_route_validator.py
 ```
 
