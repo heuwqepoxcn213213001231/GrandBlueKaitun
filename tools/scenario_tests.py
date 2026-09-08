@@ -100,6 +100,14 @@ def main() -> int:
         fail("target death does not dirty engine")
     if "hoverFloorY" not in combat:
         fail("hoverFloorY missing")
+    if "b:Fire(config)" in remotes:
+        fail("DialogueBindable Fire still live")
+    if "dialogueChoice" not in remotes:
+        fail("Choice remote missing")
+    if "alt_condition_pending" not in quest:
+        fail("multi-talk still loops all conditions in one tick")
+    if "talk not credited" in quest.split("if typ == \"Talk\"", 1)[-1][:900]:
+        fail("Talk path still noteFail after one blocked wait")
 
     if FAILS:
         print("FAIL scenario_tests")

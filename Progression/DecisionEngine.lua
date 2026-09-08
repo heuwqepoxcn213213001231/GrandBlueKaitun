@@ -968,7 +968,9 @@ return function(GB)
 		local continueOverlay = gate and gate.Type == (GB.Tutorial.GateTypes and GB.Tutorial.GateTypes.ContinueOverlay)
 
 		local talkName = GB.Quest and GB.Quest.liveTalkName and GB.Quest.liveTalkName()
-		if (GB.Quest and GB.Quest.dialogueOpen and GB.Quest.dialogueOpen()) or talkName then
+		local curObj = GB.PlayerData and GB.PlayerData.liveObjectiveType and GB.PlayerData.liveObjectiveType(GB.PlayerData._current or (GB.PlayerData.current and GB.PlayerData.current()))
+		local stealDialogue = talkName or (GB.Quest and GB.Quest.dialogueOpen and GB.Quest.dialogueOpen() and curObj ~= "Deliver Object" and curObj ~= "Kill" and curObj ~= "Destroy" and curObj ~= "Collect")
+		if stealDialogue then
 			local name = talkName or (GB.PlayerData and GB.PlayerData.current and GB.PlayerData.current())
 			if name and not GB.Config.SkipQuests[name] then
 				if GB.Combat and GB.Combat.stopLock then

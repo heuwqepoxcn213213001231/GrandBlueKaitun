@@ -82,17 +82,18 @@ return function(GB)
 		return M.fire("ClientQuest", 1.2, "Closet", "Visit")
 	end
 
-	function M.dialogueConfig(config)
-		local b = RS:FindFirstChild("Events") and RS.Events:FindFirstChild("DialogueBindable")
-		if not (b and config) then
-			return false
+	function M.dialogueConfig(_config)
+		-- Executor Fire on DialogueBindable runs DialogueHandler.LoadNode as a
+		-- RobloxScript and throws "Cannot require a non-RobloxScript module".
+		-- Open dialogue via ClientQuest Talk only.
+		return false
+	end
+
+	function M.dialogueChoice(questName, choice)
+		if type(questName) ~= "string" or type(choice) ~= "string" or choice == "" then
+			return false, "bad"
 		end
-		if not GB.Retry.rateOk("dialogue", 0.7) then
-			return false
-		end
-		return pcall(function()
-			b:Fire(config)
-		end)
+		return M.fire("ClientQuest", 0.55, "Choice", questName, choice)
 	end
 
 	function M.statInvest(stat, n)

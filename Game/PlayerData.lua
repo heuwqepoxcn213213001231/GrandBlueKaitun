@@ -603,7 +603,14 @@ return function(GB)
 		end
 		local prog = ev:FindFirstChild("QuestProgress")
 		if prog then
-			GB.conns[#GB.conns + 1] = prog.OnClientEvent:Connect(function()
+			GB.conns[#GB.conns + 1] = prog.OnClientEvent:Connect(function(a, b)
+				if type(a) == "table" and type(a.Name) == "string" then
+					M._live[a.Name] = a
+					M._done[a.Name] = nil
+				elseif type(a) == "string" and type(b) == "table" then
+					M._live[a] = b
+					M._done[a] = nil
+				end
 				bump("QuestProgress")
 			end)
 		end

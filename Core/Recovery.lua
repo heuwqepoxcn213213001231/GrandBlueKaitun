@@ -147,7 +147,7 @@ return function(GB)
 		local cur = GB.PlayerData and GB.PlayerData.current and GB.PlayerData.current()
 		local qs = cur and GB.Quest and GB.Quest.questState and GB.Quest.questState(cur)
 		local o = qs and qs.Objective
-		if o and (o.Type == "Unlock" or o.Type == "Loot" or o.Type == "Open" or o.Type == "Interact" or o.Type == "Free" or o.Type == "Wake" or o.Type == "Check On" or o.Type == "Escort") then
+		if o and (o.Type == "Unlock" or o.Type == "Loot" or o.Type == "Open" or o.Type == "Interact" or o.Type == "Free" or o.Type == "Wake" or o.Type == "Check On" or o.Type == "Escort" or o.Type == "Deliver Object" or o.Type == "Deliver" or o.Type == "Talk" or o.Type == "Automatic Talk") then
 			if strat == "enemy" then
 				strat = M.advanceStrategy()
 			end

@@ -170,6 +170,11 @@ def main() -> int:
         fail("SelfCheck missing")
     if "Core/RemoteBroker.lua" not in manifest.get("files", {}):
         fail("manifest missing RemoteBroker")
+    if "dialogueChoice" not in remotes:
+        fail("Remotes.dialogueChoice missing")
+    if "Cannot require a non-RobloxScript module" not in remotes and "DialogueBindable" in remotes:
+        if "b:Fire(config)" in remotes:
+            fail("dialogueConfig still Fires DialogueBindable")
     if "fingerprint" not in recovery:
         fail("Recovery fingerprint defer missing")
 

@@ -129,6 +129,10 @@ return function(GB)
 		["Officer Investigation"] = true,
 		["Leveling Skill"] = true,
 		["Aim Training"] = true,
+		["Marksman 1"] = true,
+		["Marksman 2"] = true,
+		["Marksman 3"] = true,
+		["Marksman 4"] = true,
 	})
 
 	return C

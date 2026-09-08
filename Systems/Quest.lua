@@ -598,6 +598,17 @@ return function(GB)
 			if string.find(t, "yeah", 1, true) then
 				score = score + 170
 			end
+			local qn = tostring(opts.Quest or opts.QuestName or "")
+			if string.find(qn, "Something Isn't Right", 1, true) then
+				if string.find(t, "strange", 1, true) or string.find(t, "noticed", 1, true) or string.find(t, "clue", 1, true) then
+					score = score + 700
+				end
+			end
+			if not string.find(qn, "Marksman", 1, true) then
+				if string.find(t, "teach me", 1, true) or string.find(t, "aim as good", 1, true) or string.find(t, "marksman", 1, true) then
+					score = score - 900
+				end
+			end
 			if c.first then
 				score = score + 80
 			end
@@ -641,7 +652,12 @@ return function(GB)
 			shown = pick.btn.Name
 		end
 		GB.Log.log("QUEST", "choice \"" .. tostring(shown) .. "\"")
-		return GB.State.clickGui(pick.btn)
+		local clicked = GB.State.clickGui(pick.btn)
+		local qn = opts.Quest or opts.QuestName
+		if qn and GB.Remotes and GB.Remotes.dialogueChoice then
+			GB.Remotes.dialogueChoice(qn, shown)
+		end
+		return clicked
 	end
 
 	local function clickPlayerGuiPath(path)
@@ -1560,10 +1576,7 @@ return function(GB)
 					okTalk, whyTalk = GB.Remotes.talk(who)
 				end
 				lastWhy = tostring(whyTalk or (okTalk and "sent" or "unknown"))
-				if cfg then
-					GB.Remotes.dialogueConfig(cfg)
-				end
-				local waitFor = okTalk and 1.8 or ((whyTalk == "rate") and 0.9 or 0.45)
+				local waitFor = okTalk and 0.45 or ((whyTalk == "rate") and 0.2 or 0.15)
 				local untilAt = os.clock() + waitFor
 				while os.clock() < untilAt do
 					if respawnBusy() then
@@ -1572,7 +1585,7 @@ return function(GB)
 					if dialogueOpen() then
 						return who, lastWhy
 					end
-					task.wait(0.1)
+					task.wait(0.05)
 				end
 			end
 			return nil, lastWhy
@@ -1992,33 +2005,22 @@ return function(GB)
 				Quest = questName,
 				Island = qs.Island,
 				DisplayName = target,
+				QuestName = questName,
+				Action = "progress",
 			})
-			if ok then
-				local progressed = waitTalkProgress(questName, before)
-				if progressed then
-					local after = M.questState(questName)
-					local prev = qs.Objective
-					if prev then
-						local nextCur = prev.Amount
-						if after.StageIndex == qs.StageIndex and after.Objective and not after.IsComplete then
-							nextCur = after.Objective.Current
-						end
-						GB.Log.log(
-							"QUEST",
-							string.format(
-								"%s %s/%s -> %s/%s",
-								questName,
-								tostring(prev.Current),
-								tostring(prev.Amount),
-								tostring(nextCur),
-								tostring(prev.Amount)
-							)
-						)
-					end
-					M.noteOk(questName)
-					return true
-				end
-				M.noteFail(questName, "talk not credited " .. tostring(target))
+			if not ok then
+				return false
+			end
+			if M.signature(M.questState(questName)) ~= before then
+				M.noteOk(questName)
+				return true
+			end
+			if GB.PlayerData and GB.PlayerData.requestLive then
+				GB.PlayerData.requestLive("talk_credit:" .. tostring(questName))
+			end
+			if os.clock() - (M._talkFailAt or 0) > 4 then
+				M._talkFailAt = os.clock()
+				GB.Log.warn("QUEST", tostring(questName) .. " talk pending " .. tostring(target))
 			end
 			return false
 		end
@@ -2439,12 +2441,59 @@ return function(GB)
 		if typ == "Deliver Object" then
 			GB.Combat.stopLock()
 			local spec = GB.QuestData.deliverSpec(target)
-			if spec then
-				goTagged(spec.object, 12)
-				task.wait(0.3)
-				return goTagged(spec.location, 12)
+			local objectTag = spec and spec.object or target
+			local destTag = spec and spec.location
+			local function carrying()
+				local held = GB.Equipment and GB.Equipment.heldName and GB.Equipment.heldName()
+				if type(held) == "string" and (held == target or held == objectTag or string.find(held, "Stolen", 1, true)) then
+					return true
+				end
+				local has = GB.PlayerData and GB.PlayerData.hasItem and select(1, GB.PlayerData.hasItem(target))
+				if has then
+					return true
+				end
+				local char = GB.World and GB.World.char and GB.World.char()
+				if char then
+					for _, c in ipairs(char:GetChildren()) do
+						if c:IsA("Tool") and (c.Name == target or c.Name == objectTag or string.find(c.Name, "Stolen", 1, true)) then
+							return true
+						end
+					end
+				end
+				return false
 			end
-			return goTagged(target, 12)
+			local tag = (carrying() and destTag) or objectTag or destTag or target
+			local inst = GB.Resolver.taggedAny and GB.Resolver.taggedAny(tag)
+			if not inst then
+				inst = GB.Resolver.waitTagged and GB.Resolver.waitTagged(tag, 0.4)
+			end
+			if not inst then
+				inst = GB.Resolver.byName and GB.Resolver.byName(tag)
+			end
+			if inst and isDialogueNpc(inst) and destTag then
+				local island = M.questState(questName) and M.questState(questName).Island
+				inst = (GB.Resolver.taggedAny and GB.Resolver.taggedAny(destTag))
+					or (GB.Resolver.marker and GB.Resolver.marker(destTag, { Island = island }))
+				if type(inst) == "table" then
+					inst = inst.Instance or inst
+				end
+			end
+			if not inst then
+				M.noteFail(questName, "deliver miss " .. tostring(tag))
+				return false
+			end
+			if GB.World.interact then
+				GB.World.interact(inst, 10)
+			else
+				goTagged(tag, 10)
+			end
+			if destTag and tag == destTag then
+				GB.Remotes.enterZone(destTag)
+			end
+			if GB.PlayerData and GB.PlayerData.requestLive then
+				GB.PlayerData.requestLive("deliver:" .. tostring(questName))
+			end
+			return true
 		end
 		if type(typ) == "string" and string.sub(typ, 1, 11) == "Investigate" then
 			GB.Combat.stopLock()
@@ -2798,14 +2847,34 @@ return function(GB)
 			end
 			local conds = M.unfinishedConditions(name)
 			if #conds > 1 then
-				for _, cond in ipairs(conds) do
-					local ctyp = cond.Type or cond.type
-					if HANDLED[ctyp] and ctyp ~= "Required" then
-						local okAlt = M.handleCondition(name, cond, qs.Stage)
-						if okAlt then
-							return resultRow(name, true, true, "alt_condition_progress")
+				local pick
+				local lock = M._condLock
+				if lock and lock.quest == name and os.clock() < (lock.untilAt or 0) then
+					for _, cond in ipairs(conds) do
+						if GB.QuestData.conditionTarget(cond) == lock.target then
+							pick = cond
+							break
 						end
 					end
+				end
+				if not pick then
+					for _, cond in ipairs(conds) do
+						local ctyp = cond.Type or cond.type
+						if HANDLED[ctyp] and ctyp ~= "Required" then
+							pick = cond
+							break
+						end
+					end
+				end
+				if pick then
+					local tgt = GB.QuestData.conditionTarget(pick)
+					M._condLock = { quest = name, target = tgt, untilAt = os.clock() + 10 }
+					local okAlt = M.handleCondition(name, pick, qs.Stage)
+					if okAlt then
+						M._condLock = nil
+						return resultRow(name, true, true, "alt_condition_progress")
+					end
+					return resultRow(name, true, false, "alt_condition_pending")
 				end
 			end
 			if GB.Planner then
