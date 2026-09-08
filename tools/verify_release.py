@@ -124,6 +124,8 @@ def main() -> None:
         fail("Config missing CombatMode")
     if 'def("CombatHoverHeight"' not in (root / "Config.lua").read_text(encoding="utf-8"):
         fail("Config missing CombatHoverHeight")
+    if 'def("CombatHitRange"' not in (root / "Config.lua").read_text(encoding="utf-8"):
+        fail("Config missing CombatHitRange")
     if "function M.pinHover" not in combat_src:
         fail("Combat missing pinHover")
     if "GB.Scheduler.add(\"stats\"" in kaitun_src:

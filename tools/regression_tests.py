@@ -76,6 +76,10 @@ def main() -> int:
         fail("hover combat helpers missing")
     if 'def("CombatHoverHeight"' not in config:
         fail("CombatHoverHeight missing")
+    if 'def("CombatHitRange"' not in config:
+        fail("CombatHitRange missing")
+    if "startTime = now" not in combat or "combo = 1" not in combat:
+        fail("AttackPlayer live packet missing")
     if "questCombatDone" in combat and "Heartbeat:Connect" in combat:
         hb = combat.split("Heartbeat:Connect", 1)[1][:1200]
         if "questCombatDone" in hb or "refreshLive" in hb:

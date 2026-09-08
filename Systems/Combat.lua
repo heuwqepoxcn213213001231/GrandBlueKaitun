@@ -1,6 +1,6 @@
 -- FindTarget / MoveToTarget / AttackTarget / ValidateKill / RecoverCombat.
 -- Death = Dead attribute / Health<=0 / StateService Dead. Parent nil is despawn, not death.
--- AttackModule.Swing only at CanSwing. Melee lock: hover ~15 above head, look down.
+-- Melee lock: hover ~18, look down, AttackPlayer LightAttack (ClearState + FlushReplication).
 
 return function(GB)
 	local RS = game:GetService("ReplicatedStorage")
@@ -47,7 +47,16 @@ return function(GB)
 	local APPROACH_SWING_GAP = 0.95
 	local DASH_WEAVE_GAP = 0.12
 	local DASH_HOLD = 0.25
-	local ATTACK_PULSE_GAP = 0.06
+	local ATTACK_PULSE_GAP = 0.05
+	local HIT_RANGE = 20
+	local HIT_SKIP = {
+		Civilian = true,
+		Chicken = true,
+		Sushi = true,
+		Terry = true,
+		Aria = true,
+		Pet = true,
+	}
 	local QUEST_CHECK_MIN_GAP = 0.32
 	local QUEST_CHECK_SAFETY = 2.8
 	M._tel = { attempt = 0, accepted = 0, reject = 0, damage = 0, at = 0 }
@@ -136,7 +145,48 @@ return function(GB)
 	end
 
 	local function hoverHeight()
-		return tonumber(GB.Config and GB.Config.CombatHoverHeight) or 15
+		return tonumber(GB.Config and GB.Config.CombatHoverHeight) or 18
+	end
+
+	local function hitRange()
+		return tonumber(GB.Config and GB.Config.CombatHitRange) or HIT_RANGE
+	end
+
+	local function npcKey(mob)
+		local n = mob and (mob.GetAttribute and mob:GetAttribute("NPCName") or mob.Name)
+		return type(n) == "string" and (n:gsub("%s+%d+$", "")) or ""
+	end
+
+	local function entityRoot(mob)
+		return mob and mob.FindFirstChild and mob:FindFirstChild("HumanoidRootPart") or nil
+	end
+
+	local function inHitRange(mob, root)
+		local p = entityRoot(mob)
+		if not (root and p and p:IsA("BasePart")) then
+			return false
+		end
+		return (p.Position - root.Position).Magnitude <= hitRange()
+	end
+
+	local function skipHit(mob, char)
+		if not mob or mob == char then
+			return true
+		end
+		if HIT_SKIP[npcKey(mob)] then
+			return true
+		end
+		if mob.GetAttribute and (mob:GetAttribute("Dead") or mob:GetAttribute("PlayerCharacter")) then
+			return true
+		end
+		if M.isPet(mob) then
+			return true
+		end
+		local h = mob.FindFirstChildOfClass and mob:FindFirstChildOfClass("Humanoid")
+		if h and h.Health <= 0 then
+			return true
+		end
+		return false
 	end
 
 	local function hoverEnabled(mob)
@@ -1156,19 +1206,12 @@ return function(GB)
 		return true
 	end
 
-	-- Farm hit remotes. Packet shape from AttackModule.Swing (Studio).
+	-- Farm hit: AttackPlayer only. Packet from live snippet (ClearState + FlushReplication, startTime=now, combo=1).
 	function M.attackPulse(mob)
 		if not (GB.Config and GB.Config.CombatAttackPulse == true) then
 			return false
 		end
-		mob = mob or M.lockMob
-		if not (mob and M.IsEnemyAlive(mob)) then
-			return false
-		end
 		if M.preferredAction(M.lockQuest) == "GUN" then
-			return false
-		end
-		if GB.QuestData and GB.QuestData.isObjectTarget and GB.QuestData.isObjectTarget(mob.Name) then
 			return false
 		end
 		if GB.Respawn and GB.Respawn.isBusy and GB.Respawn.isBusy() then
@@ -1179,26 +1222,29 @@ return function(GB)
 			return false
 		end
 		local char = GB.World.char()
-		if not char then
+		local root = GB.World.hrp and GB.World.hrp()
+		if not (char and root) then
 			return false
 		end
-		M.clearSwingLock(char)
-		local root = GB.World.hrp and GB.World.hrp()
-		local part = GB.Resolver and GB.Resolver.part and GB.Resolver.part(mob)
-		if root and part and part:IsA("BasePart") then
-			local maxRange = (GB.Config.CombatRange or 5.5) + SWING_RANGE_PAD
-			if (root.Position - part.Position).Magnitude > maxRange then
-				return false
+		local st = loadState()
+		if st then
+			pcall(st.ClearState, char, "Swing")
+			pcall(st.ClearState, char, "SwingCD")
+			pcall(st.ClearState, char, "Endlag")
+			pcall(st.ClearState, char, "Whifflag")
+			if st.FlushReplication then
+				pcall(st.FlushReplication, char)
 			end
 		end
-		M.lastAttackPulse = os.clock()
-		local style = attackStyle(char)
-		local combo = tonumber(char:GetAttribute("Combo")) or 1
 		local now = serverTick()
-		if not M._pulseStart then
-			M._pulseStart = now
+		local style = "Basic"
+		local styles = loadStyles()
+		if styles and styles.GetAttackStyle then
+			local ok, s = pcall(styles.GetAttackStyle, char)
+			if ok and type(s) == "string" and s ~= "" then
+				style = s
+			end
 		end
-		local st = loadState()
 		local timers
 		if st and st.GetPermissionUpdateTimes then
 			local ok, t = pcall(st.GetPermissionUpdateTimes, char, "CanSwing")
@@ -1206,40 +1252,62 @@ return function(GB)
 				timers = t
 			end
 		end
-		if st and st.FlushReplication then
-			pcall(st.FlushReplication, char)
+		local seen = {}
+		local hits = {}
+		local function add(target)
+			if not target or seen[target] or skipHit(target, char) then
+				return
+			end
+			if GB.QuestData and GB.QuestData.isObjectTarget and GB.QuestData.isObjectTarget(target.Name) then
+				return
+			end
+			if not inHitRange(target, root) then
+				return
+			end
+			seen[target] = true
+			hits[#hits + 1] = target
 		end
-		local flourish = {}
-		flourish[mob.Name] = mob:GetAttribute("LastFlourishedTime")
-		if GB.Remotes and GB.Remotes.swingEvent then
-			GB.Remotes.swingEvent(
-				char,
-				style,
-				combo,
-				"LightAttack",
-				char:GetAttribute("LastSwingDirection"),
-				char:GetAttribute("LastSwingVariant")
-			)
+		add(mob or M.lockMob)
+		local folder = workspace:FindFirstChild("Entities")
+		if folder then
+			for _, m in ipairs(folder:GetChildren()) do
+				add(m)
+			end
 		end
-		if GB.Remotes and GB.Remotes.attackPlayer then
+		if #hits == 0 then
+			return false
+		end
+		if not (GB.Remotes and GB.Remotes.attackPlayer) then
+			return false
+		end
+		M.lastAttackPulse = os.clock()
+		local fired = 0
+		for _, target in ipairs(hits) do
 			GB.Remotes.attackPlayer({
-				startTime = M._pulseStart,
+				startTime = now,
 				currentTime = now,
-				targets = { mob },
+				targets = { target },
 				style = style,
-				combo = combo,
+				combo = 1,
 				stateTimers = timers,
 				id = tostring(tick()) .. "/Client/" .. char.Name,
 				attackType = "LightAttack",
-				flourishTimes = flourish,
+				flourishTimes = {
+					[target.Name] = target.GetAttribute and target:GetAttribute("LastFlourishedTime") or nil,
+				},
 				TerrainDamage = true,
 			})
+			fired = fired + 1
+		end
+		noteSwing(fired > 0)
+		if fired > 0 then
+			M._noCredit = 0
 		end
 		if not M._attackPulseLog or os.clock() - M._attackPulseLog > 8 then
 			M._attackPulseLog = os.clock()
-			GB.Log.log("COMBAT", "attack pulse " .. tostring(style) .. " combo=" .. tostring(combo))
+			GB.Log.log("COMBAT", "attack pulse " .. tostring(style) .. " n=" .. tostring(fired))
 		end
-		return true
+		return fired > 0
 	end
 
 	function M.startLock(mob, questName)
@@ -1301,7 +1369,11 @@ return function(GB)
 					M._noCredit = 0
 				end
 				M._hpBefore = hp
-				M.swing()
+				if isDummy(mob2.Name) or (GB.QuestData and GB.QuestData.isObjectTarget and GB.QuestData.isObjectTarget(mob2.Name)) then
+					M.swing()
+				else
+					M.attackPulse(mob2)
+				end
 			else
 				M.onTargetDead(mob2, "post-swing")
 			end

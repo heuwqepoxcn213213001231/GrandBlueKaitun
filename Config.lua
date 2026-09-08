@@ -76,8 +76,10 @@ return function(GB)
 	def("TalkRange", 14)
 	def("TalkOffset", 5)
 	def("CombatRange", 5.5)
-	def("CombatHoverHeight", 15)
-	C.CombatHoverHeight = 15
+	def("CombatHoverHeight", 18)
+	C.CombatHoverHeight = 18
+	def("CombatHitRange", 20)
+	C.CombatHitRange = 20
 	def("DummyBeside", 3.2)
 	def("ShootRange", 9)
 	def("QuestMaxRetries", 5)
@@ -93,12 +95,12 @@ return function(GB)
 	def("CombatMode", "SAFE_FAST") -- NORMAL | SAFE_FAST
 	def("CombatDashWeave", false)
 	def("CombatDashWeaveGap", 0.12)
-	def("CombatAttackPulse", false)
-	def("CombatAttackPulseGap", 0.06)
-	def("CombatSwingBypass", false)
+	def("CombatAttackPulse", true)
+	def("CombatAttackPulseGap", 0.05)
+	def("CombatSwingBypass", true)
 	C.CombatDashWeave = false
-	C.CombatAttackPulse = false
-	C.CombatSwingBypass = false
+	C.CombatAttackPulse = true
+	C.CombatSwingBypass = true
 	def("CombatDebug", false)
 	def("ActionTimeout", 25)
 	def("MaxRetries", 3)
