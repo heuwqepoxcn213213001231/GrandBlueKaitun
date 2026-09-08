@@ -983,24 +983,45 @@ return function(GB)
 			tag = typ
 		end
 		local origin = GB.QuestData.INVESTIGATE_ORIGIN and GB.QuestData.INVESTIGATE_ORIGIN[typ]
-		local inst = resolveMarkerLeaf(tag, questName)
+		local function usableInvestigateDest(inst)
+			if not inst then
+				return nil
+			end
+			if GB.Resolver.isMarkerContainer and GB.Resolver.isMarkerContainer(inst) then
+				return nil
+			end
+			local n = string.lower(tostring(inst.Name or ""))
+			if string.find(n, "pirate", 1, true) or string.find(n, "officer", 1, true) then
+				return nil
+			end
+			local hum = inst:FindFirstChildWhichIsA("Humanoid")
+			if not hum and inst.Parent then
+				hum = inst.Parent:FindFirstChildWhichIsA("Humanoid")
+			end
+			if hum then
+				return nil
+			end
+			return inst
+		end
+		local inst = usableInvestigateDest(resolveMarkerLeaf(tag, questName))
 		if not inst and origin then
-			inst = resolveMarkerLeaf(origin, questName)
+			inst = usableInvestigateDest(resolveMarkerLeaf(origin, questName))
 		end
 		if not inst and GB.Resolver.findQuestBeam then
-			inst = GB.Resolver.findQuestBeam(questName, typ)
+			inst = usableInvestigateDest(GB.Resolver.findQuestBeam(questName, typ))
 		end
 		if not inst and GB.Resolver.findHudAdornee then
-			inst = GB.Resolver.findHudAdornee(questName)
-		end
-		if not inst and origin then
-			local mobs = GB.Resolver.enemies and GB.Resolver.enemies("Black Noir Pirate")
-			if type(mobs) == "table" then
-				inst = mobs[1]
-			end
+			inst = usableInvestigateDest(GB.Resolver.findHudAdornee(questName))
 		end
 		if inst and GB.World.standOn then
-			GB.World.standOn(inst, 8)
+			local pos = GB.Resolver.positionOf and GB.Resolver.positionOf(inst)
+			local key = tostring(inst.Name) .. ":" .. tostring(pos and math.floor(pos.X) or 0)
+			local now = os.clock()
+			if M._investStandKey ~= key or now - (M._investStandAt or 0) > 4 then
+				M._investStandKey = key
+				M._investStandAt = now
+				GB.World.standOn(inst, 8)
+			end
 		elseif not inst then
 			if os.clock() - (M._investMissAt or 0) > 4 then
 				M._investMissAt = os.clock()

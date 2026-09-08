@@ -322,6 +322,9 @@ return function(GB)
 			GB.Log.log("BOOT", tostring(label or "stopped"))
 		end
 		print("[Kaitun][BOOT] unloaded")
+		if type(getgenv()._GBKaitunLogFlush) == "function" then
+			pcall(getgenv()._GBKaitunLogFlush)
+		end
 		return true
 	end
 

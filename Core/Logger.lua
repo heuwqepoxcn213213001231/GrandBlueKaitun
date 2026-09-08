@@ -53,13 +53,21 @@ return function(GB)
 		end
 	end
 
+	local function writeFile(line)
+		local fn = rawget(getgenv(), "_GBKaitunLogWrite")
+		if type(fn) == "function" then
+			pcall(fn, line)
+		end
+	end
+
 	function M.log(cat, msg, lvl)
 		lvl = lvl or "INFO"
+		local line = string.format("[Kaitun][%s] %s", cat, tostring(msg))
 		local want = LEVEL[GB.Config.LogLevel or "INFO"] or 2
 		if (LEVEL[lvl] or 2) < want then
+			writeFile(line)
 			return
 		end
-		local line = string.format("[Kaitun][%s] %s", cat, tostring(msg))
 		local key = dedupeKey(cat, msg)
 		local now = os.clock()
 		pruneKeys(now)
@@ -85,6 +93,7 @@ return function(GB)
 		end
 		local row = last[key]
 		if row and now - (row.at or 0) < gap then
+			writeFile(line)
 			return
 		end
 		rememberKey(key, now)

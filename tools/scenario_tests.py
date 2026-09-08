@@ -153,6 +153,16 @@ def main() -> int:
         fail("Investigate still blocks decide on waitTaggedLeaf")
     if "isInteractLike(o.Type)" not in recovery:
         fail("Recovery still fingerprint-defers Investigate")
+    if "function startSessionLog" not in loader:
+        fail("loader missing session writefile log")
+    if 'GBKaitun/logs/latest.txt' not in loader:
+        fail("loader missing latest.txt log path")
+    if "_GBKaitunLogWrite" not in read("Core/Logger.lua"):
+        fail("Logger must tee suppressed lines to writefile")
+    if 'GB.Resolver.enemies("Black Noir Pirate")' in quest:
+        fail("Investigate must not teleport onto a pirate")
+    if "usableInvestigateDest" not in quest:
+        fail("Investigate dest filter missing")
 
     if FAILS:
         print("FAIL scenario_tests")

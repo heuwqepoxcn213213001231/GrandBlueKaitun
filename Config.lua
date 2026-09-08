@@ -17,6 +17,7 @@ return function(GB)
 	def("Enabled", true)
 	def("Tick", 0.15)
 	def("LogLevel", "INFO") -- DEBUG INFO WARN ERROR
+	def("LogFile", true) -- writefile GBKaitun/logs/kaitun_<time>.txt + latest.txt
 	def("Debug", false)
 	def("Persist", true)
 	def("RuntimeDiagnostics", true)

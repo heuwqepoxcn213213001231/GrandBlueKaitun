@@ -13,6 +13,107 @@ if type(loadstring) ~= "function" then
 	error("[Kaitun][Loader] loadstring missing")
 end
 
+local function startSessionLog()
+	if getgenv().GB_LOG_FILE == false then
+		return
+	end
+	if typeof(writefile) ~= "function" then
+		print("[Kaitun][LOGFILE] writefile missing — console only")
+		return
+	end
+	if typeof(makefolder) == "function" then
+		pcall(makefolder, "GBKaitun")
+		pcall(makefolder, "GBKaitun/logs")
+	end
+	local stamp = tostring(os.time())
+	pcall(function()
+		stamp = os.date("%Y%m%d_%H%M%S")
+	end)
+	local path = "GBKaitun/logs/kaitun_" .. stamp .. ".txt"
+	local latest = "GBKaitun/logs/latest.txt"
+	local lines = {}
+	local bytes = 0
+	local lastFlush = 0
+	local rawPrint = print
+	local MAX_BYTES = 1500000
+
+	local function clockPrefix()
+		local ok, hm = pcall(os.date, "%H:%M:%S")
+		if ok and type(hm) == "string" then
+			return hm
+		end
+		return string.format("%.2f", os.clock())
+	end
+
+	local function flush(force)
+		local now = os.clock()
+		if not force and now - lastFlush < 0.25 and bytes < 8192 then
+			return
+		end
+		lastFlush = now
+		local body = table.concat(lines)
+		pcall(writefile, path, body)
+		pcall(writefile, latest, body)
+	end
+
+	local function writeLine(line)
+		line = tostring(line or "")
+		local row = clockPrefix() .. " " .. line .. "\n"
+		lines[#lines + 1] = row
+		bytes = bytes + #row
+		if bytes > MAX_BYTES then
+			local keep = {}
+			local acc = 0
+			for i = #lines, 1, -1 do
+				acc = acc + #lines[i]
+				keep[#keep + 1] = lines[i]
+				if acc > math.floor(MAX_BYTES * 0.6) then
+					break
+				end
+			end
+			local rev = {}
+			for i = #keep, 1, -1 do
+				rev[#rev + 1] = keep[i]
+			end
+			lines = rev
+			bytes = acc
+		end
+		flush(false)
+	end
+
+	local header = string.format(
+		"-- Grand Blue Kaitun session log\n-- file=%s\n-- also=%s\n-- copy from executor workspace (GBKaitun/logs)\n",
+		path,
+		latest
+	)
+	pcall(writefile, path, header)
+	pcall(writefile, latest, header)
+	lines[1] = header
+	bytes = #header
+
+	getgenv()._GBKaitunLogPath = path
+	getgenv()._GBKaitunLogLatest = latest
+	getgenv()._GBKaitunLogWrite = writeLine
+	getgenv()._GBKaitunLogFlush = function()
+		flush(true)
+	end
+
+	print = function(...)
+		local n = select("#", ...)
+		local parts = {}
+		for i = 1, n do
+			parts[i] = tostring(select(i, ...))
+		end
+		writeLine(table.concat(parts, " "))
+		rawPrint(...)
+	end
+
+	print("[Kaitun][LOGFILE] " .. path)
+	print("[Kaitun][LOGFILE] copy " .. latest)
+end
+
+startSessionLog()
+
 local function stopPreviousInstance()
 	local prev = getgenv().GBKaitun
 	local stopped = false

@@ -31,7 +31,14 @@ python3 tools/quest_route_validator.py
 
 ## Runtime log watcher (test PC)
 
-Executor writes diagnostics (no cookies/tokens) when `writefile` exists:
+Each script start writes a **new** human-readable dump (every `print` + every Logger line, including console-deduped repeats):
+
+- `GBKaitun/logs/kaitun_<YYYYMMDD_HHMMSS>.txt`
+- `GBKaitun/logs/latest.txt` (same run, overwrite-friendly)
+
+Copy from the executor workspace folder. Disable with `getgenv().GB_LOG_FILE = false`.
+
+Executor also writes diagnostics (no cookies/tokens) when `writefile` exists:
 
 - `GBKaitun/runtime/latest.jsonl`
 - `GBKaitun/runtime/<session>.jsonl`
