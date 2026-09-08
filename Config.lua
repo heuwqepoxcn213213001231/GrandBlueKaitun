@@ -76,6 +76,8 @@ return function(GB)
 	def("TalkRange", 14)
 	def("TalkOffset", 5)
 	def("CombatRange", 5.5)
+	def("CombatHoverHeight", 20)
+	C.CombatHoverHeight = 20
 	def("DummyBeside", 3.2)
 	def("ShootRange", 9)
 	def("QuestMaxRetries", 5)

@@ -1,6 +1,6 @@
 -- FindTarget / MoveToTarget / AttackTarget / ValidateKill / RecoverCombat.
 -- Death = Dead attribute / Health<=0 / StateService Dead. Parent nil is despawn, not death.
--- AttackModule.Swing only at CanSwing. No dash weave, no AttackPlayer pulse, no SwingCD clear.
+-- AttackModule.Swing only at CanSwing. Melee lock: hover ~20 above head, look down.
 
 return function(GB)
 	local RS = game:GetService("ReplicatedStorage")
@@ -133,6 +133,26 @@ return function(GB)
 			return GB.Resolver.isDummyName(name)
 		end
 		return type(name) == "string" and string.find(name, "Dummy", 1, true) ~= nil
+	end
+
+	local function hoverHeight()
+		return tonumber(GB.Config and GB.Config.CombatHoverHeight) or 20
+	end
+
+	local function hoverEnabled(mob)
+		if not mob then
+			return false
+		end
+		if isDummy(mob.Name) then
+			return false
+		end
+		if GB.QuestData and GB.QuestData.isObjectTarget and GB.QuestData.isObjectTarget(mob.Name) then
+			return false
+		end
+		if M.preferredAction(M.lockQuest) == "GUN" then
+			return false
+		end
+		return true
 	end
 
 	function M.canSwing(char)
@@ -907,6 +927,13 @@ return function(GB)
 			return nil
 		end
 		local dest
+		if hoverEnabled(mob) then
+			dest = part.Position + Vector3.new(0, hoverHeight(), 0)
+			if not GB.World.destOk(dest) then
+				return nil
+			end
+			return dest, part
+		end
 		if isDummy(mob.Name) then
 			dest = part.Position + Vector3.new(GB.Config.DummyBeside or 3.2, 0, 0)
 		else
@@ -956,14 +983,79 @@ return function(GB)
 		end
 		M.lastTargetPos = part.Position
 		M.lastStandAt = os.clock()
+		local look3d = hoverEnabled(mob)
 		if (root.Position - dest).Magnitude <= 2.2 then
-			root.CFrame = CFrame.new(root.Position, Vector3.new(part.Position.X, root.Position.Y, part.Position.Z))
+			if look3d then
+				root.CFrame = CFrame.new(root.Position, part.Position)
+			else
+				root.CFrame = CFrame.new(root.Position, Vector3.new(part.Position.X, root.Position.Y, part.Position.Z))
+			end
 			return true
 		end
 		if GB.World.tweenTo then
-			return GB.World.tweenTo(dest, part.Position, { wait = false, range = 2.2 })
+			return GB.World.tweenTo(dest, part.Position, { wait = false, range = 2.2, look3d = look3d })
 		end
-		root.CFrame = CFrame.new(dest, Vector3.new(part.Position.X, dest.Y, part.Position.Z))
+		if look3d then
+			root.CFrame = CFrame.new(dest, part.Position)
+		else
+			root.CFrame = CFrame.new(dest, Vector3.new(part.Position.X, dest.Y, part.Position.Z))
+		end
+		return true
+	end
+
+	function M.pinHover(mob)
+		if not hoverEnabled(mob) then
+			return false
+		end
+		if GB.World.tweenPlaying and GB.World.tweenPlaying() then
+			return false
+		end
+		local root = GB.World.hrp()
+		local dest, part = standDest(mob)
+		if not (root and dest and part) then
+			return false
+		end
+		M.lastTargetPos = part.Position
+		M.lastStandAt = os.clock()
+		pcall(function()
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+		end)
+		root.CFrame = CFrame.new(dest, part.Position)
+		local hum = GB.World.hum and GB.World.hum()
+		if hum then
+			hum.AutoRotate = false
+		end
+		return true
+	end
+
+	function M.travelHover(mob)
+		if not hoverEnabled(mob) then
+			return false
+		end
+		local dest, part = standDest(mob)
+		local root = GB.World.hrp and GB.World.hrp()
+		if not (root and dest and part) then
+			return false
+		end
+		local look = part.Position
+		local dist = (root.Position - dest).Magnitude
+		local speed = tonumber(GB.Config.TweenSpeed) or 95
+		local maxDur = tonumber(GB.Config.TweenMaxDur) or 1.8
+		local maxStep = speed * maxDur
+		if dist > maxStep + 10 then
+			local delta = dest - root.Position
+			if delta.Magnitude > 1 then
+				local mid = root.Position + delta.Unit * maxStep
+				if GB.World.destOk(mid) then
+					GB.World.tweenTo(mid, look, { wait = true, range = 3, look3d = true })
+				end
+			end
+		end
+		if GB.World.tweenTo then
+			return GB.World.tweenTo(dest, look, { wait = true, range = 2.2, look3d = true })
+		end
+		root.CFrame = CFrame.new(dest, look)
 		return true
 	end
 
@@ -988,7 +1080,8 @@ return function(GB)
 			local root = GB.World.hrp and GB.World.hrp()
 			local part = GB.Resolver and GB.Resolver.part and GB.Resolver.part(M.lockMob) or nil
 			if root and part and part:IsA("BasePart") then
-				local maxRange = (GB.Config.CombatRange or 5.5) + SWING_RANGE_PAD
+				local base = hoverEnabled(M.lockMob) and hoverHeight() or (GB.Config.CombatRange or 5.5)
+				local maxRange = base + SWING_RANGE_PAD
 				local maxApproach = maxRange + APPROACH_SWING_PAD
 				local dist = (root.Position - part.Position).Magnitude
 				if dist > maxApproach then
@@ -1196,7 +1289,9 @@ return function(GB)
 				M.onTargetDead(mob2, "poll")
 				return
 			end
-			if M.needReposition(mob2) then
+			if hoverEnabled(mob2) then
+				M.pinHover(mob2)
+			elseif M.needReposition(mob2) then
 				M.standPose(mob2)
 			end
 			if M.IsEnemyAlive(mob2) then
@@ -1234,18 +1329,25 @@ return function(GB)
 			M.markDead(mob, "pre-travel")
 			return false
 		end
-		if GB.World.ToEnemy then
-			if not GB.World.ToEnemy(mob, GB.Config.CombatRange or 5.5) then
-				if not M.IsEnemyAlive(mob) then
-					M.markDead(mob, "travel")
-					return false
+		local usedHover = false
+		if not objectHunt and M.preferredAction(questName) ~= "GUN" then
+			M.lockQuest = questName
+			usedHover = M.travelHover(mob) == true
+		end
+		if not usedHover then
+			if GB.World.ToEnemy then
+				if not GB.World.ToEnemy(mob, GB.Config.CombatRange or 5.5) then
+					if not M.IsEnemyAlive(mob) then
+						M.markDead(mob, "travel")
+						return false
+					end
+					if not GB.World.moveTo(mob, 12) then
+						return false
+					end
 				end
-				if not GB.World.moveTo(mob, 12) then
-					return false
-				end
+			elseif not GB.World.moveTo(mob, 12) then
+				return false
 			end
-		elseif not GB.World.moveTo(mob, 12) then
-			return false
 		end
 		if not M.IsEnemyAlive(mob) then
 			M.markDead(mob, "post-travel")

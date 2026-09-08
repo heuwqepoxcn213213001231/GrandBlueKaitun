@@ -72,6 +72,10 @@ def main() -> int:
         fail("IsEnemyAlive missing")
     if "function M.onTargetDead" not in combat:
         fail("onTargetDead missing")
+    if "function M.pinHover" not in combat or "function M.travelHover" not in combat:
+        fail("hover combat helpers missing")
+    if 'def("CombatHoverHeight"' not in config:
+        fail("CombatHoverHeight missing")
     if "questCombatDone" in combat and "Heartbeat:Connect" in combat:
         hb = combat.split("Heartbeat:Connect", 1)[1][:1200]
         if "questCombatDone" in hb or "refreshLive" in hb:

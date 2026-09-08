@@ -122,6 +122,10 @@ def main() -> None:
         fail("Config missing CombatDashWeave")
     if 'def("CombatMode"' not in (root / "Config.lua").read_text(encoding="utf-8"):
         fail("Config missing CombatMode")
+    if 'def("CombatHoverHeight"' not in (root / "Config.lua").read_text(encoding="utf-8"):
+        fail("Config missing CombatHoverHeight")
+    if "function M.pinHover" not in combat_src:
+        fail("Combat missing pinHover")
     if "GB.Scheduler.add(\"stats\"" in kaitun_src:
         fail("kaitun.lua still has dedicated stats scheduler job")
     if "function M.report(force)" not in profiler_src or "SourceHttpAfterBoot=" not in profiler_src:

@@ -183,7 +183,12 @@ return function(GB)
 		local here = root.Position
 		local dist = (here - pos).Magnitude
 		local function face()
-			if typeof(lookAt) == "Vector3" then
+			if typeof(lookAt) ~= "Vector3" then
+				return
+			end
+			if opts.look3d == true then
+				root.CFrame = CFrame.new(root.Position, lookAt)
+			else
 				root.CFrame = CFrame.new(root.Position, Vector3.new(lookAt.X, root.Position.Y, lookAt.Z))
 			end
 		end
@@ -198,8 +203,16 @@ return function(GB)
 		local speed = tonumber(GB.Config.TweenSpeed) or 95
 		local maxDur = tonumber(opts.maxDur) or tonumber(GB.Config.TweenMaxDur) or 1.8
 		local dur = math.clamp(dist / math.max(speed, 20), 0.08, maxDur)
-		local goal = typeof(lookAt) == "Vector3" and CFrame.new(pos, Vector3.new(lookAt.X, pos.Y, lookAt.Z))
-			or CFrame.new(pos)
+		local goal
+		if typeof(lookAt) == "Vector3" then
+			if opts.look3d == true then
+				goal = CFrame.new(pos, lookAt)
+			else
+				goal = CFrame.new(pos, Vector3.new(lookAt.X, pos.Y, lookAt.Z))
+			end
+		else
+			goal = CFrame.new(pos)
+		end
 		pcall(function()
 			root.AssemblyLinearVelocity = Vector3.zero
 			root.AssemblyAngularVelocity = Vector3.zero
