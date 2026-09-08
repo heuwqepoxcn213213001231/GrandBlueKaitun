@@ -63,6 +63,9 @@ return function(GB)
 		if GB.Quest and GB.Quest.dialogueOpen and GB.Quest.dialogueOpen() then
 			return false
 		end
+		if GB.Quest and GB.Quest.atFreeStand and GB.Quest.atFreeStand() then
+			return false
+		end
 		if GB.Combat and GB.Combat.lockMob and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(GB.Combat.lockMob) then
 			return false
 		end
@@ -92,7 +95,7 @@ return function(GB)
 			GB.Cache.invalidatePrefix("res:npc:")
 			return
 		end
-		if typ == "Open" or typ == "Unlock" or typ == "Interact" or typ == "Collect" or typ == "CollectLocal" then
+		if typ == "Open" or typ == "Unlock" or typ == "Interact" or typ == "Free" or typ == "Collect" or typ == "CollectLocal" then
 			GB.Cache.invalidatePrefix("res:object:")
 			GB.Cache.invalidatePrefix("res:marker:")
 			return
@@ -138,7 +141,7 @@ return function(GB)
 		local cur = GB.PlayerData and GB.PlayerData.current and GB.PlayerData.current()
 		local qs = cur and GB.Quest and GB.Quest.questState and GB.Quest.questState(cur)
 		local o = qs and qs.Objective
-		if o and (o.Type == "Unlock" or o.Type == "Loot" or o.Type == "Open" or o.Type == "Interact") then
+		if o and (o.Type == "Unlock" or o.Type == "Loot" or o.Type == "Open" or o.Type == "Interact" or o.Type == "Free" or o.Type == "Wake" or o.Type == "Check On") then
 			if strat == "enemy" then
 				strat = M.advanceStrategy()
 			end

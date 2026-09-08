@@ -500,6 +500,72 @@ return function(GB)
 		return ok or layerOn("Logbook")
 	end
 
+	function M.atFreeStand()
+		return M._freeStandAt and (os.clock() - M._freeStandAt) < 8
+	end
+
+	local function captiveKind(target)
+		local t = string.lower(tostring(target or ""))
+		if string.find(t, "child", 1, true) or string.find(t, "tired", 1, true) then
+			return "child"
+		end
+		if string.find(t, "adult", 1, true) then
+			return "adult"
+		end
+		return "any"
+	end
+
+	local function stayAndFree(questName, target)
+		if GB.Combat and GB.Combat.stopLock then
+			GB.Combat.stopLock()
+		end
+		local kind = captiveKind(target)
+		local cages = GB.Resolver.findCaptiveCages and GB.Resolver.findCaptiveCages(kind) or {}
+		local obj = cages[1]
+		if not obj then
+			local pack = GB.Resolver.resolveObject and GB.Resolver.resolveObject(target, {
+				Island = "Clown Town",
+			})
+			obj = pack and pack.Instance
+		end
+		if not obj then
+			obj = GB.Resolver.byName and (GB.Resolver.byName(target) or GB.Resolver.byName("Hostage") or GB.Resolver.byName("Captured Child"))
+		end
+		if not obj then
+			M.noteFail(questName, "resolve miss " .. tostring(target))
+			return false
+		end
+		M._freeStandAt = os.clock()
+		M._freeStandInst = obj
+		local qs = M.questState(questName)
+		local before = M.signature(qs)
+		if GB.World.standOn then
+			GB.World.standOn(obj, 2.4)
+		elseif GB.World.setPos and GB.Resolver.positionOf then
+			local pos = GB.Resolver.positionOf(obj)
+			if pos then
+				GB.World.setPos(pos + Vector3.new(0, 2.4, 0), { SkipGround = true })
+			end
+		end
+		local pr = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
+		if not pr and GB.Resolver.prompt then
+			pr = GB.Resolver.prompt(obj)
+		end
+		if pr and GB.World.firePrompt then
+			GB.World.firePrompt(pr, pr.HoldDuration or 0, obj)
+		elseif GB.World.interact then
+			GB.World.interact(obj, 4)
+		end
+		if M.waitProgress(questName, before, 2.2) then
+			M.noteOk(questName)
+			if GB.Recovery and GB.Recovery.markSuccess then
+				GB.Recovery.markSuccess()
+			end
+			return true
+		end
+		return true
+	end
+
 	local function goTagged(tag, dist)
 		if not tag or tag == "" then
 			return false
@@ -635,6 +701,9 @@ return function(GB)
 		local qs = M.questState(name)
 		local o = qs and qs.Objective
 		if o and o.Type == "Destroy" then
+			return true
+		end
+		if o and o.Type == "Free" then
 			return true
 		end
 		if o and o.TargetName and GB.QuestData and GB.QuestData.isObjectTarget and GB.QuestData.isObjectTarget(o.TargetName) then
@@ -2069,7 +2138,10 @@ return function(GB)
 		if typ == "Open" and target == "Logbook" then
 			return openLogbook()
 		end
-		if typ == "Open" or typ == "Interact" or typ == "Investigate" or typ == "Wake" or typ == "Check On" or typ == "Free" then
+		if typ == "Free" then
+			return stayAndFree(questName, target)
+		end
+		if typ == "Open" or typ == "Interact" or typ == "Investigate" or typ == "Wake" or typ == "Check On" then
 			if target == "Marine Gate" or questName == "Gate of Authority" then
 				local blocked, _, blocker = gateBlocker()
 				if blocked and blocker then

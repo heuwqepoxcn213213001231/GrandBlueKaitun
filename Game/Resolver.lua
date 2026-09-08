@@ -49,6 +49,11 @@ return function(GB)
 		["Marine Gate"] = { "Marine Metal Gate", "Gate" },
 		["Marine Metal Gate"] = { "Marine Gate", "Gate" },
 		["Muggy Cannon"] = { "MuggyCannon" },
+		["Child Captive"] = { "Captured Child", "Tired Child", "Hostage" },
+		["Captured Child"] = { "Child Captive", "Tired Child", "Hostage" },
+		["Tired Child"] = { "Child Captive", "Captured Child", "Hostage" },
+		["Adult Captive"] = { "Captured Adult", "Hostage" },
+		["Hostage"] = { "Child Captive", "Adult Captive", "Captured Child" },
 	}
 
 	local missLog = {}
@@ -1523,6 +1528,85 @@ return function(GB)
 			end
 		end
 		return cur
+	end
+
+	function M.findCaptiveCages(kind)
+		kind = string.lower(tostring(kind or "any"))
+		local islands = workspace:FindFirstChild("Islands")
+		local town = islands and islands:FindFirstChild("Clown Town")
+		local island = town and town:FindFirstChild("Island")
+		local jail = island and island:FindFirstChild("Jail")
+		local out = {}
+		local seen = {}
+		local function labelOf(inst)
+			return string.lower(tostring(inst.Name or "") .. " " .. tostring(M.displayName(inst) or ""))
+		end
+		local function isChild(inst)
+			local n = labelOf(inst)
+			return string.find(n, "child", 1, true) or string.find(n, "tired", 1, true)
+		end
+		local function isAdult(inst)
+			return string.find(labelOf(inst), "adult", 1, true)
+		end
+		local function isCage(inst)
+			if not inst or not inst.Parent or inRS(inst) then
+				return false
+			end
+			if inst.Name == "Hostage" then
+				return true
+			end
+			local n = labelOf(inst)
+			return string.find(n, "hostage", 1, true)
+				or string.find(n, "captive", 1, true)
+				or string.find(n, "captured", 1, true)
+				or string.find(n, "cage", 1, true)
+		end
+		local function add(inst)
+			if not inst or seen[inst] or not isCage(inst) then
+				return
+			end
+			if kind == "child" and isAdult(inst) then
+				return
+			end
+			if kind == "adult" and isChild(inst) then
+				return
+			end
+			if not (M.part(inst) or M.positionOf(inst)) then
+				return
+			end
+			seen[inst] = true
+			out[#out + 1] = inst
+		end
+		local hostage = jail and jail:FindFirstChild("Hostage")
+		add(hostage)
+		if hostage then
+			for _, ch in ipairs(hostage:GetChildren()) do
+				add(ch)
+			end
+		end
+		if jail then
+			for _, ch in ipairs(jail:GetChildren()) do
+				add(ch)
+			end
+		end
+		local spec = GB.QuestData and GB.QuestData.objectSpec and GB.QuestData.objectSpec(
+			kind == "adult" and "Adult Captive" or "Child Captive"
+		)
+		if spec and spec.Path then
+			add(followPath(spec.Path))
+		end
+		local here = GB.World and GB.World.hrp and GB.World.hrp()
+		local herePos = here and here.Position
+		if herePos then
+			table.sort(out, function(a, b)
+				local pa = M.positionOf(a)
+				local pb = M.positionOf(b)
+				local da = pa and (pa - herePos).Magnitude or 1e9
+				local db = pb and (pb - herePos).Magnitude or 1e9
+				return da < db
+			end)
+		end
+		return out
 	end
 
 	function M.findDestroyable(name, opts)

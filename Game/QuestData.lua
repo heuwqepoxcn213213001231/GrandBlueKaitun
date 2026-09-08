@@ -419,6 +419,21 @@ return function(GB)
 			Island = "Maple Village",
 			Tags = { "Overlook Signal Fire" },
 		},
+		["Child Captive"] = {
+			Island = "Clown Town",
+			Path = { "Islands", "Clown Town", "Island", "Jail", "Hostage" },
+			Tags = { "Child Captive", "Captured Child" },
+		},
+		["Adult Captive"] = {
+			Island = "Clown Town",
+			Path = { "Islands", "Clown Town", "Island", "Jail", "Hostage" },
+			Tags = { "Adult Captive" },
+		},
+		["Captured Child"] = {
+			Island = "Clown Town",
+			Path = { "Islands", "Clown Town", "Island", "Jail", "Hostage" },
+			Tags = { "Captured Child", "Child Captive" },
+		},
 	}
 
 	M.QUEST_REQUIREMENTS = {

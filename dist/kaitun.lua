@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
--- Version: 1.1.33
--- Commit: e222de8
--- BuiltAt: 2026-09-08T14:21:39+07:00
+-- Version: 1.1.34
+-- Commit: 2e825d0
+-- BuiltAt: 2026-09-08T14:28:14+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -35,9 +35,9 @@ return function(meta)
 
 	stopPreviousInstance()
 
-	local BUILD_VERSION = "1.1.33"
-	local BUILD_COMMIT = "e222de8"
-	local BUILD_AT = "2026-09-08T14:21:39+07:00"
+	local BUILD_VERSION = "1.1.34"
+	local BUILD_COMMIT = "2e825d0"
+	local BUILD_AT = "2026-09-08T14:28:14+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -912,6 +912,9 @@ return function(GB)
 		if GB.Quest and GB.Quest.dialogueOpen and GB.Quest.dialogueOpen() then
 			return false
 		end
+		if GB.Quest and GB.Quest.atFreeStand and GB.Quest.atFreeStand() then
+			return false
+		end
 		if GB.Combat and GB.Combat.lockMob and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(GB.Combat.lockMob) then
 			return false
 		end
@@ -941,7 +944,7 @@ return function(GB)
 			GB.Cache.invalidatePrefix("res:npc:")
 			return
 		end
-		if typ == "Open" or typ == "Unlock" or typ == "Interact" or typ == "Collect" or typ == "CollectLocal" then
+		if typ == "Open" or typ == "Unlock" or typ == "Interact" or typ == "Free" or typ == "Collect" or typ == "CollectLocal" then
 			GB.Cache.invalidatePrefix("res:object:")
 			GB.Cache.invalidatePrefix("res:marker:")
 			return
@@ -987,7 +990,7 @@ return function(GB)
 		local cur = GB.PlayerData and GB.PlayerData.current and GB.PlayerData.current()
 		local qs = cur and GB.Quest and GB.Quest.questState and GB.Quest.questState(cur)
 		local o = qs and qs.Objective
-		if o and (o.Type == "Unlock" or o.Type == "Loot" or o.Type == "Open" or o.Type == "Interact") then
+		if o and (o.Type == "Unlock" or o.Type == "Loot" or o.Type == "Open" or o.Type == "Interact" or o.Type == "Free" or o.Type == "Wake" or o.Type == "Check On") then
 			if strat == "enemy" then
 				strat = M.advanceStrategy()
 			end
@@ -3754,6 +3757,21 @@ return function(GB)
 			Island = "Maple Village",
 			Tags = { "Overlook Signal Fire" },
 		},
+		["Child Captive"] = {
+			Island = "Clown Town",
+			Path = { "Islands", "Clown Town", "Island", "Jail", "Hostage" },
+			Tags = { "Child Captive", "Captured Child" },
+		},
+		["Adult Captive"] = {
+			Island = "Clown Town",
+			Path = { "Islands", "Clown Town", "Island", "Jail", "Hostage" },
+			Tags = { "Adult Captive" },
+		},
+		["Captured Child"] = {
+			Island = "Clown Town",
+			Path = { "Islands", "Clown Town", "Island", "Jail", "Hostage" },
+			Tags = { "Captured Child", "Child Captive" },
+		},
 	}
 
 	M.QUEST_REQUIREMENTS = {
@@ -4143,8 +4161,8 @@ return function(GB)
 	M.STAGES["Circus Suppliers|3|Kill|Circus Supplier"] = { quest = "Circus Suppliers", stage = 3, island = "Clown Town", objective = "Kill", goal = "Kill", target = "Circus Supplier", amount = 2, acquire = nil, source = "Circus Supplier", location = "Clown Town", marker = nil, handler = "Combat.attack", status = "IMPLEMENTED" }
 	M.STAGES["Circus Suppliers|4|Talk|Mayor Kiyoshi"] = { quest = "Circus Suppliers", stage = 4, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Mayor Kiyoshi", amount = 1, acquire = nil, source = "Mayor Kiyoshi", location = "Clown Town", marker = "Mayor Kiyoshi", handler = "Quest.talk", status = "IMPLEMENTED" }
 	M.STAGES["Clown Captives|1|Talk|Mayor Kiyoshi"] = { quest = "Clown Captives", stage = 1, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Mayor Kiyoshi", amount = 1, acquire = nil, source = "Mayor Kiyoshi", location = "Clown Town", marker = "Mayor Kiyoshi", handler = "Quest.talk", status = "IMPLEMENTED" }
-	M.STAGES["Clown Captives|2|Free|Child Captive"] = { quest = "Clown Captives", stage = 2, island = "Clown Town", objective = "Free", goal = "Interact", target = "Child Captive", amount = 2, acquire = nil, source = "Child Captive", location = "Clown Town", marker = "Child Captive", handler = "Quest.goTagged", status = "IMPLEMENTED" }
-	M.STAGES["Clown Captives|2|Free|Adult Captive"] = { quest = "Clown Captives", stage = 2, island = "Clown Town", objective = "Free", goal = "Interact", target = "Adult Captive", amount = 4, acquire = nil, source = "Adult Captive", location = "Clown Town", marker = "Adult Captive", handler = "Quest.goTagged", status = "IMPLEMENTED" }
+	M.STAGES["Clown Captives|2|Free|Child Captive"] = { quest = "Clown Captives", stage = 2, island = "Clown Town", objective = "Free", goal = "Interact", target = "Child Captive", amount = 2, acquire = nil, source = "Child Captive", location = "Clown Town", marker = "Hostage", handler = "Quest.stayAndFree", status = "IMPLEMENTED" }
+	M.STAGES["Clown Captives|2|Free|Adult Captive"] = { quest = "Clown Captives", stage = 2, island = "Clown Town", objective = "Free", goal = "Interact", target = "Adult Captive", amount = 4, acquire = nil, source = "Adult Captive", location = "Clown Town", marker = "Hostage", handler = "Quest.stayAndFree", status = "IMPLEMENTED" }
 	M.STAGES["Clown Captives|3|Talk|Mayor Kiyoshi"] = { quest = "Clown Captives", stage = 3, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Mayor Kiyoshi", amount = 1, acquire = nil, source = "Mayor Kiyoshi", location = "Clown Town", marker = "Mayor Kiyoshi", handler = "Quest.talk", status = "IMPLEMENTED" }
 	M.STAGES["Clown Town's Militia|1|Talk|Mayor Kiyoshi [2]"] = { quest = "Clown Town's Militia", stage = 1, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Mayor Kiyoshi [2]", amount = 1, acquire = nil, source = "Mayor Kiyoshi [2]", location = "Clown Town", marker = "Mayor Kiyoshi [2]", handler = "Quest.talk", status = "IMPLEMENTED" }
 	M.STAGES["Clown Town's Militia|2|CollectLocalItem|Sturdy Stick"] = { quest = "Clown Town's Militia", stage = 2, island = "Clown Town", objective = "CollectLocalItem", goal = "AcquireItem", target = "Sturdy Stick", amount = 1, acquire = "WorldPickup", source = "Sturdy Stick", location = "Clown Town", marker = "Sturdy Stick", handler = "Acquire.WorldPickup", status = "IMPLEMENTED" }
@@ -4919,6 +4937,11 @@ return function(GB)
 		["Marine Gate"] = { "Marine Metal Gate", "Gate" },
 		["Marine Metal Gate"] = { "Marine Gate", "Gate" },
 		["Muggy Cannon"] = { "MuggyCannon" },
+		["Child Captive"] = { "Captured Child", "Tired Child", "Hostage" },
+		["Captured Child"] = { "Child Captive", "Tired Child", "Hostage" },
+		["Tired Child"] = { "Child Captive", "Captured Child", "Hostage" },
+		["Adult Captive"] = { "Captured Adult", "Hostage" },
+		["Hostage"] = { "Child Captive", "Adult Captive", "Captured Child" },
 	}
 
 	local missLog = {}
@@ -6395,6 +6418,85 @@ return function(GB)
 		return cur
 	end
 
+	function M.findCaptiveCages(kind)
+		kind = string.lower(tostring(kind or "any"))
+		local islands = workspace:FindFirstChild("Islands")
+		local town = islands and islands:FindFirstChild("Clown Town")
+		local island = town and town:FindFirstChild("Island")
+		local jail = island and island:FindFirstChild("Jail")
+		local out = {}
+		local seen = {}
+		local function labelOf(inst)
+			return string.lower(tostring(inst.Name or "") .. " " .. tostring(M.displayName(inst) or ""))
+		end
+		local function isChild(inst)
+			local n = labelOf(inst)
+			return string.find(n, "child", 1, true) or string.find(n, "tired", 1, true)
+		end
+		local function isAdult(inst)
+			return string.find(labelOf(inst), "adult", 1, true)
+		end
+		local function isCage(inst)
+			if not inst or not inst.Parent or inRS(inst) then
+				return false
+			end
+			if inst.Name == "Hostage" then
+				return true
+			end
+			local n = labelOf(inst)
+			return string.find(n, "hostage", 1, true)
+				or string.find(n, "captive", 1, true)
+				or string.find(n, "captured", 1, true)
+				or string.find(n, "cage", 1, true)
+		end
+		local function add(inst)
+			if not inst or seen[inst] or not isCage(inst) then
+				return
+			end
+			if kind == "child" and isAdult(inst) then
+				return
+			end
+			if kind == "adult" and isChild(inst) then
+				return
+			end
+			if not (M.part(inst) or M.positionOf(inst)) then
+				return
+			end
+			seen[inst] = true
+			out[#out + 1] = inst
+		end
+		local hostage = jail and jail:FindFirstChild("Hostage")
+		add(hostage)
+		if hostage then
+			for _, ch in ipairs(hostage:GetChildren()) do
+				add(ch)
+			end
+		end
+		if jail then
+			for _, ch in ipairs(jail:GetChildren()) do
+				add(ch)
+			end
+		end
+		local spec = GB.QuestData and GB.QuestData.objectSpec and GB.QuestData.objectSpec(
+			kind == "adult" and "Adult Captive" or "Child Captive"
+		)
+		if spec and spec.Path then
+			add(followPath(spec.Path))
+		end
+		local here = GB.World and GB.World.hrp and GB.World.hrp()
+		local herePos = here and here.Position
+		if herePos then
+			table.sort(out, function(a, b)
+				local pa = M.positionOf(a)
+				local pb = M.positionOf(b)
+				local da = pa and (pa - herePos).Magnitude or 1e9
+				local db = pb and (pb - herePos).Magnitude or 1e9
+				return da < db
+			end)
+		end
+		return out
+	end
+
 	function M.findDestroyable(name, opts)
 		opts = opts or {}
 		if type(name) ~= "string" or name == "" then
@@ -7205,6 +7307,25 @@ return function(GB)
 			task.wait(0.15)
 		end
 		return not (GB.lp and GB.lp:GetAttribute("GameplayPaused") == true)
+	end
+
+	function M.standOn(inst, yOff)
+		local pos = inst and GB.Resolver and GB.Resolver.positionOf and GB.Resolver.positionOf(inst)
+		if typeof(pos) ~= "Vector3" then
+			return false
+		end
+		local dest = Vector3.new(pos.X, pos.Y + (tonumber(yOff) or 2.4), pos.Z)
+		local root = M.hrp()
+		if not root then
+			return false
+		end
+		GB.Log.log("TRAVEL", "stand " .. tostring((GB.Resolver.displayName and GB.Resolver.displayName(inst)) or inst.Name))
+		if M.destOk(dest) then
+			return M.setPos(dest, { SkipGround = true })
+		end
+		root.CFrame = CFrame.new(dest)
+		M.rememberSafe()
+		return true
 	end
 
 	function M.setPos(cf, opts)
@@ -12819,6 +12940,72 @@ return function(GB)
 		return ok or layerOn("Logbook")
 	end
 
+	function M.atFreeStand()
+		return M._freeStandAt and (os.clock() - M._freeStandAt) < 8
+	end
+
+	local function captiveKind(target)
+		local t = string.lower(tostring(target or ""))
+		if string.find(t, "child", 1, true) or string.find(t, "tired", 1, true) then
+			return "child"
+		end
+		if string.find(t, "adult", 1, true) then
+			return "adult"
+		end
+		return "any"
+	end
+
+	local function stayAndFree(questName, target)
+		if GB.Combat and GB.Combat.stopLock then
+			GB.Combat.stopLock()
+		end
+		local kind = captiveKind(target)
+		local cages = GB.Resolver.findCaptiveCages and GB.Resolver.findCaptiveCages(kind) or {}
+		local obj = cages[1]
+		if not obj then
+			local pack = GB.Resolver.resolveObject and GB.Resolver.resolveObject(target, {
+				Island = "Clown Town",
+			})
+			obj = pack and pack.Instance
+		end
+		if not obj then
+			obj = GB.Resolver.byName and (GB.Resolver.byName(target) or GB.Resolver.byName("Hostage") or GB.Resolver.byName("Captured Child"))
+		end
+		if not obj then
+			M.noteFail(questName, "resolve miss " .. tostring(target))
+			return false
+		end
+		M._freeStandAt = os.clock()
+		M._freeStandInst = obj
+		local qs = M.questState(questName)
+		local before = M.signature(qs)
+		if GB.World.standOn then
+			GB.World.standOn(obj, 2.4)
+		elseif GB.World.setPos and GB.Resolver.positionOf then
+			local pos = GB.Resolver.positionOf(obj)
+			if pos then
+				GB.World.setPos(pos + Vector3.new(0, 2.4, 0), { SkipGround = true })
+			end
+		end
+		local pr = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
+		if not pr and GB.Resolver.prompt then
+			pr = GB.Resolver.prompt(obj)
+		end
+		if pr and GB.World.firePrompt then
+			GB.World.firePrompt(pr, pr.HoldDuration or 0, obj)
+		elseif GB.World.interact then
+			GB.World.interact(obj, 4)
+		end
+		if M.waitProgress(questName, before, 2.2) then
+			M.noteOk(questName)
+			if GB.Recovery and GB.Recovery.markSuccess then
+				GB.Recovery.markSuccess()
+			end
+			return true
+		end
+		return true
+	end
+
 	local function goTagged(tag, dist)
 		if not tag or tag == "" then
 			return false
@@ -12954,6 +13141,9 @@ return function(GB)
 		local qs = M.questState(name)
 		local o = qs and qs.Objective
 		if o and o.Type == "Destroy" then
+			return true
+		end
+		if o and o.Type == "Free" then
 			return true
 		end
 		if o and o.TargetName and GB.QuestData and GB.QuestData.isObjectTarget and GB.QuestData.isObjectTarget(o.TargetName) then
@@ -14388,7 +14578,10 @@ return function(GB)
 		if typ == "Open" and target == "Logbook" then
 			return openLogbook()
 		end
-		if typ == "Open" or typ == "Interact" or typ == "Investigate" or typ == "Wake" or typ == "Check On" or typ == "Free" then
+		if typ == "Free" then
+			return stayAndFree(questName, target)
+		end
+		if typ == "Open" or typ == "Interact" or typ == "Investigate" or typ == "Wake" or typ == "Check On" then
 			if target == "Marine Gate" or questName == "Gate of Authority" then
 				local blocked, _, blocker = gateBlocker()
 				if blocked and blocker then

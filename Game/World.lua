@@ -281,6 +281,25 @@ return function(GB)
 		return not (GB.lp and GB.lp:GetAttribute("GameplayPaused") == true)
 	end
 
+	function M.standOn(inst, yOff)
+		local pos = inst and GB.Resolver and GB.Resolver.positionOf and GB.Resolver.positionOf(inst)
+		if typeof(pos) ~= "Vector3" then
+			return false
+		end
+		local dest = Vector3.new(pos.X, pos.Y + (tonumber(yOff) or 2.4), pos.Z)
+		local root = M.hrp()
+		if not root then
+			return false
+		end
+		GB.Log.log("TRAVEL", "stand " .. tostring((GB.Resolver.displayName and GB.Resolver.displayName(inst)) or inst.Name))
+		if M.destOk(dest) then
+			return M.setPos(dest, { SkipGround = true })
+		end
+		root.CFrame = CFrame.new(dest)
+		M.rememberSafe()
+		return true
+	end
+
 	function M.setPos(cf, opts)
 		opts = opts or {}
 		local root = M.hrp()
