@@ -330,8 +330,7 @@ return function(GB)
 		if GB.QuestData.stageComplete and GB.QuestData.stageComplete(st) then
 			return true
 		end
-		local typ = liveObjectiveType(q)
-		return typ == "Talk" or typ == "Automatic Talk" or typ == "GiveItemTo"
+		return false
 	end
 
 	function M.peekLive(name)

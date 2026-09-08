@@ -336,9 +336,6 @@ return function(GB)
 			if not o then
 				return true
 			end
-			if o.Type == "Talk" or o.Type == "Automatic Talk" then
-				return true
-			end
 			if o.Complete == true then
 				return true
 			end
@@ -499,9 +496,6 @@ return function(GB)
 			end
 			local o = qs.Objective
 			if not o then
-				return true
-			end
-			if o.Type == "Talk" or o.Type == "Automatic Talk" then
 				return true
 			end
 			if o.Complete == true then

@@ -2073,7 +2073,7 @@ return function(GB)
 				Stage = before.StageIndex,
 				ObjectiveType = typ,
 				Alternatives = targets,
-				SkipStream = true,
+				SkipStream = false,
 			}
 			if GB.Combat and GB.Combat.lockMob and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(GB.Combat.lockMob) then
 				if (not GB.Combat.lockMatchesNames) or GB.Combat.lockMatchesNames(targets) or GB.Combat.lockMatchesNames({ targetPlan.Target }) then
@@ -2088,20 +2088,19 @@ return function(GB)
 				ok = GB.Combat.attack(targetPlan.Target, questName)
 			end
 			if not ok then
-				if typ == "Destroy" then
-					if GB.Combat and GB.Combat.approachMarker then
-						GB.Combat.approachMarker(targetPlan, targetPlan.Target)
+				local waiting = false
+				if GB.Combat and GB.Combat.approachMarker then
+					waiting = GB.Combat.approachMarker(targetPlan, targetPlan.Target) == true
+				end
+				if (not waiting) and before.Island and GB.World and GB.World.pullStream then
+					if os.clock() - (M._killStreamAt or 0) >= 8 then
+						M._killStreamAt = os.clock()
+						GB.World.pullStream(before.Island)
 					end
-				else
-					local pos = GB.Resolver.lastDummyPos and GB.Resolver.lastDummyPos()
-					local misses = GB.Resolver.dummyMissCount and GB.Resolver.dummyMissCount() or 0
-					if misses >= 3 then
-						if pos and GB.World.destOk(pos) then
-							GB.World.setPos(pos + Vector3.new(GB.Config.DummyBeside or 3.2, 0, 0))
-						elseif before.Island then
-							GB.World.pullStream(before.Island)
-						end
-					end
+					waiting = true
+				end
+				if waiting then
+					return false
 				end
 				if why ~= "dead" then
 					M.noteFail(questName, "resolve miss " .. tostring(targetPlan.Target))

@@ -70,6 +70,10 @@ def main() -> int:
 
     if "function M.objectiveFilled" not in combat:
         fail("objectiveFilled missing")
+    if "cycleFinished(questName, true)" in combat.split("function M.objectiveFilled", 1)[1][:400]:
+        fail("objectiveFilled still treats missing live as done")
+    if "hoverBaseY" not in combat:
+        fail("hoverBaseY missing")
     if "pickTurnInActive" not in engine:
         fail("planner missing pickTurnInActive")
     if "not GB.QuestData.conditionComplete(cond)" not in quest:

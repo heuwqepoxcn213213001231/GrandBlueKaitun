@@ -568,6 +568,7 @@ return function(GB)
 		M._pulseStart = nil
 		M.lockMob = nil
 		M.lastTargetPos = nil
+		M._hoverGroundY = nil
 		M.lockQuest = nil
 		if M.ActiveTarget then
 			M.ActiveTarget.Dead = true
@@ -647,9 +648,6 @@ return function(GB)
 		end
 		local live = GB.PlayerData and GB.PlayerData.peekLive and GB.PlayerData.peekLive(questName)
 		if not live then
-			if GB.PlayerData and GB.PlayerData.cycleFinished then
-				return GB.PlayerData.cycleFinished(questName, true) == true
-			end
 			return false
 		end
 		if not (GB.QuestData and GB.QuestData.currentStage) then
@@ -982,15 +980,6 @@ return function(GB)
 		if type(names) ~= "table" or #names == 0 then
 			return false, "no_names"
 		end
-		if type(questOf) == "table" then
-			for _, qn in pairs(questOf) do
-				if type(qn) == "string" and M.objectiveFilled(qn) then
-					M.lastQuestDone = qn
-					M.stopLock()
-					return true, "quest_done"
-				end
-			end
-		end
 		local lockedName = M.lockMatchesNames(names)
 		local mob, name, dist
 		if lockedName and M.lockMob then
@@ -1002,6 +991,11 @@ return function(GB)
 			return false, "no_enemy"
 		end
 		local qn = type(questOf) == "table" and questOf[name] or nil
+		if qn and M.objectiveFilled(qn) then
+			M.lastQuestDone = qn
+			M.stopLock()
+			return true, "quest_done"
+		end
 		if type(dist) == "number" and (not M._nearLog or os.clock() - M._nearLog > 2.4) then
 			M._nearLog = os.clock()
 			GB.Log.log("COMBAT", string.format("nearest %s d=%.0f quest=%s", tostring(name), dist, tostring(qn or "-")))
@@ -1022,6 +1016,31 @@ return function(GB)
 		return M.huntNearestOf(names, 0, questOf, planOf)
 	end
 
+	local function hoverBaseY(part)
+		if not (part and part:IsA("BasePart")) then
+			return nil
+		end
+		local y = part.Position.Y
+		local minY = (tonumber(GB.Config and GB.Config.DestYMin) or 0) + 6
+		if y ~= y or y < minY then
+			return nil
+		end
+		if M.lastTargetPos and (M.lastTargetPos.Y - y) > 18 then
+			return nil
+		end
+		local safe = GB.World and GB.World.lastSafe and GB.World.lastSafe.Position
+		if safe and y < safe.Y - 14 then
+			y = safe.Y
+		end
+		if M._hoverGroundY and y < M._hoverGroundY - 14 then
+			y = M._hoverGroundY
+		end
+		if y < minY then
+			return nil
+		end
+		return y
+	end
+
 	local function standDest(mob)
 		local part = GB.Resolver.part(mob)
 		if not (part and part:IsA("BasePart")) then
@@ -1029,10 +1048,15 @@ return function(GB)
 		end
 		local dest
 		if hoverEnabled(mob) then
-			dest = part.Position + Vector3.new(0, hoverHeight(), 0)
-			if not GB.World.destOk(dest) then
+			local baseY = hoverBaseY(part)
+			if not baseY then
 				return nil
 			end
+			dest = Vector3.new(part.Position.X, baseY + hoverHeight(), part.Position.Z)
+			if not (GB.World.destOk(dest) and GB.World.posSane and GB.World.posSane(dest)) then
+				return nil
+			end
+			M._hoverGroundY = baseY
 			return dest, part
 		end
 		if isDummy(mob.Name) then
@@ -1122,10 +1146,16 @@ return function(GB)
 			root.AssemblyLinearVelocity = Vector3.zero
 			root.AssemblyAngularVelocity = Vector3.zero
 		end)
+		if dest.Y < ((tonumber(GB.Config and GB.Config.DestYMin) or 0) + 8) then
+			return false
+		end
 		root.CFrame = CFrame.new(dest, part.Position)
 		local hum = GB.World.hum and GB.World.hum()
 		if hum then
 			hum.AutoRotate = false
+		end
+		if GB.World.rememberSafe then
+			GB.World.rememberSafe()
 		end
 		return true
 	end
@@ -1420,7 +1450,16 @@ return function(GB)
 				return
 			end
 			if hoverEnabled(mob2) then
-				M.pinHover(mob2)
+				if not M.pinHover(mob2) then
+					local root = GB.World.hrp and GB.World.hrp()
+					if root and GB.World.posSane and not GB.World.posSane(root.Position) then
+						M.stopLock()
+						if GB.World.rescue then
+							GB.World.rescue()
+						end
+						return
+					end
+				end
 			elseif M.needReposition(mob2) then
 				M.standPose(mob2)
 			end
