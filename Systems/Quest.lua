@@ -983,6 +983,8 @@ return function(GB)
 			tag = typ
 		end
 		local origin = GB.QuestData.INVESTIGATE_ORIGIN and GB.QuestData.INVESTIGATE_ORIGIN[typ]
+		local qs = M.questState and M.questState(questName)
+		local wantIsland = (qs and qs.Island) or (GB.QuestData.islandOf and GB.QuestData.islandOf(questName))
 		local function usableInvestigateDest(inst)
 			if not inst then
 				return nil
@@ -991,35 +993,34 @@ return function(GB)
 				return nil
 			end
 			local n = string.lower(tostring(inst.Name or ""))
+			if string.find(n, "camp", 1, true) or string.find(n, "footstep", 1, true) then
+				return inst
+			end
 			if string.find(n, "pirate", 1, true) or string.find(n, "officer", 1, true) then
 				return nil
 			end
-			local hum = inst:FindFirstChildWhichIsA("Humanoid")
-			if not hum and inst.Parent then
-				hum = inst.Parent:FindFirstChildWhichIsA("Humanoid")
-			end
-			if hum then
+			if inst:FindFirstChildOfClass("Humanoid") then
 				return nil
 			end
 			return inst
 		end
-		local inst = usableInvestigateDest(resolveMarkerLeaf(tag, questName))
-		if not inst and origin then
-			inst = usableInvestigateDest(resolveMarkerLeaf(origin, questName))
+		local function onWantedIsland()
+			local snap = GB.State and GB.State.get and GB.State.get()
+			if snap and snap.PhysicalIsland == wantIsland then
+				return true
+			end
+			local spawn = wantIsland and GB.World.islandSpawn and GB.World.islandSpawn(wantIsland)
+			local hrp = GB.World.hrp and GB.World.hrp()
+			if spawn and hrp and GB.World.planarDist then
+				return GB.World.planarDist(hrp.Position, spawn) < 600
+			end
+			return false
 		end
-		if not inst and GB.Resolver.findQuestBeam then
-			inst = usableInvestigateDest(GB.Resolver.findQuestBeam(questName, typ))
-		end
-		if not inst and GB.Resolver.findHudAdornee then
-			inst = usableInvestigateDest(GB.Resolver.findHudAdornee(questName))
-		end
-		local qs = M.questState and M.questState(questName)
-		local wantIsland = (qs and qs.Island) or (GB.QuestData.islandOf and GB.QuestData.islandOf(questName))
-		local snap = GB.State and GB.State.get and GB.State.get()
-		local here = snap and (snap.PhysicalIsland or snap.CurrentIsland)
-		if wantIsland and here and here ~= wantIsland then
-			if os.clock() - (M._investIslandAt or 0) > 2 then
+		if wantIsland and not onWantedIsland() then
+			if os.clock() - (M._investIslandAt or 0) > 2.5 then
 				M._investIslandAt = os.clock()
+				local snap = GB.State and GB.State.get and GB.State.get()
+				local here = snap and (snap.PhysicalIsland or snap.CurrentIsland)
 				GB.Log.log("TRAVEL", string.format("investigate %s -> %s", tostring(here), tostring(wantIsland)))
 				if GB.Travel and GB.Travel.goIsland then
 					GB.Travel.goIsland(wantIsland)
@@ -1030,40 +1031,48 @@ return function(GB)
 			end
 			return true
 		end
-		if inst and GB.World.standOn then
+		local inst = usableInvestigateDest(resolveMarkerLeaf(tag, questName))
+		if not inst and origin then
+			inst = usableInvestigateDest(resolveMarkerLeaf(origin, questName))
+		end
+		if not inst and origin and GB.Resolver.findPlace then
+			inst = usableInvestigateDest(GB.Resolver.findPlace(origin, wantIsland))
+		end
+		if not inst and GB.Resolver.findPlace then
+			inst = usableInvestigateDest(GB.Resolver.findPlace(tag, wantIsland))
+		end
+		if not inst and GB.Resolver.findQuestBeam then
+			inst = usableInvestigateDest(GB.Resolver.findQuestBeam(questName, typ))
+		end
+		if not inst and GB.Resolver.findHudAdornee then
+			inst = usableInvestigateDest(GB.Resolver.findHudAdornee(questName))
+		end
+		if inst and GB.World.goPlace then
 			local pos = GB.Resolver.positionOf and GB.Resolver.positionOf(inst)
 			local key = tostring(inst.Name) .. ":" .. tostring(pos and math.floor(pos.X) or 0)
 			local now = os.clock()
 			if M._investStandKey ~= key or now - (M._investStandAt or 0) > 4 then
 				M._investStandKey = key
 				M._investStandAt = now
-				GB.World.standOn(inst, 8)
+				GB.World.goPlace(inst)
 			end
+		elseif inst and GB.World.standOn then
+			GB.World.standOn(inst, 8)
 		elseif not inst then
-			if wantIsland and GB.World.pullStream and os.clock() - (M._investPullAt or 0) > 3 then
-				M._investPullAt = os.clock()
-				GB.World.pullStream(wantIsland)
+			local hint = (GB.Resolver.findHudAdornee and GB.Resolver.findHudAdornee(questName))
+				or (GB.Resolver.findQuestBeam and GB.Resolver.findQuestBeam(questName, typ))
+			local hintPos = hint and GB.Resolver.positionOf and GB.Resolver.positionOf(hint)
+			if hintPos and os.clock() - (M._investHudAt or 0) > 8 then
+				M._investHudAt = os.clock()
+				GB.Log.log("TRAVEL", "investigate stream HUD " .. tostring(hint.Name))
+				GB.World.setPos(hintPos, { AllowFar = true })
 			end
 			if os.clock() - (M._investMissAt or 0) > 4 then
 				M._investMissAt = os.clock()
 				GB.Log.warn("QUEST", "marker miss " .. tostring(tag) .. " zone-only")
 			end
 		end
-		M._investZoneN = (M._investZoneN or 0) + 1
-		local names = {}
-		if origin and origin ~= "" then
-			names[#names + 1] = origin
-		end
-		if tag and tag ~= origin then
-			names[#names + 1] = tag
-		end
-		if type(typ) == "string" and typ ~= "" and typ ~= tag and typ ~= origin then
-			names[#names + 1] = typ
-		end
-		if #names == 0 then
-			names[1] = tag or typ
-		end
-		local zone = names[((M._investZoneN - 1) % #names) + 1]
+		local zone = origin or tag or typ
 		GB.Remotes.enterZone(zone)
 		if inst then
 			local pr = GB.Resolver.prompt and GB.Resolver.prompt(inst)

@@ -175,6 +175,16 @@ def main() -> int:
         fail("Investigate must travel to quest island when dest is missing")
     if "mapleLive" not in read("Systems/Travel.lua"):
         fail("goIsland must allow Maple when Maple story is live")
+    if "function M.findPlace" not in resolver:
+        fail("Resolver.findPlace missing")
+    if "function M.goPlace" not in world:
+        fail("World.goPlace missing")
+    if "investigate stream HUD" not in quest:
+        fail("Investigate must hop HUD to stream camp")
+    if "onWantedIsland" not in quest:
+        fail("Investigate must not stream-pull Maple spawn while already there")
+    if "GB.World.pullStream(wantIsland)" in quest and "onWantedIsland" not in quest:
+        fail("pullStream Maple spawn loop still unguarded")
 
     if FAILS:
         print("FAIL scenario_tests")

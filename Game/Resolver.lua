@@ -1598,6 +1598,7 @@ return function(GB)
 			roots[#roots + 1] = aa:FindFirstChild("Markers")
 		end
 		roots[#roots + 1] = workspace:FindFirstChild("Markers")
+		roots[#roots + 1] = workspace:FindFirstChild("PointsOfInterest")
 		for _, folder in ipairs(roots) do
 			if folder then
 				local leaf = M.markerLeafOf(folder, tag)
@@ -1606,6 +1607,75 @@ return function(GB)
 				end
 			end
 		end
+		return nil
+	end
+
+	function M.findPlace(name, island)
+		if type(name) ~= "string" or name == "" or MARKER_CONTAINERS[name] then
+			return nil
+		end
+		local now = os.clock()
+		local key = name .. "|" .. tostring(island or "")
+		if M._placeCache and M._placeKey == key and now - (M._placeAt or 0) < 2 and M._placeCache.Parent then
+			return M._placeCache
+		end
+		local hit = M.taggedAny(name)
+		if hit then
+			M._placeKey = key
+			M._placeAt = now
+			M._placeCache = hit
+			return hit
+		end
+		local function match(inst)
+			if not (inst and inst.Parent) or M.isMarkerContainer(inst) then
+				return false
+			end
+			if inst.Name == name then
+				return true
+			end
+			local ok, tagged = pcall(function()
+				return inst:HasTag(name)
+			end)
+			return ok and tagged == true
+		end
+		local roots = {}
+		local isles = workspace:FindFirstChild("Islands")
+		if isles and type(island) == "string" and island ~= "" then
+			roots[#roots + 1] = isles:FindFirstChild(island)
+		end
+		roots[#roots + 1] = workspace:FindFirstChild("AA IMPORTANT")
+		roots[#roots + 1] = workspace:FindFirstChild("Markers")
+		roots[#roots + 1] = workspace:FindFirstChild("PointsOfInterest")
+		for _, root in ipairs(roots) do
+			if root then
+				if match(root) then
+					M._placeKey = key
+					M._placeAt = now
+					M._placeCache = root
+					return root
+				end
+				local q = root:GetChildren()
+				local i = 1
+				local seen = 0
+				while i <= #q and seen < 480 do
+					local inst = q[i]
+					i = i + 1
+					seen = seen + 1
+					if match(inst) then
+						M._placeKey = key
+						M._placeAt = now
+						M._placeCache = inst
+						return inst
+					end
+					for _, ch in ipairs(inst:GetChildren()) do
+						q[#q + 1] = ch
+					end
+				end
+			end
+		end
+		M._placeKey = key
+		M._placeAt = now
+		M._placeCache = nil
 		return nil
 	end
 

@@ -1200,6 +1200,26 @@ return function(GB)
 		return M.setPos(dest, { MaxGroundY = origin.Y + 4, SkipGround = true })
 	end
 
+	function M.goPlace(inst)
+		if not inst then
+			return false
+		end
+		if GB.Resolver and GB.Resolver.isMarkerContainer and GB.Resolver.isMarkerContainer(inst) then
+			return false
+		end
+		local origin = GB.Resolver.positionOf(inst)
+		if not origin or not M.posSane(origin) then
+			return false
+		end
+		local root = M.hrp()
+		if root and M.planarDist(root.Position, origin) <= 8 and math.abs(root.Position.Y - origin.Y) <= 14 then
+			return true
+		end
+		local dest = M.floorAt(origin, origin.Y) or Vector3.new(origin.X, origin.Y + 3, origin.Z)
+		GB.Log.log("TRAVEL", "Teleport -> " .. (GB.Resolver.displayName(inst) or inst.Name))
+		return M.setPos(dest, { AllowFar = true, SkipGround = true })
+	end
+
 	function M.ToInteractable(inst, range)
 		range = range or 4
 		if GB.Resolver and GB.Resolver.isMarkerContainer and GB.Resolver.isMarkerContainer(inst) then
