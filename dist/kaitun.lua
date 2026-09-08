@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
--- Version: 1.1.39
--- Commit: 4c39241
--- BuiltAt: 2026-09-08T15:56:37+07:00
+-- Version: 1.1.40
+-- Commit: d3e3b1f
+-- BuiltAt: 2026-09-08T16:05:37+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -35,9 +35,9 @@ return function(meta)
 
 	stopPreviousInstance()
 
-	local BUILD_VERSION = "1.1.39"
-	local BUILD_COMMIT = "4c39241"
-	local BUILD_AT = "2026-09-08T15:56:37+07:00"
+	local BUILD_VERSION = "1.1.40"
+	local BUILD_COMMIT = "d3e3b1f"
+	local BUILD_AT = "2026-09-08T16:05:37+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -2853,14 +2853,42 @@ return function(GB)
 		return live, order
 	end
 
+	-- Read Type from the already-ingested row. Quest.questState / PlayerData.live
+	-- re-enter refreshLive and overflow the stack (1.1.39 Talk lock).
+	local function liveObjectiveType(q)
+		if type(q) ~= "table" then
+			return nil
+		end
+		if not (GB.QuestData and GB.QuestData.currentStage) then
+			return nil
+		end
+		local _, st = GB.QuestData.currentStage(q)
+		if not st then
+			return nil
+		end
+		local conds = st.Conditions or st.conditions or {}
+		for _, cond in ipairs(conds) do
+			if type(cond) == "table" and not cond.Complete then
+				return cond.Type or cond.type
+			end
+		end
+		return nil
+	end
+
+	function M.peekLive(name)
+		return name and M._live[name] or nil
+	end
+
+	function M.liveObjectiveType(name)
+		return liveObjectiveType(M._live[name])
+	end
+
 	local function pickCurrent()
-		if GB.Quest and GB.Quest.questState and GB.QuestData and GB.QuestData.CHAINS then
+		if GB.QuestData and GB.QuestData.CHAINS then
 			for _, ch in ipairs(GB.QuestData.CHAINS) do
 				for _, name in ipairs(ch.order) do
 					if M._live[name] then
-						local qs = GB.Quest.questState(name)
-						local o = qs and qs.Objective
-						local typ = o and o.Type
+						local typ = liveObjectiveType(M._live[name])
 						if typ == "Talk" or typ == "Automatic Talk" or typ == "GiveItemTo" then
 							return name
 						end
@@ -2923,6 +2951,10 @@ return function(GB)
 	end
 
 	function M.refreshLive(force, why)
+		if M._refreshing then
+			return M._live
+		end
+		M._refreshing = true
 		local t0 = pbegin()
 		loadMods()
 		if not M._seededDone then
@@ -2943,6 +2975,7 @@ return function(GB)
 				M._lastGoodLiveAt = now
 			end
 			M._current = pickCurrent()
+			M._refreshing = false
 			pdone("PlayerData.refreshLive", t0)
 			return M._live
 		end
@@ -3016,6 +3049,7 @@ return function(GB)
 				GB.Log.warn("STATE", "quest refresh miss " .. tostring(why))
 			end
 		end
+		M._refreshing = false
 		pdone("PlayerData.refreshLive", t0)
 		return M._live
 	end
@@ -3241,11 +3275,13 @@ return function(GB)
 		return M._done[name] == true
 	end
 
-	function M.live(name)
+	function M.live(name, skipRefresh)
 		if not name then
 			return nil
 		end
-		M.refreshLive()
+		if not skipRefresh and not M._refreshing then
+			M.refreshLive()
+		end
 		if M._done[name] and not (GB.QuestData and GB.QuestData.isRepeatable and GB.QuestData.isRepeatable(name)) then
 			return nil
 		end
@@ -13280,11 +13316,13 @@ return function(GB)
 		if not (GB.PlayerData and GB.QuestData and GB.QuestData.CHAINS) then
 			return nil
 		end
+		local peek = GB.PlayerData.peekLive
+		local typOf = GB.PlayerData.liveObjectiveType
 		for _, ch in ipairs(GB.QuestData.CHAINS) do
 			for _, name in ipairs(ch.order) do
-				if GB.PlayerData.live and GB.PlayerData.live(name) then
-					local qs = M.questState(name)
-					local typ = qs and qs.Objective and qs.Objective.Type
+				local row = peek and peek(name)
+				if row then
+					local typ = typOf and typOf(name)
 					if typ == "Talk" or typ == "Automatic Talk" or typ == "GiveItemTo" then
 						return name
 					end
@@ -13907,7 +13945,14 @@ return function(GB)
 
 	function M.questState(name)
 		local t0 = pbegin()
-		local live = GB.PlayerData.live(name)
+		local live
+		if GB.PlayerData then
+			if GB.PlayerData._refreshing and GB.PlayerData.peekLive then
+				live = GB.PlayerData.peekLive(name)
+			elseif GB.PlayerData.live then
+				live = GB.PlayerData.live(name)
+			end
+		end
 		local island = GB.QuestData.islandOf(name)
 		local npc = GB.QuestData.talkNpc(name)
 		local repeatable = isRepeatable(name)
