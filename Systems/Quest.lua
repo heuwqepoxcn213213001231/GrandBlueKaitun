@@ -1738,12 +1738,11 @@ return function(GB)
 				end
 			end
 			GB.World.waitUnpause()
-			task.wait(0.25)
 		end
 		local cfg = GB.Resolver.dialogueConfig(pack.Instance)
 		local spoken, whyTalk = fireTalkVariants(talkNameList(shown, pack), cfg)
 		if not spoken then
-			local lingerUntil = os.clock() + 2.4
+			local lingerUntil = os.clock() + 0.9
 			while os.clock() < lingerUntil do
 				if dialogueOpen() then
 					spoken = shown
@@ -1754,19 +1753,27 @@ return function(GB)
 					M.lastClick = os.clock()
 					break
 				end
-				task.wait(0.12)
+				task.wait(0.05)
 			end
 		end
 		if not spoken and GB.World and GB.World.interact then
 			GB.World.interact(pack.Instance, GB.Config.TalkRange or 14)
-			task.wait(0.35)
+			local waitUntil = os.clock() + 0.6
+			while os.clock() < waitUntil and not dialogueOpen() do
+				task.wait(0.05)
+			end
 			spoken, whyTalk = fireTalkVariants(talkNameList(shown, pack), cfg)
 		end
 		if not spoken then
 			M.lastTalk[key] = os.clock()
 			return false, "talk_no_dialogue:" .. tostring(whyTalk or "none")
 		end
-		task.wait(0.35)
+		if not dialogueOpen() then
+			local readyUntil = os.clock() + 0.45
+			while os.clock() < readyUntil and not dialogueOpen() do
+				task.wait(0.05)
+			end
+		end
 		if clickAccept(opts) then
 			M.lastClick = os.clock()
 		end
@@ -1787,9 +1794,14 @@ return function(GB)
 	end
 
 	local function waitQuestAccepted(name, timeout)
-		timeout = timeout or 5.4
+		timeout = timeout or 2.4
 		local t0 = os.clock()
-		local nextRefreshAt = 0
+		if questAcceptedNow(name) then
+			return true, "accepted"
+		end
+		if GB.PlayerData and GB.PlayerData.requestLive then
+			GB.PlayerData.requestLive("accept_wait:" .. tostring(name))
+		end
 		while os.clock() - t0 < timeout do
 			if respawnBusy() then
 				return false, "respawn"
@@ -1797,32 +1809,30 @@ return function(GB)
 			if questAcceptedNow(name) then
 				return true, "accepted"
 			end
-			if dialogueOpen() and os.clock() - (M.lastClick or 0) >= 0.45 then
+			if dialogueOpen() and os.clock() - (M.lastClick or 0) >= 0.35 then
 				if clickAccept({ QuestName = name, Action = "accept" }) then
 					M.lastClick = os.clock()
 				end
 			end
-			if os.clock() >= nextRefreshAt then
-				nextRefreshAt = os.clock() + 0.9
-				if GB.PlayerData and GB.PlayerData.forceQuestRefresh then
-					GB.PlayerData.forceQuestRefresh("accept_wait:" .. tostring(name))
-				elseif GB.PlayerData and GB.PlayerData.refreshLive then
-					GB.PlayerData.refreshLive(true, "accept_wait:" .. tostring(name))
-				end
-			end
-			task.wait(0.18)
+			task.wait(0.05)
 		end
 		return questAcceptedNow(name), "timeout"
 	end
 
 	function M.waitProgress(name, beforeSig, timeout)
-		timeout = timeout or 2.8
+		timeout = timeout or 1.2
+		if (not isRepeatable(name)) and GB.PlayerData.finished(name, true) then
+			return true, "done"
+		end
+		local qs0 = M.questState(name)
+		if M.signature(qs0) ~= beforeSig then
+			return true, M.signature(qs0)
+		end
 		local t0 = os.clock()
 		while os.clock() - t0 < timeout do
 			if respawnBusy() then
 				return false, "respawn"
 			end
-			task.wait(0.2)
 			if (not isRepeatable(name)) and GB.PlayerData.finished(name, true) then
 				return true, "done"
 			end
@@ -1831,12 +1841,16 @@ return function(GB)
 			if sig ~= beforeSig then
 				return true, sig
 			end
+			task.wait(0.05)
 		end
 		return false, "timeout"
 	end
 
 	local function waitTalkProgress(name, beforeSig, timeout)
-		timeout = timeout or 5.6
+		timeout = timeout or 2.0
+		if (not isRepeatable(name)) and GB.PlayerData.finished(name, true) then
+			return true, "done"
+		end
 		local t0 = os.clock()
 		local lastClick = 0
 		while os.clock() - t0 < timeout do
@@ -1848,13 +1862,13 @@ return function(GB)
 			if sig ~= beforeSig then
 				return true, sig
 			end
-			if dialogueOpen() and os.clock() - lastClick >= 0.55 then
+			if dialogueOpen() and os.clock() - lastClick >= 0.35 then
 				if clickAccept({ QuestName = name, Action = "progress" }) then
 					lastClick = os.clock()
 					M.lastClick = lastClick
 				end
 			end
-			task.wait(0.18)
+			task.wait(0.05)
 		end
 		return false, "timeout"
 	end

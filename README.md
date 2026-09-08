@@ -5,17 +5,20 @@ Portable GitHub RAW loader. A clean machine needs one line — no local `NiaUISi
 ## Install
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/heuwqepoxcn213213001231/GrandBlueKaitun/main/loader.lua"))()
+loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/heuwqepoxcn213213001231/GrandBlueKaitun/main/loader.lua?cb=" ..
+    tostring(os.time())
+))()
 ```
 
-Override target without editing `loader.lua`:
+Loader reads VERSION + manifest from `main`, then executes `dist/kaitun.lua` from `manifest.build.commit`. Do not set `GB_BASE_URL` to an old commit.
+
+DEV pin only:
 
 ```lua
-getgenv().GB_REPO = "heuwqepoxcn213213001231/GrandBlueKaitun"
-getgenv().GB_BRANCH = "main"
--- or:
-getgenv().GB_BASE_URL = "https://raw.githubusercontent.com/heuwqepoxcn213213001231/GrandBlueKaitun/main/"
-loadstring(game:HttpGet(getgenv().GB_BASE_URL .. "loader.lua"))()
+getgenv().GB_DEV = true
+getgenv().GB_DEV_MODULAR = true
+getgenv().GB_PIN_COMMIT = "<sha>"
 ```
 
 ## Globals
@@ -39,7 +42,10 @@ getgenv().GBConfig = {
 	AutoBackpack = false,
 	LogLevel = "INFO",
 }
-loadstring(game:HttpGet("https://raw.githubusercontent.com/heuwqepoxcn213213001231/GrandBlueKaitun/main/loader.lua"))()
+loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/heuwqepoxcn213213001231/GrandBlueKaitun/main/loader.lua?cb=" ..
+    tostring(os.time())
+))()
 ```
 
 After boot you can still mutate `getgenv().GBConfig.AutoQuest = false`.

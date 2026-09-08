@@ -14,6 +14,7 @@ STEPS = (
     ["python3", "tools/quest_route_validator.py"],
     ["python3", "tools/perf_static_audit.py"],
     ["python3", "tools/regression_tests.py"],
+    ["python3", "tools/scenario_tests.py"],
     ["python3", "tools/diff_game_data.py"],
 )
 

@@ -15,7 +15,7 @@ return function(GB)
 	end
 
 	def("Enabled", true)
-	def("Tick", 0.4)
+	def("Tick", 0.15)
 	def("LogLevel", "INFO") -- DEBUG INFO WARN ERROR
 	def("Debug", false)
 	def("Persist", true)
@@ -27,6 +27,7 @@ return function(GB)
 	def("DebugResolverDeepScan", false)
 	def("DebugAcquireDeepScan", false)
 	def("DebugWorldDeepScan", false)
+	def("DebugTutorialScan", false)
 
 	-- Auto flags
 	def("AutoQuest", true)

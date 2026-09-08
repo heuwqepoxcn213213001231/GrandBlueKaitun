@@ -261,7 +261,7 @@ return function(GB)
 		return M.fire("ClientQuest", 0.8, zoneName, "Enter Zone")
 	end
 
-	-- QuestInfo client + QuestLocal LoadQuests
+	-- Sync worker only. DecisionEngine must use PlayerData cache / Broker.request.
 	function M.getQuests()
 		local r = ev("GetData")
 		if not r then
@@ -278,6 +278,15 @@ return function(GB)
 		end
 		perfCount("GetDataQuests", 1)
 		return a, b
+	end
+
+	function M.requestQuests(onDone)
+		if not (GB.Broker and GB.Broker.request) then
+			return M.getQuests()
+		end
+		return GB.Broker.request("GetDataQuests", function()
+			return M.getQuests()
+		end, { minGap = 0.2, onDone = onDone })
 	end
 
 	function M.code(str)
@@ -311,6 +320,15 @@ return function(GB)
 		end
 		perfCount("GetStats", 1)
 		return a, b
+	end
+
+	function M.requestStats(onDone)
+		if not (GB.Broker and GB.Broker.request) then
+			return M.getStats()
+		end
+		return GB.Broker.request("GetStats", function()
+			return M.getStats()
+		end, { minGap = 0.35, onDone = onDone })
 	end
 
 	function M.getEquip()

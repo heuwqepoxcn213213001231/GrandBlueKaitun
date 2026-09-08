@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
--- Version: 1.1.53
--- Commit: e9e3b78
--- BuiltAt: 2026-09-08T20:41:15+07:00
+-- Version: 1.2.0
+-- Commit: eeb723b
+-- BuiltAt: 2026-09-08T21:15:19+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -35,9 +35,9 @@ return function(meta)
 
 	stopPreviousInstance()
 
-	local BUILD_VERSION = "1.1.53"
-	local BUILD_COMMIT = "e9e3b78"
-	local BUILD_AT = "2026-09-08T20:41:15+07:00"
+	local BUILD_VERSION = "1.2.0"
+	local BUILD_COMMIT = "eeb723b"
+	local BUILD_AT = "2026-09-08T21:15:19+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -63,7 +63,7 @@ return function(GB)
 	end
 
 	def("Enabled", true)
-	def("Tick", 0.4)
+	def("Tick", 0.15)
 	def("LogLevel", "INFO") -- DEBUG INFO WARN ERROR
 	def("Debug", false)
 	def("Persist", true)
@@ -75,6 +75,7 @@ return function(GB)
 	def("DebugResolverDeepScan", false)
 	def("DebugAcquireDeepScan", false)
 	def("DebugWorldDeepScan", false)
+	def("DebugTutorialScan", false)
 
 	-- Auto flags
 	def("AutoQuest", true)
@@ -1142,6 +1143,124 @@ return function(GB)
 	return M
 end
 ]],
+    ["Core/RemoteBroker.lua"] = [[-- Single-flight async remote reads. Engine never InvokeServer on the decide thread.
+
+return function(GB)
+	local M = {
+		_pending = {},
+		_gen = {},
+		_cache = {},
+		_at = {},
+		_err = {},
+		_backoffUntil = {},
+		_lastStart = {},
+	}
+
+	local DEFAULT_BACKOFF = 0.45
+
+	local function dead()
+		return GB.dead and GB.dead()
+	end
+
+	local function now()
+		return os.clock()
+	end
+
+	function M.pendingCount()
+		local n = 0
+		for _ in pairs(M._pending) do
+			n = n + 1
+		end
+		return n
+	end
+
+	function M.pendingNames()
+		local out = {}
+		for name in pairs(M._pending) do
+			out[#out + 1] = name
+		end
+		return out
+	end
+
+	function M.isPending(name)
+		return M._pending[name] == true
+	end
+
+	function M.cached(name)
+		return M._cache[name], M._at[name]
+	end
+
+	function M.backoffUntil(name)
+		return M._backoffUntil[name] or 0
+	end
+
+	function M.invalidate(name)
+		if name then
+			M._cache[name] = nil
+			M._at[name] = nil
+			return
+		end
+		M._cache = {}
+		M._at = {}
+	end
+
+	function M.request(name, worker, opts)
+		opts = type(opts) == "table" and opts or {}
+		if type(name) ~= "string" or name == "" or type(worker) ~= "function" then
+			return false, "bad_request"
+		end
+		if dead() then
+			return false, "dead"
+		end
+		if M._pending[name] then
+			return false, "pending"
+		end
+		if now() < (M._backoffUntil[name] or 0) then
+			return false, "backoff"
+		end
+		local minGap = tonumber(opts.minGap) or 0
+		if minGap > 0 and now() - (M._lastStart[name] or 0) < minGap then
+			return false, "gap"
+		end
+		local gen = (M._gen[name] or 0) + 1
+		M._gen[name] = gen
+		M._pending[name] = true
+		M._lastStart[name] = now()
+		local bootGen = tonumber(getgenv()._GBKaitunGen) or 0
+		task.spawn(function()
+			local ok, a, b, c = pcall(worker)
+			M._pending[name] = nil
+			if dead() or (tonumber(getgenv()._GBKaitunGen) or 0) ~= bootGen then
+				return
+			end
+			if M._gen[name] ~= gen then
+				return
+			end
+			if not ok then
+				M._err[name] = a
+				M._backoffUntil[name] = now() + (tonumber(opts.failBackoff) or DEFAULT_BACKOFF)
+				if opts.onError then
+					pcall(opts.onError, a)
+				end
+				return
+			end
+			M._cache[name] = { a, b, c }
+			M._at[name] = now()
+			M._err[name] = nil
+			M._backoffUntil[name] = now() + (tonumber(opts.okBackoff) or 0)
+			if opts.onDone then
+				pcall(opts.onDone, a, b, c)
+			end
+			if GB.Scheduler and GB.Scheduler.nudge then
+				GB.Scheduler.nudge()
+			end
+		end)
+		return true, "queued"
+	end
+
+	return M
+end
+]],
     ["Core/Retry.lua"] = [=[-- RunAction: Timeout, MaxRetries, Validate, Recovery. No infinite retry.
 
 return function(GB)
@@ -1294,6 +1413,7 @@ return function(GB)
 		_conn = nil,
 		_last = 0,
 		_running = false,
+		_nudge = false,
 	}
 
 	local function pbegin()
@@ -1368,6 +1488,10 @@ return function(GB)
 		pdone("Scheduler.step", t0)
 	end
 
+	function M.nudge()
+		M._nudge = true
+	end
+
 	function M.start()
 		if M._running then
 			return
@@ -1376,13 +1500,28 @@ return function(GB)
 		task.spawn(function()
 			while M._running and not (GB.dead and GB.dead()) do
 				M.step()
-				task.wait(GB.Config.Tick or 0.4)
+				local budget = tonumber(GB.Config and GB.Config.Tick) or 0.15
+				if budget < 0.05 then
+					budget = 0.05
+				end
+				local t0 = os.clock()
+				while M._running and not (GB.dead and GB.dead()) do
+					if M._nudge then
+						M._nudge = false
+						break
+					end
+					if os.clock() - t0 >= budget then
+						break
+					end
+					task.wait(0.03)
+				end
 			end
 		end)
 	end
 
 	function M.stop()
 		M._running = false
+		M._nudge = false
 	end
 
 	return M
@@ -1712,6 +1851,14 @@ return function(GB)
 				pdone("State.tutorialOverlayVisible", t0)
 				return true, ui
 			end
+		end
+		if GB.Config and GB.Config.DebugTutorialScan ~= true then
+			M._overlayVisible = false
+			M._overlayVisibleUi = nil
+			M._overlayVisibleAt = now
+			M._overlayDirty = false
+			pdone("State.tutorialOverlayVisible", t0)
+			return false, nil
 		end
 		if now - (M._overlayLastScanAt or 0) < OVERLAY_FULL_SCAN_GAP then
 			M._overlayVisible = false
@@ -2444,12 +2591,12 @@ return function(GB)
 end
 ]],
     ["Game/GeneratedData.lua"] = [[-- GENERATED by tools/build_game_data.py — DO NOT MANUALLY EDIT
--- Version: 1.1.53 Commit: e9e3b78 BuiltAt: 2026-09-08T20:41:15+07:00
+-- Version: 1.2.0 Commit: eeb723b BuiltAt: 2026-09-08T21:15:19+07:00
 return function(GB)
 	local M = {}
-	M.Version = "1.1.53"
-	M.Commit = "e9e3b78"
-	M.BuiltAt = "2026-09-08T20:41:15+07:00"
+	M.Version = "1.2.0"
+	M.Commit = "eeb723b"
+	M.BuiltAt = "2026-09-08T21:15:19+07:00"
 	M.Islands = { "Anchor Town", "Clown Town", "Maple Village", "Tutorial", "Fighting Style", "Crew", "Skill Mastery" }
 	M.Story = {
 		Anchor = { "Introduction", "Basics", "Pirate Fan Letter", "Gearing Up", "The Hoarder", "First Upgrade", "Tea Party Crashers", "Captain's Brat", "Feral Dog", "Gate of Authority", "Captive Swordsman", "Axe-Handed Tyrant", "A Voice in a Shell", "Setting Sail" },
@@ -15052,6 +15199,12 @@ return function(GB)
 			M._dirtyLogAt = os.clock()
 			GB.Log.log("STATE", "quest dirty " .. tostring(why))
 		end
+		if GB.Engine and GB.Engine.markContextDirty then
+			GB.Engine.markContextDirty(why or "quest_dirty")
+		end
+		if GB.Scheduler and GB.Scheduler.nudge then
+			GB.Scheduler.nudge()
+		end
 	end
 
 	function M.invalidateLive(why)
@@ -15062,28 +15215,124 @@ return function(GB)
 		return M._questDirty == true
 	end
 
+	local function seedFromClientCache()
+		if M._seededDone then
+			return
+		end
+		M._seededDone = true
+		loadMods()
+		local snap = M._cache and M._cache.Data
+		local raw = snap and (snap["Completed Quests"] or snap.CompletedQuests)
+		if raw then
+			for k in pairs(completedSet(raw)) do
+				M._done[k] = true
+			end
+		end
+		if snap and snap.Quests and not next(M._live) then
+			M._live, M._order = ingestList(snap.Quests)
+			M._current = pickCurrent()
+		end
+	end
+
+	local function applyQuestPayload(quests, done, why)
+		local now = os.clock()
+		if quests == nil and done == nil then
+			local snap = M._cache and M._cache.Data
+			if snap then
+				quests = snap.Quests
+				done = snap["Completed Quests"] or snap.CompletedQuests
+			end
+		end
+		if quests == nil and done == nil then
+			M._questDirty = true
+			if why and os.clock() - (M._refreshWarnAt or 0) > 6 then
+				M._refreshWarnAt = os.clock()
+				GB.Log.warn("STATE", "quest refresh miss " .. tostring(why))
+			end
+			return
+		end
+		local newLive = ingestList(quests)
+		local liveN, prevN = 0, 0
+		for _ in pairs(newLive) do
+			liveN = liveN + 1
+		end
+		for _ in pairs(M._live) do
+			prevN = prevN + 1
+		end
+		if liveN == 0 and prevN > 0 and now - (M._lastGoodLiveAt or 0) < 12 then
+			if os.clock() - (M._emptyKeepAt or 0) > 4 then
+				M._emptyKeepAt = os.clock()
+				GB.Log.warn("STATE", "keep live quests; empty refresh " .. tostring(why or "poll"))
+			end
+			M._lastQuestFetchAt = now
+			M._questDirty = true
+			M._current = pickCurrent()
+			return
+		end
+		if done ~= nil then
+			local newDone = completedSet(done)
+			local doneN = 0
+			for _ in pairs(newDone) do
+				doneN = doneN + 1
+			end
+			if doneN > 0 or not next(M._done) then
+				M._done = newDone
+			end
+		end
+		M._live, M._order = ingestList(quests)
+		liveN = 0
+		for _ in pairs(M._live) do
+			liveN = liveN + 1
+		end
+		if liveN > 0 then
+			M._lastGoodLiveAt = now
+		end
+		M._at = now
+		M._lastQuestFetchAt = now
+		M._questDirty = false
+		M._tracker = readTracker() or M._tracker
+		local prev = M._current
+		M._current = pickCurrent()
+		if M._current and M._current ~= prev then
+			GB.Log.log("STATE", "live quest " .. M._current)
+			if GB.Combat and GB.Combat.stopLock then
+				GB.Combat.stopLock()
+			end
+			if GB.Persist and GB.Persist.checkpoint then
+				GB.Persist.checkpoint("quest", M._current)
+			end
+		end
+		if GB.Engine and GB.Engine.markContextDirty then
+			GB.Engine.markContextDirty("quest_payload")
+		end
+	end
+
+	function M.requestLive(why)
+		if not (GB.Remotes and GB.Remotes.getQuests) then
+			return false
+		end
+		if GB.Broker and GB.Broker.isPending and GB.Broker.isPending("GetDataQuests") then
+			return false
+		end
+		local queued = GB.Remotes.requestQuests and GB.Remotes.requestQuests(function(quests, done)
+			if GB.dead and GB.dead() then
+				return
+			end
+			applyQuestPayload(quests, done, why or "async")
+		end)
+		return queued == true
+	end
+
 	function M.forceQuestRefresh(why)
 		markQuestDirty(why or "force")
-		return M.refreshLive(true, why or "force")
+		M.requestLive(why or "force")
+		return M._live
 	end
 
 	function M.refreshLive(force, why)
-		if M._refreshing then
-			return M._live
-		end
-		M._refreshing = true
 		local t0 = pbegin()
 		loadMods()
-		if not M._seededDone then
-			M._seededDone = true
-			local snap = M.cache()
-			local raw = snap and (snap["Completed Quests"] or snap.CompletedQuests)
-			if raw then
-				for k in pairs(completedSet(raw)) do
-					M._done[k] = true
-				end
-			end
-		end
+		seedFromClientCache()
 		local now = os.clock()
 		M._tracker = readTracker()
 		local stale = now - (M._lastQuestFetchAt or 0) >= LIVE_SAFETY_TTL
@@ -15092,81 +15341,13 @@ return function(GB)
 				M._lastGoodLiveAt = now
 			end
 			M._current = pickCurrent()
-			M._refreshing = false
 			pdone("PlayerData.refreshLive", t0)
 			return M._live
 		end
-		perfCount("PlayerDataRefresh", 1)
-		local quests, done = GB.Remotes.getQuests()
-		if quests == nil and done == nil then
-			local snap = M._cache and M._cache.Data
-			if snap then
-				quests = snap.Quests
-				done = snap["Completed Quests"] or snap.CompletedQuests
-			end
+		if force or M._questDirty or stale then
+			M.requestLive(why or (force and "force" or "stale"))
 		end
-		if quests ~= nil or done ~= nil then
-			local newLive, newOrder = ingestList(quests)
-			local liveN, prevN = 0, 0
-			for _ in pairs(newLive) do
-				liveN = liveN + 1
-			end
-			for _ in pairs(M._live) do
-				prevN = prevN + 1
-			end
-			-- Respawn/stream often returns empty Quests for a few seconds. Keep the last good set.
-			if liveN == 0 and prevN > 0 and now - (M._lastGoodLiveAt or 0) < 12 then
-				if os.clock() - (M._emptyKeepAt or 0) > 4 then
-					M._emptyKeepAt = os.clock()
-					GB.Log.warn("STATE", "keep live quests; empty refresh " .. tostring(why or "poll"))
-				end
-				M._lastQuestFetchAt = now
-				M._questDirty = true
-				M._current = pickCurrent()
-			else
-				if done ~= nil then
-					local newDone = completedSet(done)
-					local doneN = 0
-					for _ in pairs(newDone) do
-						doneN = doneN + 1
-					end
-					if doneN > 0 or not next(M._done) then
-						M._done = newDone
-					end
-				end
-				M._live, M._order = ingestList(quests)
-				liveN = 0
-				for _ in pairs(M._live) do
-					liveN = liveN + 1
-				end
-				if liveN > 0 then
-					M._lastGoodLiveAt = now
-				end
-				M._at = now
-				M._lastQuestFetchAt = now
-				M._questDirty = false
-				M._tracker = readTracker() or M._tracker
-				local prev = M._current
-				M._current = pickCurrent()
-				if M._current and M._current ~= prev then
-					GB.Log.log("STATE", "live quest " .. M._current)
-					if GB.Combat and GB.Combat.stopLock then
-						GB.Combat.stopLock()
-					end
-					if GB.Persist and GB.Persist.checkpoint then
-						GB.Persist.checkpoint("quest", M._current)
-					end
-				end
-			end
-		elseif force or stale then
-			-- Keep dirty=true so next safety poll/event will retry.
-			M._questDirty = true
-			if why and os.clock() - (M._refreshWarnAt or 0) > 6 then
-				M._refreshWarnAt = os.clock()
-				GB.Log.warn("STATE", "quest refresh miss " .. tostring(why))
-			end
-		end
-		M._refreshing = false
+		M._current = pickCurrent()
 		pdone("PlayerData.refreshLive", t0)
 		return M._live
 	end
@@ -15187,6 +15368,7 @@ return function(GB)
 			if GB.State and GB.State.track then
 				GB.State.track.StateChange = os.clock()
 			end
+			M.requestLive(why)
 		end
 		local beginQ = ev:FindFirstChild("BeginQuest")
 		if beginQ then
@@ -15271,9 +15453,7 @@ return function(GB)
 				end
 			end)
 		end
-		task.spawn(function()
-			M.pullStats()
-		end)
+		M.requestStats("boot")
 	end
 
 	function M.raw()
@@ -15453,9 +15633,7 @@ return function(GB)
 		return false, false
 	end
 
-	function M.pullStats()
-		local t0 = pbegin()
-		local a, b = GB.Remotes.getStats()
+	local function applyStats(a, b)
 		local stats
 		local pts
 		if type(a) == "table" then
@@ -15484,13 +15662,40 @@ return function(GB)
 			M._statsSource = M._statsSource or "GetStats"
 			M._statsAt = os.clock()
 		end
-		pdone("PlayerData.pullStats", t0)
 		return a, b
+	end
+
+	function M.requestStats(why)
+		if not (GB.Remotes and GB.Remotes.getStats) then
+			return false
+		end
+		if GB.Broker and GB.Broker.isPending and GB.Broker.isPending("GetStats") then
+			return false
+		end
+		if GB.Remotes.requestStats then
+			return GB.Remotes.requestStats(function(a, b)
+				if GB.dead and GB.dead() then
+					return
+				end
+				applyStats(a, b)
+				if GB.Engine and GB.Engine.markContextDirty then
+					GB.Engine.markContextDirty(why or "stats")
+				end
+			end) == true
+		end
+		return false
+	end
+
+	function M.pullStats()
+		local t0 = pbegin()
+		M.requestStats("pull")
+		pdone("PlayerData.pullStats", t0)
+		return M._liveStats, M._unusedPts
 	end
 
 	function M.unusedStatPoints(force)
 		if force or type(M._unusedPts) ~= "number" or os.clock() - (M._unusedPtsAt or 0) > UNUSED_TTL then
-			M.pullStats()
+			M.requestStats("unused")
 		end
 		return tonumber(M._unusedPts)
 	end
@@ -15501,7 +15706,8 @@ return function(GB)
 
 	function M.refreshStats()
 		GB.Remotes.statReplicate()
-		return M.pullStats()
+		M.requestStats("refresh")
+		return M._liveStats, M._unusedPts
 	end
 
 	return M
@@ -17005,7 +17211,7 @@ return function(GB)
 		return M.fire("ClientQuest", 0.8, zoneName, "Enter Zone")
 	end
 
-	-- QuestInfo client + QuestLocal LoadQuests
+	-- Sync worker only. DecisionEngine must use PlayerData cache / Broker.request.
 	function M.getQuests()
 		local r = ev("GetData")
 		if not r then
@@ -17022,6 +17228,15 @@ return function(GB)
 		end
 		perfCount("GetDataQuests", 1)
 		return a, b
+	end
+
+	function M.requestQuests(onDone)
+		if not (GB.Broker and GB.Broker.request) then
+			return M.getQuests()
+		end
+		return GB.Broker.request("GetDataQuests", function()
+			return M.getQuests()
+		end, { minGap = 0.2, onDone = onDone })
 	end
 
 	function M.code(str)
@@ -17055,6 +17270,15 @@ return function(GB)
 		end
 		perfCount("GetStats", 1)
 		return a, b
+	end
+
+	function M.requestStats(onDone)
+		if not (GB.Broker and GB.Broker.request) then
+			return M.getStats()
+		end
+		return GB.Broker.request("GetStats", function()
+			return M.getStats()
+		end, { minGap = 0.35, onDone = onDone })
 	end
 
 	function M.getEquip()
@@ -20045,6 +20269,15 @@ return function(GB)
 		if not pos then
 			return false
 		end
+		if pos.Y > 120 then
+			local grounded = M.floorAt(Vector3.new(pos.X, 70, pos.Z), 70)
+				or M.groundAt and M.groundAt(Vector3.new(pos.X, 70, pos.Z))
+			if grounded then
+				pos = grounded
+			else
+				pos = Vector3.new(pos.X, math.min(pos.Y, 80), pos.Z)
+			end
+		end
 		if not M.destOk(pos) then
 			local g = M.groundAt(pos)
 			if not g then
@@ -20237,17 +20470,10 @@ return function(GB)
 	end
 
 	local function countParts(inst)
-		local n = 0
 		if not inst then
 			return 0
 		end
-		perfCount("WorkspaceDeepScan", 1)
-		for _, d in ipairs(inst:GetDescendants()) do
-			if isPart(d) then
-				n = n + 1
-			end
-		end
-		return n
+		return #inst:GetChildren()
 	end
 
 	local function usablePos(pos)
@@ -20325,13 +20551,8 @@ return function(GB)
 		local spawn
 		local spawnRoot = island:FindFirstChild("SpawnLocations")
 		if spawnRoot then
-			perfCount("WorkspaceDeepScan", 1)
-			for _, d in ipairs(spawnRoot:GetDescendants()) do
-				if d:IsA("SpawnLocation") or isPart(d) then
-					spawn = d
-					break
-				end
-			end
+			spawn = spawnRoot:FindFirstChildWhichIsA("SpawnLocation", true)
+				or spawnRoot:FindFirstChildWhichIsA("BasePart", true)
 		end
 		if not spawn then
 			for _, c in ipairs(island:GetChildren()) do
@@ -20628,11 +20849,10 @@ return function(GB)
 			if spawnRoot:IsA("SpawnLocation") or isPart(spawnRoot) then
 				return usablePos(spawnRoot.Position)
 			end
-			perfCount("WorkspaceDeepScan", 1)
-			for _, d in ipairs(spawnRoot:GetDescendants()) do
-				if d:IsA("SpawnLocation") or isPart(d) then
-					return usablePos(d.Position)
-				end
+			local d = spawnRoot:FindFirstChildWhichIsA("SpawnLocation", true)
+				or spawnRoot:FindFirstChildWhichIsA("BasePart", true)
+			if d then
+				return usablePos(d.Position)
 			end
 		end
 		return M.GetIslandPosition(isl)
@@ -21015,8 +21235,113 @@ return function(GB)
 		goal = nil,
 		task = nil,
 		owner = "IDLE",
+		farmSession = nil,
+		idleReason = "NONE",
+		intent = nil,
+		_contextDirty = true,
+		_lastRealProgressAt = 0,
+		_intentAt = 0,
+		_intentSwitches = 0,
+		_intentWindowAt = os.clock(),
 	}
 	local logDoing
+
+	function M.markContextDirty(why)
+		M._contextDirty = true
+		M._dirtyWhy = why
+		if GB.Scheduler and GB.Scheduler.nudge then
+			GB.Scheduler.nudge()
+		end
+	end
+
+	function M.markRealProgress(why)
+		M._lastRealProgressAt = os.clock()
+		M._lastRealProgressWhy = why
+		M.markContextDirty(why or "progress")
+		if M.farmSession then
+			M.farmSession.LastRealProgressAt = M._lastRealProgressAt
+		end
+	end
+
+	local function setIdle(reason, detail)
+		M.idleReason = reason or "NONE"
+		M.idleDetail = detail
+		if GB.Profiler and GB.Profiler.count and reason and reason ~= "NONE" then
+			GB.Profiler.count("IdleReason." .. tostring(reason), 1)
+		end
+	end
+
+	local function noteIntent(kind, target)
+		local key = tostring(kind) .. "|" .. tostring(target or "-")
+		if M._intentKey ~= key then
+			M._intentKey = key
+			M._intentAt = os.clock()
+			M._intentSwitches = (M._intentSwitches or 0) + 1
+			if os.clock() - (M._intentWindowAt or 0) >= 60 then
+				M._intentSwitches = 1
+				M._intentWindowAt = os.clock()
+			end
+		end
+		M.intent = { Kind = kind, Target = target, At = M._intentAt }
+	end
+
+	local function farmSessionClear(why)
+		if M.farmSession then
+			GB.Log.log("PLANNER", "farm session end " .. tostring(why or "done"))
+		end
+		M.farmSession = nil
+	end
+
+	local function farmSessionStart(goal, targetLevel, quest, note)
+		if M.farmSession and M.farmSession.Quest == quest and M.farmSession.Goal == goal then
+			M.farmSession.TargetLevel = targetLevel or M.farmSession.TargetLevel
+			M.farmSession.Note = note or M.farmSession.Note
+			return M.farmSession
+		end
+		M.farmSession = {
+			Goal = goal or "LEVEL",
+			TargetLevel = targetLevel,
+			Quest = quest,
+			Cycle = 0,
+			StartedAt = os.clock(),
+			LastCycleCompletedAt = 0,
+			LastRealProgressAt = os.clock(),
+			Note = note,
+		}
+		GB.Log.log("PLANNER", string.format(
+			"farm session goal=%s quest=%s targetLv=%s",
+			tostring(goal),
+			tostring(quest),
+			tostring(targetLevel or "-")
+		))
+		return M.farmSession
+	end
+
+	local function farmSessionStillOptimal(snap)
+		local fs = M.farmSession
+		if not fs then
+			return false
+		end
+		local lv = tonumber(snap and snap.Level) or 0
+		if fs.TargetLevel and lv >= fs.TargetLevel then
+			return false
+		end
+		if GB.Tutorial and GB.Tutorial.IsBlocking and select(1, GB.Tutorial.IsBlocking()) then
+			return false
+		end
+		if GB.Respawn and GB.Respawn.isBusy and GB.Respawn.isBusy() then
+			return false
+		end
+		return true
+	end
+
+	function M.intentSwitchesPerMin()
+		local age = os.clock() - (M._intentWindowAt or os.clock())
+		if age <= 0 then
+			return 0
+		end
+		return (M._intentSwitches or 0) * (60 / math.max(age, 1))
+	end
 
 	local function setOwner(owner, target)
 		owner = owner or "IDLE"
@@ -21026,6 +21351,7 @@ return function(GB)
 		end
 		M._ownerKey = key
 		M.owner = owner
+		noteIntent(owner, target)
 		GB.Log.log("STATE", string.format("owner=%s target=%s", tostring(owner), tostring(target or "-")))
 	end
 
@@ -21363,20 +21689,68 @@ return function(GB)
 			return nil
 		end
 
+		local function scoreActive(name, snap)
+		local score = 0
+		local qs = GB.Quest and GB.Quest.questState and GB.Quest.questState(name)
+		if not qs then
+			return -1
+		end
+		if qs.CanTurnIn or qs.IsComplete then
+			return 10000
+		end
+		local o = qs.Objective
+		if o and type(o.Current) == "number" and type(o.Amount) == "number" then
+			if o.Current >= o.Amount then
+				return 9500
+			end
+			local remain = o.Amount - o.Current
+			if remain <= 1 then
+				score = score + 800
+			elseif remain <= 2 then
+				score = score + 500
+			end
+			score = score + math.floor((o.Current / math.max(o.Amount, 1)) * 200)
+		end
+		local typ = o and o.Type
+		if typ == "Talk" or typ == "Automatic Talk" or typ == "GiveItemTo" then
+			score = score + 250
+		elseif typ == "Kill" or typ == "Defeat" or typ == "Hit" then
+			score = score + 180
+		end
+		if isStory(name) then
+			score = score + 400
+		end
+		if M.farmSession and M.farmSession.Quest == name then
+			score = score + 300
+		end
+		if M.intent and M.intent.Target and string.find(tostring(M.intent.Target), name, 1, true) then
+			score = score + 120
+		end
+		local island = snap and snap.CurrentIsland
+		if qs.Island and island and qs.Island == island then
+			score = score + 80
+		end
+		return score
+	end
+
 		local function pickReadyActive(skipName)
 		local turnIn = pickTurnInActive(skipName)
 		if turnIn then
 			return turnIn
 		end
-		local chosen
+		local snap = GB.State and GB.State.get and GB.State.get() or nil
+		local chosen, best
 		for _, name in ipairs(activeQuestNames()) do
 			if name ~= skipName and not GB.Config.SkipQuests[name] then
 				local status, why = questStatus(name)
 				if status == "BLOCKED_REQUIREMENT" or status == "DEFERRED" then
 					logBlockedQuest(name, why)
 				elseif status == "READY" or status == "IN_PROGRESS" then
-					chosen = name
-					break
+					local sc = scoreActive(name, snap)
+					if not best or sc > best then
+						best = sc
+						chosen = name
+					end
 				end
 			end
 		end
@@ -21494,6 +21868,13 @@ return function(GB)
 			GB.Log.log("PLANNER", "pool=" .. poolLabel)
 		end
 		M.goal = { Type = "FARM", Quest = poolLabel, Note = note, Mode = "pool", At = os.clock() }
+		local targetLv
+		local farmLv = string.match(note, "FarmUntilLevel%((%d+)")
+		if farmLv then
+			targetLv = tonumber(farmLv)
+		end
+		local sessionQuest = (jobs[1] and jobs[1].Name) or poolLabel
+		farmSessionStart(targetLv and "LEVEL" or "FARM", targetLv, sessionQuest, note)
 
 		local function jobReadyTurnIn(job)
 			local qs = job and job.qs
@@ -21547,9 +21928,10 @@ return function(GB)
 				if lockQuest and GB.Combat.objectiveFilled and GB.Combat.objectiveFilled(lockQuest) then
 					GB.Combat.stopLock()
 				else
+					setIdle("WAIT_CAN_SWING", "lock_active")
 					return {
 						attempted = true,
-						progressed = true,
+						progressed = false,
 						reason = "lock_active",
 						quest = poolLabel,
 					}
@@ -21567,10 +21949,17 @@ return function(GB)
 				GB.Log.log("STATE", string.format("farm_result %s reason=%s", poolLabel, tostring(whyHunt or (ok and "pool_engage" or "pool_miss"))))
 			end
 			if ok then
+				local why = tostring(whyHunt or "pool_engage")
+				local real = why == "kill_credit" or why == "quest_done" or why == "objective_filled"
+				if real then
+					M.markRealProgress(why)
+				else
+					setIdle("WAIT_CAN_SWING", why)
+				end
 				return {
 					attempted = true,
-					progressed = true,
-					reason = tostring(whyHunt or "pool_engage"),
+					progressed = real,
+					reason = why,
 					quest = poolLabel,
 				}
 			end
@@ -21609,6 +21998,40 @@ return function(GB)
 
 	local function farmHandled(result)
 		return type(result) == "table" and result.attempted == true
+	end
+
+	local function fastFarmPath(snap)
+		local fs = M.farmSession
+		if not (fs and fs.Quest and farmSessionStillOptimal(snap)) then
+			return false
+		end
+		local other = pickTurnInActive(fs.Quest)
+		if other then
+			return false
+		end
+		if questReadyTurnIn(fs.Quest) then
+			setTask("quest:" .. fs.Quest)
+			logDoing("turnin", fs.Quest)
+			setOwner("QUEST_TURNIN", fs.Quest)
+			GB.Quest.doLive(fs.Quest)
+			setIdle("NONE")
+			return true
+		end
+		local live = GB.PlayerData.live and GB.PlayerData.live(fs.Quest, true)
+		if not live then
+			setTask("quest_accept:" .. fs.Quest)
+			logDoing("quest_accept", fs.Quest)
+			setOwner("QUEST_ACCEPT", fs.Quest)
+			GB.Quest.doLive(fs.Quest)
+			setIdle("WAIT_DIALOGUE", "reaccept")
+			return true
+		end
+		setTask("farm:" .. fs.Quest)
+		logDoing("farm", fs.Quest)
+		setOwner("QUEST_OBJECTIVE", fs.Quest)
+		GB.Quest.doLive(fs.Quest)
+		setIdle("NONE")
+		return true
 	end
 
 	function M.optionalOk()
@@ -21694,6 +22117,7 @@ return function(GB)
 			return
 		end
 		if name and GB.PlayerData.finished(name, true) then
+			M.markRealProgress("quest_done:" .. tostring(name))
 			if GB.Stats and GB.Stats.markDirty then
 				GB.Stats.markDirty("quest_complete")
 			end
@@ -21701,6 +22125,19 @@ return function(GB)
 				GB.Combat.stopLock()
 			end
 			local snap = GB.State.get()
+			if M.farmSession and M.farmSession.Quest == name and farmSessionStillOptimal(snap) then
+				M.farmSession.Cycle = (M.farmSession.Cycle or 0) + 1
+				M.farmSession.LastCycleCompletedAt = os.clock()
+				setTask("quest_accept:" .. name)
+				logDoing("quest_accept", name)
+				setOwner("QUEST_ACCEPT", name)
+				GB.Quest.doLive(name)
+				setIdle("WAIT_DIALOGUE", "cycle_reaccept")
+				return
+			end
+			if M.farmSession and M.farmSession.TargetLevel and (snap.Level or 0) >= M.farmSession.TargetLevel then
+				farmSessionClear("level_met")
+			end
 			acceptNextStory(snap.CurrentIsland, snap.Level or 0)
 			return
 		end
@@ -21715,6 +22152,7 @@ return function(GB)
 			if GB.Respawn.isBusy and GB.Respawn.isBusy() then
 				setTask("respawn")
 				logDoing("respawn", GB.Respawn.currentPhase and GB.Respawn.currentPhase())
+				setIdle("WAIT_RESPAWN", GB.Respawn.currentPhase and GB.Respawn.currentPhase())
 				if GB.Respawn.tick then
 					GB.Respawn.tick()
 				end
@@ -21733,12 +22171,23 @@ return function(GB)
 			else
 				setTask("wait_spawn")
 				logDoing("wait_spawn")
+				setIdle("WAIT_RESPAWN", "wait_spawn")
 			end
 			return
 		end
 		if GB.PlayerData and GB.PlayerData.refreshLive then
 			GB.PlayerData.refreshLive(false, "engine_cycle")
 		end
+		if M.farmSession and M.farmSession.TargetLevel and (snap.Level or 0) >= M.farmSession.TargetLevel then
+			farmSessionClear("level_met")
+		end
+		if GB.Broker and GB.Broker.isPending and GB.Broker.isPending("GetDataQuests") then
+			setIdle("WAIT_DATA", "GetDataQuests")
+		end
+		if not M._contextDirty and fastFarmPath(snap) then
+			return
+		end
+		M._contextDirty = false
 		if GB.Knowledge and GB.Knowledge.buildContext then
 			M.ctx = GB.Knowledge.buildContext()
 		end
@@ -22021,12 +22470,23 @@ return function(GB)
 		local rep = bestRepeat(island, lv)
 		if rep then
 			farmHandled(runFarmGoal(snap, "story_idle"))
+			setIdle("NONE")
 			return
 		end
 
 		runOptional()
 		setTask("idle")
 		logDoing("idle")
+		if GB.Config.Enabled and snap.Alive then
+			setIdle("BUG_NO_PLAN", "no_goal")
+			M.markContextDirty("no_plan")
+			if M._noPlanAt == nil or os.clock() - M._noPlanAt > 8 then
+				M._noPlanAt = os.clock()
+				GB.Log.warn("PLANNER", "BUG_NO_PLAN")
+			end
+		else
+			setIdle("NO_VALID_GOAL")
+		end
 	end
 
 	local _decideRaw = M.decide
@@ -22357,8 +22817,7 @@ return function(GB)
 
 		for _, root in ipairs(roots) do
 			consider(root)
-			perfCount("WorkspaceDeepScan", 1)
-			for _, d in ipairs(root:GetDescendants()) do
+			for _, d in ipairs(root:GetChildren()) do
 				consider(d)
 			end
 		end
@@ -24006,10 +24465,19 @@ return function(GB)
 		local qn = M.lockQuest
 		local before = M.lastKillBefore
 		M.stopLock()
+		if GB.Engine and GB.Engine.markContextDirty then
+			GB.Engine.markContextDirty("target_dead")
+		end
+		if GB.Scheduler and GB.Scheduler.nudge then
+			GB.Scheduler.nudge()
+		end
 		if qn then
 			local ok = M.logKillCredit(qn, before)
 			if ok or M.questCombatDone(qn, { force = true, source = "target_dead" }) then
 				M.lastQuestDone = qn
+				if GB.Engine and GB.Engine.markRealProgress then
+					GB.Engine.markRealProgress("kill_credit")
+				end
 			end
 		end
 	end
@@ -24360,6 +24828,9 @@ return function(GB)
 				return nil
 			end
 			dest = Vector3.new(part.Position.X, baseY + hoverHeight(), part.Position.Z)
+			if dest.Y > 80 then
+				return nil
+			end
 			if dest.Y > baseY + hoverHeight() + 2 then
 				dest = Vector3.new(dest.X, baseY + hoverHeight(), dest.Z)
 			end
@@ -27502,12 +27973,11 @@ return function(GB)
 				end
 			end
 			GB.World.waitUnpause()
-			task.wait(0.25)
 		end
 		local cfg = GB.Resolver.dialogueConfig(pack.Instance)
 		local spoken, whyTalk = fireTalkVariants(talkNameList(shown, pack), cfg)
 		if not spoken then
-			local lingerUntil = os.clock() + 2.4
+			local lingerUntil = os.clock() + 0.9
 			while os.clock() < lingerUntil do
 				if dialogueOpen() then
 					spoken = shown
@@ -27518,19 +27988,27 @@ return function(GB)
 					M.lastClick = os.clock()
 					break
 				end
-				task.wait(0.12)
+				task.wait(0.05)
 			end
 		end
 		if not spoken and GB.World and GB.World.interact then
 			GB.World.interact(pack.Instance, GB.Config.TalkRange or 14)
-			task.wait(0.35)
+			local waitUntil = os.clock() + 0.6
+			while os.clock() < waitUntil and not dialogueOpen() do
+				task.wait(0.05)
+			end
 			spoken, whyTalk = fireTalkVariants(talkNameList(shown, pack), cfg)
 		end
 		if not spoken then
 			M.lastTalk[key] = os.clock()
 			return false, "talk_no_dialogue:" .. tostring(whyTalk or "none")
 		end
-		task.wait(0.35)
+		if not dialogueOpen() then
+			local readyUntil = os.clock() + 0.45
+			while os.clock() < readyUntil and not dialogueOpen() do
+				task.wait(0.05)
+			end
+		end
 		if clickAccept(opts) then
 			M.lastClick = os.clock()
 		end
@@ -27551,9 +28029,14 @@ return function(GB)
 	end
 
 	local function waitQuestAccepted(name, timeout)
-		timeout = timeout or 5.4
+		timeout = timeout or 2.4
 		local t0 = os.clock()
-		local nextRefreshAt = 0
+		if questAcceptedNow(name) then
+			return true, "accepted"
+		end
+		if GB.PlayerData and GB.PlayerData.requestLive then
+			GB.PlayerData.requestLive("accept_wait:" .. tostring(name))
+		end
 		while os.clock() - t0 < timeout do
 			if respawnBusy() then
 				return false, "respawn"
@@ -27561,32 +28044,30 @@ return function(GB)
 			if questAcceptedNow(name) then
 				return true, "accepted"
 			end
-			if dialogueOpen() and os.clock() - (M.lastClick or 0) >= 0.45 then
+			if dialogueOpen() and os.clock() - (M.lastClick or 0) >= 0.35 then
 				if clickAccept({ QuestName = name, Action = "accept" }) then
 					M.lastClick = os.clock()
 				end
 			end
-			if os.clock() >= nextRefreshAt then
-				nextRefreshAt = os.clock() + 0.9
-				if GB.PlayerData and GB.PlayerData.forceQuestRefresh then
-					GB.PlayerData.forceQuestRefresh("accept_wait:" .. tostring(name))
-				elseif GB.PlayerData and GB.PlayerData.refreshLive then
-					GB.PlayerData.refreshLive(true, "accept_wait:" .. tostring(name))
-				end
-			end
-			task.wait(0.18)
+			task.wait(0.05)
 		end
 		return questAcceptedNow(name), "timeout"
 	end
 
 	function M.waitProgress(name, beforeSig, timeout)
-		timeout = timeout or 2.8
+		timeout = timeout or 1.2
+		if (not isRepeatable(name)) and GB.PlayerData.finished(name, true) then
+			return true, "done"
+		end
+		local qs0 = M.questState(name)
+		if M.signature(qs0) ~= beforeSig then
+			return true, M.signature(qs0)
+		end
 		local t0 = os.clock()
 		while os.clock() - t0 < timeout do
 			if respawnBusy() then
 				return false, "respawn"
 			end
-			task.wait(0.2)
 			if (not isRepeatable(name)) and GB.PlayerData.finished(name, true) then
 				return true, "done"
 			end
@@ -27595,12 +28076,16 @@ return function(GB)
 			if sig ~= beforeSig then
 				return true, sig
 			end
+			task.wait(0.05)
 		end
 		return false, "timeout"
 	end
 
 	local function waitTalkProgress(name, beforeSig, timeout)
-		timeout = timeout or 5.6
+		timeout = timeout or 2.0
+		if (not isRepeatable(name)) and GB.PlayerData.finished(name, true) then
+			return true, "done"
+		end
 		local t0 = os.clock()
 		local lastClick = 0
 		while os.clock() - t0 < timeout do
@@ -27612,13 +28097,13 @@ return function(GB)
 			if sig ~= beforeSig then
 				return true, sig
 			end
-			if dialogueOpen() and os.clock() - lastClick >= 0.55 then
+			if dialogueOpen() and os.clock() - lastClick >= 0.35 then
 				if clickAccept({ QuestName = name, Action = "progress" }) then
 					lastClick = os.clock()
 					M.lastClick = lastClick
 				end
 			end
-			task.wait(0.18)
+			task.wait(0.05)
 		end
 		return false, "timeout"
 	end
@@ -29955,23 +30440,20 @@ return function(GB)
 		if not force and M._remoteStats and now - (M._remoteAt or 0) < STATE_TTL then
 			return M._remoteStats, M._remoteUnused, "GetStatsCache"
 		end
-		local a, b
-		if GB.PlayerData and GB.PlayerData.pullStats then
-			a, b = GB.PlayerData.pullStats()
-		else
-			a, b = GB.Remotes.getStats()
+		if GB.PlayerData and GB.PlayerData.requestStats then
+			GB.PlayerData.requestStats("stats_tick")
 		end
-		local statsRaw, unusedRaw = pullTuple(a, b)
+		local live, pts, src
+		if GB.PlayerData and GB.PlayerData.latestStats then
+			live, pts, src = GB.PlayerData.latestStats()
+		end
+		local statsRaw, unusedRaw = live, pts
 		local stats = normalizeStats(statsRaw)
 		if stats then
 			M._remoteStats = stats
 			M._remoteUnused = tonumber(unusedRaw)
 			M._remoteAt = now
-			return stats, tonumber(unusedRaw), "GetStats"
-		end
-		local live, pts, src
-		if GB.PlayerData and GB.PlayerData.latestStats then
-			live, pts, src = GB.PlayerData.latestStats()
+			return stats, tonumber(unusedRaw), src or "GetStatsCache"
 		end
 		stats = normalizeStats(live)
 		if stats then
@@ -31492,6 +31974,38 @@ return function(GB)
 		return stopAll("unloaded")
 	end
 
+	function GB.SelfCheck()
+		local snap = GB.State and GB.State.get and GB.State.get() or {}
+		local eng = GB.Engine or {}
+		local worstName, worstMax
+		if GB.Profiler and GB.Profiler.metrics then
+			for name, row in pairs(GB.Profiler.metrics) do
+				local mx = tonumber(row.max) or 0
+				if not worstMax or mx > worstMax then
+					worstMax = mx
+					worstName = name
+				end
+			end
+		end
+		local pending = GB.Broker and GB.Broker.pendingNames and GB.Broker.pendingNames() or {}
+		return {
+			Enabled = GB.Config and GB.Config.Enabled == true,
+			Alive = snap.Alive == true,
+			Version = tostring(getgenv().GB_VERSION or "unknown"),
+			Build = tostring(getgenv().GB_COMMIT or "unknown"),
+			Intent = eng.intent,
+			Owner = eng.owner,
+			Quest = GB.PlayerData and GB.PlayerData.current and GB.PlayerData.current() or nil,
+			FarmSession = eng.farmSession,
+			IdleReason = eng.idleReason,
+			RemotePending = pending,
+			LastProgress = eng._lastRealProgressAt,
+			LastProgressAge = eng._lastRealProgressAt and (os.clock() - eng._lastRealProgressAt) or nil,
+			ProfilerWorst = worstName and { name = worstName, max = worstMax } or nil,
+			IntentSwitchesPerMin = eng.intentSwitchesPerMin and eng.intentSwitchesPerMin() or 0,
+		}
+	end
+
 	function GB.ConnectionStats()
 		local total = #GB.conns
 		local connected = 0
@@ -32444,6 +32958,7 @@ return P
     { key = "Profiler", path = "Core/Profiler.lua", kind = "core" },
     { key = "Cache", path = "Core/Cache.lua", kind = "core" },
     { key = "Retry", path = "Core/Retry.lua", kind = "core" },
+    { key = "Broker", path = "Core/RemoteBroker.lua", kind = "core" },
     { key = "Scheduler", path = "Core/Scheduler.lua", kind = "core" },
     { key = "Persist", path = "Core/Persist.lua", kind = "core" },
     { key = "State", path = "Core/State.lua", kind = "core" },

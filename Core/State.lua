@@ -323,6 +323,14 @@ return function(GB)
 				return true, ui
 			end
 		end
+		if GB.Config and GB.Config.DebugTutorialScan ~= true then
+			M._overlayVisible = false
+			M._overlayVisibleUi = nil
+			M._overlayVisibleAt = now
+			M._overlayDirty = false
+			pdone("State.tutorialOverlayVisible", t0)
+			return false, nil
+		end
 		if now - (M._overlayLastScanAt or 0) < OVERLAY_FULL_SCAN_GAP then
 			M._overlayVisible = false
 			M._overlayVisibleUi = nil

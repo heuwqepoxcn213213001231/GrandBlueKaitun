@@ -337,6 +337,38 @@ return function(GB)
 		return stopAll("unloaded")
 	end
 
+	function GB.SelfCheck()
+		local snap = GB.State and GB.State.get and GB.State.get() or {}
+		local eng = GB.Engine or {}
+		local worstName, worstMax
+		if GB.Profiler and GB.Profiler.metrics then
+			for name, row in pairs(GB.Profiler.metrics) do
+				local mx = tonumber(row.max) or 0
+				if not worstMax or mx > worstMax then
+					worstMax = mx
+					worstName = name
+				end
+			end
+		end
+		local pending = GB.Broker and GB.Broker.pendingNames and GB.Broker.pendingNames() or {}
+		return {
+			Enabled = GB.Config and GB.Config.Enabled == true,
+			Alive = snap.Alive == true,
+			Version = tostring(getgenv().GB_VERSION or "unknown"),
+			Build = tostring(getgenv().GB_COMMIT or "unknown"),
+			Intent = eng.intent,
+			Owner = eng.owner,
+			Quest = GB.PlayerData and GB.PlayerData.current and GB.PlayerData.current() or nil,
+			FarmSession = eng.farmSession,
+			IdleReason = eng.idleReason,
+			RemotePending = pending,
+			LastProgress = eng._lastRealProgressAt,
+			LastProgressAge = eng._lastRealProgressAt and (os.clock() - eng._lastRealProgressAt) or nil,
+			ProfilerWorst = worstName and { name = worstName, max = worstMax } or nil,
+			IntentSwitchesPerMin = eng.intentSwitchesPerMin and eng.intentSwitchesPerMin() or 0,
+		}
+	end
+
 	function GB.ConnectionStats()
 		local total = #GB.conns
 		local connected = 0

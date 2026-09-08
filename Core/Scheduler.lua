@@ -7,6 +7,7 @@ return function(GB)
 		_conn = nil,
 		_last = 0,
 		_running = false,
+		_nudge = false,
 	}
 
 	local function pbegin()
@@ -81,6 +82,10 @@ return function(GB)
 		pdone("Scheduler.step", t0)
 	end
 
+	function M.nudge()
+		M._nudge = true
+	end
+
 	function M.start()
 		if M._running then
 			return
@@ -89,13 +94,28 @@ return function(GB)
 		task.spawn(function()
 			while M._running and not (GB.dead and GB.dead()) do
 				M.step()
-				task.wait(GB.Config.Tick or 0.4)
+				local budget = tonumber(GB.Config and GB.Config.Tick) or 0.15
+				if budget < 0.05 then
+					budget = 0.05
+				end
+				local t0 = os.clock()
+				while M._running and not (GB.dead and GB.dead()) do
+					if M._nudge then
+						M._nudge = false
+						break
+					end
+					if os.clock() - t0 >= budget then
+						break
+					end
+					task.wait(0.03)
+				end
 			end
 		end)
 	end
 
 	function M.stop()
 		M._running = false
+		M._nudge = false
 	end
 
 	return M

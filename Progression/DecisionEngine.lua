@@ -6,8 +6,113 @@ return function(GB)
 		goal = nil,
 		task = nil,
 		owner = "IDLE",
+		farmSession = nil,
+		idleReason = "NONE",
+		intent = nil,
+		_contextDirty = true,
+		_lastRealProgressAt = 0,
+		_intentAt = 0,
+		_intentSwitches = 0,
+		_intentWindowAt = os.clock(),
 	}
 	local logDoing
+
+	function M.markContextDirty(why)
+		M._contextDirty = true
+		M._dirtyWhy = why
+		if GB.Scheduler and GB.Scheduler.nudge then
+			GB.Scheduler.nudge()
+		end
+	end
+
+	function M.markRealProgress(why)
+		M._lastRealProgressAt = os.clock()
+		M._lastRealProgressWhy = why
+		M.markContextDirty(why or "progress")
+		if M.farmSession then
+			M.farmSession.LastRealProgressAt = M._lastRealProgressAt
+		end
+	end
+
+	local function setIdle(reason, detail)
+		M.idleReason = reason or "NONE"
+		M.idleDetail = detail
+		if GB.Profiler and GB.Profiler.count and reason and reason ~= "NONE" then
+			GB.Profiler.count("IdleReason." .. tostring(reason), 1)
+		end
+	end
+
+	local function noteIntent(kind, target)
+		local key = tostring(kind) .. "|" .. tostring(target or "-")
+		if M._intentKey ~= key then
+			M._intentKey = key
+			M._intentAt = os.clock()
+			M._intentSwitches = (M._intentSwitches or 0) + 1
+			if os.clock() - (M._intentWindowAt or 0) >= 60 then
+				M._intentSwitches = 1
+				M._intentWindowAt = os.clock()
+			end
+		end
+		M.intent = { Kind = kind, Target = target, At = M._intentAt }
+	end
+
+	local function farmSessionClear(why)
+		if M.farmSession then
+			GB.Log.log("PLANNER", "farm session end " .. tostring(why or "done"))
+		end
+		M.farmSession = nil
+	end
+
+	local function farmSessionStart(goal, targetLevel, quest, note)
+		if M.farmSession and M.farmSession.Quest == quest and M.farmSession.Goal == goal then
+			M.farmSession.TargetLevel = targetLevel or M.farmSession.TargetLevel
+			M.farmSession.Note = note or M.farmSession.Note
+			return M.farmSession
+		end
+		M.farmSession = {
+			Goal = goal or "LEVEL",
+			TargetLevel = targetLevel,
+			Quest = quest,
+			Cycle = 0,
+			StartedAt = os.clock(),
+			LastCycleCompletedAt = 0,
+			LastRealProgressAt = os.clock(),
+			Note = note,
+		}
+		GB.Log.log("PLANNER", string.format(
+			"farm session goal=%s quest=%s targetLv=%s",
+			tostring(goal),
+			tostring(quest),
+			tostring(targetLevel or "-")
+		))
+		return M.farmSession
+	end
+
+	local function farmSessionStillOptimal(snap)
+		local fs = M.farmSession
+		if not fs then
+			return false
+		end
+		local lv = tonumber(snap and snap.Level) or 0
+		if fs.TargetLevel and lv >= fs.TargetLevel then
+			return false
+		end
+		if GB.Tutorial and GB.Tutorial.IsBlocking and select(1, GB.Tutorial.IsBlocking()) then
+			return false
+		end
+		if GB.Respawn and GB.Respawn.isBusy and GB.Respawn.isBusy() then
+			return false
+		end
+		return true
+	end
+
+	function M.intentSwitchesPerMin()
+		local age = os.clock() - (M._intentWindowAt or os.clock())
+		if age <= 0 then
+			return 0
+		end
+		return (M._intentSwitches or 0) * (60 / math.max(age, 1))
+	end
 
 	local function setOwner(owner, target)
 		owner = owner or "IDLE"
@@ -17,6 +122,7 @@ return function(GB)
 		end
 		M._ownerKey = key
 		M.owner = owner
+		noteIntent(owner, target)
 		GB.Log.log("STATE", string.format("owner=%s target=%s", tostring(owner), tostring(target or "-")))
 	end
 
@@ -354,20 +460,68 @@ return function(GB)
 			return nil
 		end
 
+		local function scoreActive(name, snap)
+		local score = 0
+		local qs = GB.Quest and GB.Quest.questState and GB.Quest.questState(name)
+		if not qs then
+			return -1
+		end
+		if qs.CanTurnIn or qs.IsComplete then
+			return 10000
+		end
+		local o = qs.Objective
+		if o and type(o.Current) == "number" and type(o.Amount) == "number" then
+			if o.Current >= o.Amount then
+				return 9500
+			end
+			local remain = o.Amount - o.Current
+			if remain <= 1 then
+				score = score + 800
+			elseif remain <= 2 then
+				score = score + 500
+			end
+			score = score + math.floor((o.Current / math.max(o.Amount, 1)) * 200)
+		end
+		local typ = o and o.Type
+		if typ == "Talk" or typ == "Automatic Talk" or typ == "GiveItemTo" then
+			score = score + 250
+		elseif typ == "Kill" or typ == "Defeat" or typ == "Hit" then
+			score = score + 180
+		end
+		if isStory(name) then
+			score = score + 400
+		end
+		if M.farmSession and M.farmSession.Quest == name then
+			score = score + 300
+		end
+		if M.intent and M.intent.Target and string.find(tostring(M.intent.Target), name, 1, true) then
+			score = score + 120
+		end
+		local island = snap and snap.CurrentIsland
+		if qs.Island and island and qs.Island == island then
+			score = score + 80
+		end
+		return score
+	end
+
 		local function pickReadyActive(skipName)
 		local turnIn = pickTurnInActive(skipName)
 		if turnIn then
 			return turnIn
 		end
-		local chosen
+		local snap = GB.State and GB.State.get and GB.State.get() or nil
+		local chosen, best
 		for _, name in ipairs(activeQuestNames()) do
 			if name ~= skipName and not GB.Config.SkipQuests[name] then
 				local status, why = questStatus(name)
 				if status == "BLOCKED_REQUIREMENT" or status == "DEFERRED" then
 					logBlockedQuest(name, why)
 				elseif status == "READY" or status == "IN_PROGRESS" then
-					chosen = name
-					break
+					local sc = scoreActive(name, snap)
+					if not best or sc > best then
+						best = sc
+						chosen = name
+					end
 				end
 			end
 		end
@@ -485,6 +639,13 @@ return function(GB)
 			GB.Log.log("PLANNER", "pool=" .. poolLabel)
 		end
 		M.goal = { Type = "FARM", Quest = poolLabel, Note = note, Mode = "pool", At = os.clock() }
+		local targetLv
+		local farmLv = string.match(note, "FarmUntilLevel%((%d+)")
+		if farmLv then
+			targetLv = tonumber(farmLv)
+		end
+		local sessionQuest = (jobs[1] and jobs[1].Name) or poolLabel
+		farmSessionStart(targetLv and "LEVEL" or "FARM", targetLv, sessionQuest, note)
 
 		local function jobReadyTurnIn(job)
 			local qs = job and job.qs
@@ -538,9 +699,10 @@ return function(GB)
 				if lockQuest and GB.Combat.objectiveFilled and GB.Combat.objectiveFilled(lockQuest) then
 					GB.Combat.stopLock()
 				else
+					setIdle("WAIT_CAN_SWING", "lock_active")
 					return {
 						attempted = true,
-						progressed = true,
+						progressed = false,
 						reason = "lock_active",
 						quest = poolLabel,
 					}
@@ -558,10 +720,17 @@ return function(GB)
 				GB.Log.log("STATE", string.format("farm_result %s reason=%s", poolLabel, tostring(whyHunt or (ok and "pool_engage" or "pool_miss"))))
 			end
 			if ok then
+				local why = tostring(whyHunt or "pool_engage")
+				local real = why == "kill_credit" or why == "quest_done" or why == "objective_filled"
+				if real then
+					M.markRealProgress(why)
+				else
+					setIdle("WAIT_CAN_SWING", why)
+				end
 				return {
 					attempted = true,
-					progressed = true,
-					reason = tostring(whyHunt or "pool_engage"),
+					progressed = real,
+					reason = why,
 					quest = poolLabel,
 				}
 			end
@@ -600,6 +769,40 @@ return function(GB)
 
 	local function farmHandled(result)
 		return type(result) == "table" and result.attempted == true
+	end
+
+	local function fastFarmPath(snap)
+		local fs = M.farmSession
+		if not (fs and fs.Quest and farmSessionStillOptimal(snap)) then
+			return false
+		end
+		local other = pickTurnInActive(fs.Quest)
+		if other then
+			return false
+		end
+		if questReadyTurnIn(fs.Quest) then
+			setTask("quest:" .. fs.Quest)
+			logDoing("turnin", fs.Quest)
+			setOwner("QUEST_TURNIN", fs.Quest)
+			GB.Quest.doLive(fs.Quest)
+			setIdle("NONE")
+			return true
+		end
+		local live = GB.PlayerData.live and GB.PlayerData.live(fs.Quest, true)
+		if not live then
+			setTask("quest_accept:" .. fs.Quest)
+			logDoing("quest_accept", fs.Quest)
+			setOwner("QUEST_ACCEPT", fs.Quest)
+			GB.Quest.doLive(fs.Quest)
+			setIdle("WAIT_DIALOGUE", "reaccept")
+			return true
+		end
+		setTask("farm:" .. fs.Quest)
+		logDoing("farm", fs.Quest)
+		setOwner("QUEST_OBJECTIVE", fs.Quest)
+		GB.Quest.doLive(fs.Quest)
+		setIdle("NONE")
+		return true
 	end
 
 	function M.optionalOk()
@@ -685,6 +888,7 @@ return function(GB)
 			return
 		end
 		if name and GB.PlayerData.finished(name, true) then
+			M.markRealProgress("quest_done:" .. tostring(name))
 			if GB.Stats and GB.Stats.markDirty then
 				GB.Stats.markDirty("quest_complete")
 			end
@@ -692,6 +896,19 @@ return function(GB)
 				GB.Combat.stopLock()
 			end
 			local snap = GB.State.get()
+			if M.farmSession and M.farmSession.Quest == name and farmSessionStillOptimal(snap) then
+				M.farmSession.Cycle = (M.farmSession.Cycle or 0) + 1
+				M.farmSession.LastCycleCompletedAt = os.clock()
+				setTask("quest_accept:" .. name)
+				logDoing("quest_accept", name)
+				setOwner("QUEST_ACCEPT", name)
+				GB.Quest.doLive(name)
+				setIdle("WAIT_DIALOGUE", "cycle_reaccept")
+				return
+			end
+			if M.farmSession and M.farmSession.TargetLevel and (snap.Level or 0) >= M.farmSession.TargetLevel then
+				farmSessionClear("level_met")
+			end
 			acceptNextStory(snap.CurrentIsland, snap.Level or 0)
 			return
 		end
@@ -706,6 +923,7 @@ return function(GB)
 			if GB.Respawn.isBusy and GB.Respawn.isBusy() then
 				setTask("respawn")
 				logDoing("respawn", GB.Respawn.currentPhase and GB.Respawn.currentPhase())
+				setIdle("WAIT_RESPAWN", GB.Respawn.currentPhase and GB.Respawn.currentPhase())
 				if GB.Respawn.tick then
 					GB.Respawn.tick()
 				end
@@ -724,12 +942,23 @@ return function(GB)
 			else
 				setTask("wait_spawn")
 				logDoing("wait_spawn")
+				setIdle("WAIT_RESPAWN", "wait_spawn")
 			end
 			return
 		end
 		if GB.PlayerData and GB.PlayerData.refreshLive then
 			GB.PlayerData.refreshLive(false, "engine_cycle")
 		end
+		if M.farmSession and M.farmSession.TargetLevel and (snap.Level or 0) >= M.farmSession.TargetLevel then
+			farmSessionClear("level_met")
+		end
+		if GB.Broker and GB.Broker.isPending and GB.Broker.isPending("GetDataQuests") then
+			setIdle("WAIT_DATA", "GetDataQuests")
+		end
+		if not M._contextDirty and fastFarmPath(snap) then
+			return
+		end
+		M._contextDirty = false
 		if GB.Knowledge and GB.Knowledge.buildContext then
 			M.ctx = GB.Knowledge.buildContext()
 		end
@@ -1012,12 +1241,23 @@ return function(GB)
 		local rep = bestRepeat(island, lv)
 		if rep then
 			farmHandled(runFarmGoal(snap, "story_idle"))
+			setIdle("NONE")
 			return
 		end
 
 		runOptional()
 		setTask("idle")
 		logDoing("idle")
+		if GB.Config.Enabled and snap.Alive then
+			setIdle("BUG_NO_PLAN", "no_goal")
+			M.markContextDirty("no_plan")
+			if M._noPlanAt == nil or os.clock() - M._noPlanAt > 8 then
+				M._noPlanAt = os.clock()
+				GB.Log.warn("PLANNER", "BUG_NO_PLAN")
+			end
+		else
+			setIdle("NO_VALID_GOAL")
+		end
 	end
 
 	local _decideRaw = M.decide

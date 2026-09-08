@@ -129,8 +129,7 @@ return function(GB)
 
 		for _, root in ipairs(roots) do
 			consider(root)
-			perfCount("WorkspaceDeepScan", 1)
-			for _, d in ipairs(root:GetDescendants()) do
+			for _, d in ipairs(root:GetChildren()) do
 				consider(d)
 			end
 		end

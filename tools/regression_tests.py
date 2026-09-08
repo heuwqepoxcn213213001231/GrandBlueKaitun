@@ -157,6 +157,19 @@ def main() -> int:
 
     if "otherOrFarm" not in engine:
         fail("DecisionEngine blocked-goal fallback missing")
+    if "farmSession" not in engine:
+        fail("FarmSession missing")
+    if re.search(r"progressed\s*=\s*true[\s\S]{0,80}lock_active", engine):
+        fail("lock_active still counted as real progress")
+    loader = read("loader.lua")
+    if "DEFAULT_BOOTSTRAP_REF" in loader:
+        fail("loader still has DEFAULT_BOOTSTRAP_REF pin")
+    if "PinBuild" not in loader:
+        fail("loader does not pin bundle to build.commit")
+    if "function GB.SelfCheck" not in read("kaitun.lua"):
+        fail("SelfCheck missing")
+    if "Core/RemoteBroker.lua" not in manifest.get("files", {}):
+        fail("manifest missing RemoteBroker")
     if "fingerprint" not in recovery:
         fail("Recovery fingerprint defer missing")
 

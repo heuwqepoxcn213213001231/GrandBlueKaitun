@@ -142,6 +142,22 @@ def main() -> None:
         fail("Combat missing slow quest validation path")
     if "GB.Stats.tick()" not in engine_src:
         fail("DecisionEngine missing single-owner stats tick")
+    if "DEFAULT_BOOTSTRAP_REF" in loader_src:
+        fail("loader.lua still pins DEFAULT_BOOTSTRAP_REF")
+    if "PinBuild" not in loader_src:
+        fail("loader.lua missing PinBuild / build.commit content pin")
+    if "GB_DEV_MODULAR" not in loader_src:
+        fail("loader.lua missing GB_DEV_MODULAR gate")
+    if "Core/RemoteBroker.lua" not in files:
+        fail("manifest.files missing Core/RemoteBroker.lua")
+    if not any(isinstance(row, dict) and row.get("path") == "Core/RemoteBroker.lua" for row in order):
+        fail("manifest.order missing Core/RemoteBroker.lua")
+    if "function GB.SelfCheck" not in kaitun_src:
+        fail("kaitun.lua missing SelfCheck")
+    if "farmSession" not in engine_src:
+        fail("DecisionEngine missing farmSession")
+    if re.search(r"progressed\s*=\s*true[\s\S]{0,80}lock_active", engine_src):
+        fail("DecisionEngine still treats lock_active as progressed")
 
     stats_src = stats_path.read_text(encoding="utf-8")
     quest_src = quest_path.read_text(encoding="utf-8")

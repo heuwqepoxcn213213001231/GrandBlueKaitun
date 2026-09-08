@@ -20,5 +20,11 @@ These are **static** checks. A PASS means the current source still contains the 
 | Death / respawn | Phase machine; no `LoadCharacter` | STATIC |
 | BeginQuest | `Remotes.fire` bans the name | STATIC |
 | Version integrity | VERSION == manifest | STATIC |
+| FarmSession / lock_active | session + progressed=false | STATIC |
+| Loader pin | no DEFAULT_BOOTSTRAP_REF; PinBuild | STATIC |
+| RemoteBroker | PlayerData cache-only refresh | STATIC |
+| SelfCheck | `GB.SelfCheck` | STATIC |
+
+Also: `python3 tools/scenario_tests.py`.
 
 Live playthrough of Fresh→Anchor→Clown→Maple is still **RUNTIME required**.

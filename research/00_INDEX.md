@@ -1,6 +1,6 @@
 # Grand Blue (Eternal Pose) — Research Pack
 
-**Turn scope:** 1.1.42 knowledge-model hardening. Entry `loader.lua` → modules / `dist/kaitun.lua`. Reports: `KNOWLEDGE_MODEL.md`, `DATA_INTEGRITY_REPORT.md`, `FULL_SYSTEM_AUDIT.md`, `PERFORMANCE_AUDIT.md`, `REGRESSION_TESTS.md`, `FUTURE_UPDATE_GUIDE.md`, plus FINAL / MATRIX / COVERAGE / REMOTE / TUTORIAL / PROGRESSION.
+**Turn scope:** 1.2.0 continuous progression + stable loader. Entry `main/loader.lua` → VERSION/manifest → immutable `build.commit` bundle. Reports: `CONTINUOUS_EXECUTION_AUDIT.md`, `RUNTIME_ARCHITECTURE.md`, `REMOTE_LATENCY_AUDIT.md`, `SCENARIO_TESTS.md`, plus existing knowledge pack.
 
 **Place (Studio):** `place 118635363908336 Game.rbxl` — connected. `Workspace.Islands` chỉ có 3 đảo.
 
@@ -31,6 +31,10 @@
 | `PERFORMANCE_AUDIT.md` | Hot-path classification |
 | `REGRESSION_TESTS.md` | Static regression matrix |
 | `FUTURE_UPDATE_GUIDE.md` | Dump-change rebuild flow |
+| `CONTINUOUS_EXECUTION_AUDIT.md` | Waits + IdleReason + fast path |
+| `RUNTIME_ARCHITECTURE.md` | Loader pin + broker + owners |
+| `REMOTE_LATENCY_AUDIT.md` | GetStats/GetData non-blocking |
+| `SCENARIO_TESTS.md` | Zero-idle scenario contracts |
 
 ## Nguồn (thứ tự authority)
 

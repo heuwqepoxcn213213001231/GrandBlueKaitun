@@ -398,6 +398,12 @@ return function(GB)
 			M._dirtyLogAt = os.clock()
 			GB.Log.log("STATE", "quest dirty " .. tostring(why))
 		end
+		if GB.Engine and GB.Engine.markContextDirty then
+			GB.Engine.markContextDirty(why or "quest_dirty")
+		end
+		if GB.Scheduler and GB.Scheduler.nudge then
+			GB.Scheduler.nudge()
+		end
 	end
 
 	function M.invalidateLive(why)
@@ -408,28 +414,124 @@ return function(GB)
 		return M._questDirty == true
 	end
 
+	local function seedFromClientCache()
+		if M._seededDone then
+			return
+		end
+		M._seededDone = true
+		loadMods()
+		local snap = M._cache and M._cache.Data
+		local raw = snap and (snap["Completed Quests"] or snap.CompletedQuests)
+		if raw then
+			for k in pairs(completedSet(raw)) do
+				M._done[k] = true
+			end
+		end
+		if snap and snap.Quests and not next(M._live) then
+			M._live, M._order = ingestList(snap.Quests)
+			M._current = pickCurrent()
+		end
+	end
+
+	local function applyQuestPayload(quests, done, why)
+		local now = os.clock()
+		if quests == nil and done == nil then
+			local snap = M._cache and M._cache.Data
+			if snap then
+				quests = snap.Quests
+				done = snap["Completed Quests"] or snap.CompletedQuests
+			end
+		end
+		if quests == nil and done == nil then
+			M._questDirty = true
+			if why and os.clock() - (M._refreshWarnAt or 0) > 6 then
+				M._refreshWarnAt = os.clock()
+				GB.Log.warn("STATE", "quest refresh miss " .. tostring(why))
+			end
+			return
+		end
+		local newLive = ingestList(quests)
+		local liveN, prevN = 0, 0
+		for _ in pairs(newLive) do
+			liveN = liveN + 1
+		end
+		for _ in pairs(M._live) do
+			prevN = prevN + 1
+		end
+		if liveN == 0 and prevN > 0 and now - (M._lastGoodLiveAt or 0) < 12 then
+			if os.clock() - (M._emptyKeepAt or 0) > 4 then
+				M._emptyKeepAt = os.clock()
+				GB.Log.warn("STATE", "keep live quests; empty refresh " .. tostring(why or "poll"))
+			end
+			M._lastQuestFetchAt = now
+			M._questDirty = true
+			M._current = pickCurrent()
+			return
+		end
+		if done ~= nil then
+			local newDone = completedSet(done)
+			local doneN = 0
+			for _ in pairs(newDone) do
+				doneN = doneN + 1
+			end
+			if doneN > 0 or not next(M._done) then
+				M._done = newDone
+			end
+		end
+		M._live, M._order = ingestList(quests)
+		liveN = 0
+		for _ in pairs(M._live) do
+			liveN = liveN + 1
+		end
+		if liveN > 0 then
+			M._lastGoodLiveAt = now
+		end
+		M._at = now
+		M._lastQuestFetchAt = now
+		M._questDirty = false
+		M._tracker = readTracker() or M._tracker
+		local prev = M._current
+		M._current = pickCurrent()
+		if M._current and M._current ~= prev then
+			GB.Log.log("STATE", "live quest " .. M._current)
+			if GB.Combat and GB.Combat.stopLock then
+				GB.Combat.stopLock()
+			end
+			if GB.Persist and GB.Persist.checkpoint then
+				GB.Persist.checkpoint("quest", M._current)
+			end
+		end
+		if GB.Engine and GB.Engine.markContextDirty then
+			GB.Engine.markContextDirty("quest_payload")
+		end
+	end
+
+	function M.requestLive(why)
+		if not (GB.Remotes and GB.Remotes.getQuests) then
+			return false
+		end
+		if GB.Broker and GB.Broker.isPending and GB.Broker.isPending("GetDataQuests") then
+			return false
+		end
+		local queued = GB.Remotes.requestQuests and GB.Remotes.requestQuests(function(quests, done)
+			if GB.dead and GB.dead() then
+				return
+			end
+			applyQuestPayload(quests, done, why or "async")
+		end)
+		return queued == true
+	end
+
 	function M.forceQuestRefresh(why)
 		markQuestDirty(why or "force")
-		return M.refreshLive(true, why or "force")
+		M.requestLive(why or "force")
+		return M._live
 	end
 
 	function M.refreshLive(force, why)
-		if M._refreshing then
-			return M._live
-		end
-		M._refreshing = true
 		local t0 = pbegin()
 		loadMods()
-		if not M._seededDone then
-			M._seededDone = true
-			local snap = M.cache()
-			local raw = snap and (snap["Completed Quests"] or snap.CompletedQuests)
-			if raw then
-				for k in pairs(completedSet(raw)) do
-					M._done[k] = true
-				end
-			end
-		end
+		seedFromClientCache()
 		local now = os.clock()
 		M._tracker = readTracker()
 		local stale = now - (M._lastQuestFetchAt or 0) >= LIVE_SAFETY_TTL
@@ -438,81 +540,13 @@ return function(GB)
 				M._lastGoodLiveAt = now
 			end
 			M._current = pickCurrent()
-			M._refreshing = false
 			pdone("PlayerData.refreshLive", t0)
 			return M._live
 		end
-		perfCount("PlayerDataRefresh", 1)
-		local quests, done = GB.Remotes.getQuests()
-		if quests == nil and done == nil then
-			local snap = M._cache and M._cache.Data
-			if snap then
-				quests = snap.Quests
-				done = snap["Completed Quests"] or snap.CompletedQuests
-			end
+		if force or M._questDirty or stale then
+			M.requestLive(why or (force and "force" or "stale"))
 		end
-		if quests ~= nil or done ~= nil then
-			local newLive, newOrder = ingestList(quests)
-			local liveN, prevN = 0, 0
-			for _ in pairs(newLive) do
-				liveN = liveN + 1
-			end
-			for _ in pairs(M._live) do
-				prevN = prevN + 1
-			end
-			-- Respawn/stream often returns empty Quests for a few seconds. Keep the last good set.
-			if liveN == 0 and prevN > 0 and now - (M._lastGoodLiveAt or 0) < 12 then
-				if os.clock() - (M._emptyKeepAt or 0) > 4 then
-					M._emptyKeepAt = os.clock()
-					GB.Log.warn("STATE", "keep live quests; empty refresh " .. tostring(why or "poll"))
-				end
-				M._lastQuestFetchAt = now
-				M._questDirty = true
-				M._current = pickCurrent()
-			else
-				if done ~= nil then
-					local newDone = completedSet(done)
-					local doneN = 0
-					for _ in pairs(newDone) do
-						doneN = doneN + 1
-					end
-					if doneN > 0 or not next(M._done) then
-						M._done = newDone
-					end
-				end
-				M._live, M._order = ingestList(quests)
-				liveN = 0
-				for _ in pairs(M._live) do
-					liveN = liveN + 1
-				end
-				if liveN > 0 then
-					M._lastGoodLiveAt = now
-				end
-				M._at = now
-				M._lastQuestFetchAt = now
-				M._questDirty = false
-				M._tracker = readTracker() or M._tracker
-				local prev = M._current
-				M._current = pickCurrent()
-				if M._current and M._current ~= prev then
-					GB.Log.log("STATE", "live quest " .. M._current)
-					if GB.Combat and GB.Combat.stopLock then
-						GB.Combat.stopLock()
-					end
-					if GB.Persist and GB.Persist.checkpoint then
-						GB.Persist.checkpoint("quest", M._current)
-					end
-				end
-			end
-		elseif force or stale then
-			-- Keep dirty=true so next safety poll/event will retry.
-			M._questDirty = true
-			if why and os.clock() - (M._refreshWarnAt or 0) > 6 then
-				M._refreshWarnAt = os.clock()
-				GB.Log.warn("STATE", "quest refresh miss " .. tostring(why))
-			end
-		end
-		M._refreshing = false
+		M._current = pickCurrent()
 		pdone("PlayerData.refreshLive", t0)
 		return M._live
 	end
@@ -533,6 +567,7 @@ return function(GB)
 			if GB.State and GB.State.track then
 				GB.State.track.StateChange = os.clock()
 			end
+			M.requestLive(why)
 		end
 		local beginQ = ev:FindFirstChild("BeginQuest")
 		if beginQ then
@@ -617,9 +652,7 @@ return function(GB)
 				end
 			end)
 		end
-		task.spawn(function()
-			M.pullStats()
-		end)
+		M.requestStats("boot")
 	end
 
 	function M.raw()
@@ -799,9 +832,7 @@ return function(GB)
 		return false, false
 	end
 
-	function M.pullStats()
-		local t0 = pbegin()
-		local a, b = GB.Remotes.getStats()
+	local function applyStats(a, b)
 		local stats
 		local pts
 		if type(a) == "table" then
@@ -830,13 +861,40 @@ return function(GB)
 			M._statsSource = M._statsSource or "GetStats"
 			M._statsAt = os.clock()
 		end
-		pdone("PlayerData.pullStats", t0)
 		return a, b
+	end
+
+	function M.requestStats(why)
+		if not (GB.Remotes and GB.Remotes.getStats) then
+			return false
+		end
+		if GB.Broker and GB.Broker.isPending and GB.Broker.isPending("GetStats") then
+			return false
+		end
+		if GB.Remotes.requestStats then
+			return GB.Remotes.requestStats(function(a, b)
+				if GB.dead and GB.dead() then
+					return
+				end
+				applyStats(a, b)
+				if GB.Engine and GB.Engine.markContextDirty then
+					GB.Engine.markContextDirty(why or "stats")
+				end
+			end) == true
+		end
+		return false
+	end
+
+	function M.pullStats()
+		local t0 = pbegin()
+		M.requestStats("pull")
+		pdone("PlayerData.pullStats", t0)
+		return M._liveStats, M._unusedPts
 	end
 
 	function M.unusedStatPoints(force)
 		if force or type(M._unusedPts) ~= "number" or os.clock() - (M._unusedPtsAt or 0) > UNUSED_TTL then
-			M.pullStats()
+			M.requestStats("unused")
 		end
 		return tonumber(M._unusedPts)
 	end
@@ -847,7 +905,8 @@ return function(GB)
 
 	function M.refreshStats()
 		GB.Remotes.statReplicate()
-		return M.pullStats()
+		M.requestStats("refresh")
+		return M._liveStats, M._unusedPts
 	end
 
 	return M

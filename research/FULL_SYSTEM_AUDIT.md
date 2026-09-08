@@ -1,6 +1,6 @@
 # Full System Audit
 
-**Version:** 1.1.42  
+**Version:** 1.2.0  
 **Map:** `research/A_system_map.md`
 
 Status vocabulary: RUNTIME_VERIFIED · STATIC_VERIFIED · IMPLEMENTED_UNVERIFIED · PARTIAL · DISABLED · UNRESOLVED.
@@ -27,8 +27,8 @@ Status vocabulary: RUNTIME_VERIFIED · STATIC_VERIFIED · IMPLEMENTED_UNVERIFIED
 | Remotes | STATIC_VERIFIED | BeginQuest banned at Remotes.fire. |
 | Codes / rewards | PARTIAL | Codes VERIFIED. Empty dailies skipped. |
 | Recovery | IMPLEMENTED | Fingerprint defer after 4 identical fails. |
-| Scheduler / ownership | PARTIAL | One engine decide. Respawn owns death. Talk/escort lock. Not a full single-owner token yet. |
-| Bundle / version | IMPLEMENTED | VERSION == manifest == GeneratedData.Version. Loader abort on mismatch. |
+| Scheduler / ownership | IMPLEMENTED | One engine decide. FarmSession fast path. Respawn owns death. Broker independent. |
+| Bundle / version | IMPLEMENTED | main loader pins `dist/kaitun.lua` to `manifest.build.commit`. |
 
 ## Bug-class audit (current HEAD, not assumed fixed)
 

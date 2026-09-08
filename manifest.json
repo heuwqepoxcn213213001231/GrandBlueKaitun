@@ -1,9 +1,11 @@
 {
   "name": "GrandBlueKaitun",
-  "version": "1.1.53",
+  "version": "1.2.0",
   "build": {
-    "commit": "e9e3b78",
-    "built_at": "2026-09-08T20:41:15+07:00"
+    "commit": "eeb723b",
+    "built_at": "2026-09-08T21:15:19+07:00",
+    "generated": "1.2.0",
+    "bundle": "dist/kaitun.lua"
   },
   "entry": "kaitun.lua",
   "files": {
@@ -14,6 +16,7 @@
     "Core/Profiler.lua": "Core/Profiler.lua",
     "Core/Cache.lua": "Core/Cache.lua",
     "Core/Retry.lua": "Core/Retry.lua",
+    "Core/RemoteBroker.lua": "Core/RemoteBroker.lua",
     "Core/Scheduler.lua": "Core/Scheduler.lua",
     "Core/Persist.lua": "Core/Persist.lua",
     "Core/State.lua": "Core/State.lua",
@@ -77,6 +80,11 @@
     {
       "key": "Retry",
       "path": "Core/Retry.lua",
+      "kind": "core"
+    },
+    {
+      "key": "Broker",
+      "path": "Core/RemoteBroker.lua",
       "kind": "core"
     },
     {

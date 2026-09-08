@@ -24,8 +24,13 @@ Current shipped version: **1.0.2** (Graves resolve + quest executor). See `RUNTI
 ## Production command
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/heuwqepoxcn213213001231/GrandBlueKaitun/main/loader.lua"))()
+loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/heuwqepoxcn213213001231/GrandBlueKaitun/main/loader.lua?cb=" ..
+    tostring(os.time())
+))()
 ```
+
+Loader discovers VERSION/manifest on `main`, then loads `dist/kaitun.lua` from `manifest.build.commit`. Bundle is the production default.
 
 `GBConfig` **không bắt buộc**. Loader dùng default trong `Config.lua`. Override trước loadstring nếu cần:
 

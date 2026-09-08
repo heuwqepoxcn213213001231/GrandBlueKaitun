@@ -1,10 +1,10 @@
 -- Grand Blue Kaitun — GitHub RAW loader (the only file you HttpGet)
--- Default: REMOTE. Fresh machine, no local folder.
+-- Production: fetch this file from refs/heads/main, then pin dist/kaitun.lua
+-- to manifest.build.commit. Do not set GB_BASE_URL to an old SHA.
 
 local DEFAULT_OWNER = "heuwqepoxcn213213001231"
 local DEFAULT_REPO = "GrandBlueKaitun"
 local DEFAULT_BRANCH = "main"
-local DEFAULT_BOOTSTRAP_REF = "e9e3b78"
 
 if type(getgenv) ~= "function" then
 	error("[Kaitun][Loader] getgenv missing")
@@ -115,23 +115,11 @@ local function sanitizeRef(v)
 	return branchRefPath(v)
 end
 
-local BOOTSTRAP_REF = sanitizeRef(type(getgenv().GB_BOOTSTRAP_REF) == "string" and getgenv().GB_BOOTSTRAP_REF or "")
-if BOOTSTRAP_REF == "" then
-	BOOTSTRAP_REF = sanitizeRef(DEFAULT_BOOTSTRAP_REF)
+local DEV = getgenv().GB_DEV == true
+local DEV_PIN = sanitizeRef(type(getgenv().GB_PIN_COMMIT) == "string" and getgenv().GB_PIN_COMMIT or "")
+if DEV_PIN == "" then
+	DEV_PIN = sanitizeRef(type(getgenv().GB_BOOTSTRAP_REF) == "string" and getgenv().GB_BOOTSTRAP_REF or "")
 end
-
-local RAW_BRANCH_BASE = string.format(
-	"https://raw.githubusercontent.com/%s/%s/%s/",
-	OWNER,
-	REPO,
-	BRANCH
-)
-local RAW_BOOTSTRAP_BASE = (BOOTSTRAP_REF ~= "") and string.format(
-	"https://raw.githubusercontent.com/%s/%s/%s/",
-	OWNER,
-	REPO,
-	BOOTSTRAP_REF
-) or nil
 
 local LOCKED_PREFIX = string.format(
 	"https://raw.githubusercontent.com/%s/%s/%s/",
@@ -142,7 +130,8 @@ local LOCKED_PREFIX = string.format(
 
 local BASE_URL = LOCKED_PREFIX
 local HAS_CUSTOM_BASE = false
-if type(getgenv().GB_BASE_URL) == "string" and trim(getgenv().GB_BASE_URL) ~= "" then
+-- Stale GB_BASE_URL pins (old commit hashes) are ignored in production.
+if DEV and type(getgenv().GB_BASE_URL) == "string" and trim(getgenv().GB_BASE_URL) ~= "" then
 	BASE_URL = trim(getgenv().GB_BASE_URL)
 	if BASE_URL:sub(-1) ~= "/" then
 		BASE_URL = BASE_URL .. "/"
@@ -153,9 +142,15 @@ if type(getgenv().GB_BASE_URL) == "string" and trim(getgenv().GB_BASE_URL) ~= ""
 	LOCKED_PREFIX = BASE_URL
 	HAS_CUSTOM_BASE = true
 end
-if not HAS_CUSTOM_BASE and RAW_BOOTSTRAP_BASE then
-	BASE_URL = RAW_BOOTSTRAP_BASE
+if DEV and not HAS_CUSTOM_BASE and DEV_PIN ~= "" then
+	BASE_URL = string.format(
+		"https://raw.githubusercontent.com/%s/%s/%s/",
+		OWNER,
+		REPO,
+		DEV_PIN
+	)
 end
+local BOOTSTRAP_REF = (DEV and DEV_PIN ~= "") and DEV_PIN or BRANCH_REF
 
 local function jsonDecode(s)
 	local ok, Http = pcall(function()
@@ -397,6 +392,17 @@ end
 print(string.format("[Kaitun][BOOT] version=%s build=%s", MANIFEST_VER, BUILD_COMMIT))
 
 CONTENT_BASE_URL = BASE_URL
+if MODE == "REMOTE" and not HAS_CUSTOM_BASE and BUILD_COMMIT ~= "unknown" then
+	if BUILD_COMMIT:match("^[0-9a-fA-F]+$") and #BUILD_COMMIT >= 7 and #BUILD_COMMIT <= 40 then
+		CONTENT_BASE_URL = string.format(
+			"https://raw.githubusercontent.com/%s/%s/%s/",
+			OWNER,
+			REPO,
+			BUILD_COMMIT
+		)
+		print("[Kaitun][Loader] PinBuild " .. BUILD_COMMIT)
+	end
+end
 if MODE == "REMOTE" then
 	print("[Kaitun][Loader] Content " .. CONTENT_BASE_URL)
 end
@@ -425,7 +431,11 @@ for _, row in ipairs(manifest.order) do
 end
 
 local BUNDLE_REL = trim(manifest.bundle or "")
-if MODE == "REMOTE" and BUNDLE_REL ~= "" and getgenv().GB_USE_BUNDLE ~= false then
+local USE_BUNDLE = MODE == "REMOTE"
+	and BUNDLE_REL ~= ""
+	and getgenv().GB_DEV_MODULAR ~= true
+	and getgenv().GB_USE_BUNDLE ~= false
+if USE_BUNDLE then
 	ALLOWED[BUNDLE_REL] = true
 	print("[Kaitun][Loader] Bundle " .. BUNDLE_REL)
 	local bundleSrc = fetch(BUNDLE_REL, CONTENT_BASE_URL)

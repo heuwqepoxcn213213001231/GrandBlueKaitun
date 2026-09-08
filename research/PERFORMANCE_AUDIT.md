@@ -127,3 +127,22 @@ Steady-state hard rules (source, not live proof):
 | GetData | dirty/event + slow safety only |
 
 Overall status: IMPLEMENTED instrumentation + root-cause refactors complete in source; runtime verification remains mandatory before claiming `RUNTIME_VERIFIED`.
+
+## 12) 1.2.0 Continuous / Zero-Idle
+
+- **Decide stall:** `refreshLive` / `pullStats` no longer `InvokeServer` on the engine thread. `Core/RemoteBroker.lua` single-flights GetData/GetStats.
+- **Tick:** 0.15s cooperative + `Scheduler.nudge` on quest/stat/death events.
+- **WorkspaceDeepScan:** World geo/spawn no longer increments the counter. Acquire/Fruit/Resolver remain debug-gated.
+- **PlayerGuiFullScan:** descendant walk only if `DebugTutorialScan=true`.
+- **FarmSession** avoids full replan between repeatable cycles.
+- **IdleReason** + `GBKaitun:SelfCheck()`.
+- Full wait table: `CONTINUOUS_EXECUTION_AUDIT.md`.
+
+Expected steady state after boot:
+
+| Counter | /min |
+|---|---|
+| WorkspaceDeepScan | 0 |
+| PlayerGuiFullScan | 0 |
+| SourceHttpAfterBoot | 0 |
+| GetStats / GetData | event + safety, never on Heartbeat |

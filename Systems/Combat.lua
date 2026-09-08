@@ -730,10 +730,19 @@ return function(GB)
 		local qn = M.lockQuest
 		local before = M.lastKillBefore
 		M.stopLock()
+		if GB.Engine and GB.Engine.markContextDirty then
+			GB.Engine.markContextDirty("target_dead")
+		end
+		if GB.Scheduler and GB.Scheduler.nudge then
+			GB.Scheduler.nudge()
+		end
 		if qn then
 			local ok = M.logKillCredit(qn, before)
 			if ok or M.questCombatDone(qn, { force = true, source = "target_dead" }) then
 				M.lastQuestDone = qn
+				if GB.Engine and GB.Engine.markRealProgress then
+					GB.Engine.markRealProgress("kill_credit")
+				end
 			end
 		end
 	end
@@ -1084,6 +1093,9 @@ return function(GB)
 				return nil
 			end
 			dest = Vector3.new(part.Position.X, baseY + hoverHeight(), part.Position.Z)
+			if dest.Y > 80 then
+				return nil
+			end
 			if dest.Y > baseY + hoverHeight() + 2 then
 				dest = Vector3.new(dest.X, baseY + hoverHeight(), dest.Z)
 			end

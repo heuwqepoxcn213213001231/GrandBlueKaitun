@@ -152,9 +152,9 @@
     "Wormless Terry",
     "[TUTORIAL] Fruit/Style Storage"
   ],
-  "version": "1.1.42",
-  "commit": "1dcd986",
-  "built_at": "2026-09-08T16:34:01+07:00",
+  "version": "1.2.0",
+  "commit": "eeb723b",
+  "built_at": "2026-09-08T21:15:19+07:00",
   "coverage": {
     "quests": 151,
     "all": {

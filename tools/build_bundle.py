@@ -328,6 +328,8 @@ def main() -> None:
     manifest.setdefault("build", {})
     manifest["build"]["commit"] = commit
     manifest["build"]["built_at"] = built_at
+    manifest["build"]["generated"] = version
+    manifest["build"]["bundle"] = "dist/kaitun.lua"
     manifest["bundle"] = "dist/kaitun.lua"
     manifest["files"]["dist/kaitun.lua"] = "dist/kaitun.lua"
     manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

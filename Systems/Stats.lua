@@ -124,23 +124,20 @@ return function(GB)
 		if not force and M._remoteStats and now - (M._remoteAt or 0) < STATE_TTL then
 			return M._remoteStats, M._remoteUnused, "GetStatsCache"
 		end
-		local a, b
-		if GB.PlayerData and GB.PlayerData.pullStats then
-			a, b = GB.PlayerData.pullStats()
-		else
-			a, b = GB.Remotes.getStats()
+		if GB.PlayerData and GB.PlayerData.requestStats then
+			GB.PlayerData.requestStats("stats_tick")
 		end
-		local statsRaw, unusedRaw = pullTuple(a, b)
+		local live, pts, src
+		if GB.PlayerData and GB.PlayerData.latestStats then
+			live, pts, src = GB.PlayerData.latestStats()
+		end
+		local statsRaw, unusedRaw = live, pts
 		local stats = normalizeStats(statsRaw)
 		if stats then
 			M._remoteStats = stats
 			M._remoteUnused = tonumber(unusedRaw)
 			M._remoteAt = now
-			return stats, tonumber(unusedRaw), "GetStats"
-		end
-		local live, pts, src
-		if GB.PlayerData and GB.PlayerData.latestStats then
-			live, pts, src = GB.PlayerData.latestStats()
+			return stats, tonumber(unusedRaw), src or "GetStatsCache"
 		end
 		stats = normalizeStats(live)
 		if stats then

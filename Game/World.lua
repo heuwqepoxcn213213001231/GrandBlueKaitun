@@ -412,6 +412,15 @@ return function(GB)
 		if not pos then
 			return false
 		end
+		if pos.Y > 120 then
+			local grounded = M.floorAt(Vector3.new(pos.X, 70, pos.Z), 70)
+				or M.groundAt and M.groundAt(Vector3.new(pos.X, 70, pos.Z))
+			if grounded then
+				pos = grounded
+			else
+				pos = Vector3.new(pos.X, math.min(pos.Y, 80), pos.Z)
+			end
+		end
 		if not M.destOk(pos) then
 			local g = M.groundAt(pos)
 			if not g then
@@ -604,17 +613,10 @@ return function(GB)
 	end
 
 	local function countParts(inst)
-		local n = 0
 		if not inst then
 			return 0
 		end
-		perfCount("WorkspaceDeepScan", 1)
-		for _, d in ipairs(inst:GetDescendants()) do
-			if isPart(d) then
-				n = n + 1
-			end
-		end
-		return n
+		return #inst:GetChildren()
 	end
 
 	local function usablePos(pos)
@@ -692,13 +694,8 @@ return function(GB)
 		local spawn
 		local spawnRoot = island:FindFirstChild("SpawnLocations")
 		if spawnRoot then
-			perfCount("WorkspaceDeepScan", 1)
-			for _, d in ipairs(spawnRoot:GetDescendants()) do
-				if d:IsA("SpawnLocation") or isPart(d) then
-					spawn = d
-					break
-				end
-			end
+			spawn = spawnRoot:FindFirstChildWhichIsA("SpawnLocation", true)
+				or spawnRoot:FindFirstChildWhichIsA("BasePart", true)
 		end
 		if not spawn then
 			for _, c in ipairs(island:GetChildren()) do
@@ -995,11 +992,10 @@ return function(GB)
 			if spawnRoot:IsA("SpawnLocation") or isPart(spawnRoot) then
 				return usablePos(spawnRoot.Position)
 			end
-			perfCount("WorkspaceDeepScan", 1)
-			for _, d in ipairs(spawnRoot:GetDescendants()) do
-				if d:IsA("SpawnLocation") or isPart(d) then
-					return usablePos(d.Position)
-				end
+			local d = spawnRoot:FindFirstChildWhichIsA("SpawnLocation", true)
+				or spawnRoot:FindFirstChildWhichIsA("BasePart", true)
+			if d then
+				return usablePos(d.Position)
 			end
 		end
 		return M.GetIslandPosition(isl)
