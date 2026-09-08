@@ -63,6 +63,9 @@ return function(GB)
 		if GB.Quest and GB.Quest.dialogueOpen and GB.Quest.dialogueOpen() then
 			return false
 		end
+		if GB.Quest and GB.Quest.liveTalkName and GB.Quest.liveTalkName() then
+			return false
+		end
 		if GB.Quest and GB.Quest.atFreeStand and GB.Quest.atFreeStand() then
 			return false
 		end

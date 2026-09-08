@@ -347,6 +347,24 @@ return function(GB)
 		return #rows > 0
 	end
 
+	function M.liveTalkName()
+		if not (GB.PlayerData and GB.QuestData and GB.QuestData.CHAINS) then
+			return nil
+		end
+		for _, ch in ipairs(GB.QuestData.CHAINS) do
+			for _, name in ipairs(ch.order) do
+				if GB.PlayerData.live and GB.PlayerData.live(name) then
+					local qs = M.questState(name)
+					local typ = qs and qs.Objective and qs.Objective.Type
+					if typ == "Talk" or typ == "Automatic Talk" or typ == "GiveItemTo" then
+						return name
+					end
+				end
+			end
+		end
+		return nil
+	end
+
 	-- Choices live in DialogueUI.Main as cloned NodeFrames. ImageButton has no .Text;
 	-- label is sibling TextLabel. Template under DialogueHandler.NodeFrame is not clickable.
 	local function clickAccept(opts)
@@ -1412,6 +1430,9 @@ return function(GB)
 			deep = opts.deep,
 		})
 		if not pack then
+			if dialogueOpen() then
+				return false, "waiting"
+			end
 			if island then
 				local snap = GB.State.get()
 				if snap.PhysicalIsland and snap.PhysicalIsland ~= island then

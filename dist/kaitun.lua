@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
--- Version: 1.1.38
--- Commit: 0c9b9be
--- BuiltAt: 2026-09-08T15:48:14+07:00
+-- Version: 1.1.39
+-- Commit: 3d6c067
+-- BuiltAt: 2026-09-08T15:56:20+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -35,9 +35,9 @@ return function(meta)
 
 	stopPreviousInstance()
 
-	local BUILD_VERSION = "1.1.38"
-	local BUILD_COMMIT = "0c9b9be"
-	local BUILD_AT = "2026-09-08T15:48:14+07:00"
+	local BUILD_VERSION = "1.1.39"
+	local BUILD_COMMIT = "3d6c067"
+	local BUILD_AT = "2026-09-08T15:56:20+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -911,6 +911,9 @@ return function(GB)
 			return false
 		end
 		if GB.Quest and GB.Quest.dialogueOpen and GB.Quest.dialogueOpen() then
+			return false
+		end
+		if GB.Quest and GB.Quest.liveTalkName and GB.Quest.liveTalkName() then
 			return false
 		end
 		if GB.Quest and GB.Quest.atFreeStand and GB.Quest.atFreeStand() then
@@ -2851,6 +2854,20 @@ return function(GB)
 	end
 
 	local function pickCurrent()
+		if GB.Quest and GB.Quest.questState and GB.QuestData and GB.QuestData.CHAINS then
+			for _, ch in ipairs(GB.QuestData.CHAINS) do
+				for _, name in ipairs(ch.order) do
+					if M._live[name] then
+						local qs = GB.Quest.questState(name)
+						local o = qs and qs.Objective
+						local typ = o and o.Type
+						if typ == "Talk" or typ == "Automatic Talk" or typ == "GiveItemTo" then
+							return name
+						end
+					end
+				end
+			end
+		end
 		local tr = M._tracker
 		if tr and M._live[tr] then
 			return tr
@@ -8443,6 +8460,9 @@ return function(GB)
 		if not inst then
 			return false
 		end
+		if GB.Quest and GB.Quest.dialogueOpen and GB.Quest.dialogueOpen() then
+			return true
+		end
 		local talkRange = GB.Config.TalkRange or 14
 		local npcPos = GB.Resolver.positionOf(inst)
 		local snapOpts = npcPos and { MaxGroundY = npcPos.Y + 4, SkipGround = true } or { SkipGround = true }
@@ -8489,6 +8509,9 @@ return function(GB)
 
 	function M.ToEnemy(inst, range)
 		if not inst then
+			return false
+		end
+		if GB.Quest and ((GB.Quest.dialogueOpen and GB.Quest.dialogueOpen()) or (GB.Quest.liveTalkName and GB.Quest.liveTalkName())) then
 			return false
 		end
 		if GB.Combat and GB.Combat.IsEnemyAlive and not GB.Combat.IsEnemyAlive(inst) then
@@ -8671,6 +8694,9 @@ return function(GB)
 
 	function M.pullStream(island)
 		if type(island) ~= "string" or island == "" then
+			return false
+		end
+		if GB.Quest and ((GB.Quest.dialogueOpen and GB.Quest.dialogueOpen()) or (GB.Quest.liveTalkName and GB.Quest.liveTalkName())) then
 			return false
 		end
 		local dests = {}
@@ -9409,6 +9435,21 @@ return function(GB)
 		local tutSnap = snap.UI or nil
 		local gate = GB.Tutorial and GB.Tutorial.GetCurrentGate and GB.Tutorial.GetCurrentGate()
 		local continueOverlay = gate and gate.Type == (GB.Tutorial.GateTypes and GB.Tutorial.GateTypes.ContinueOverlay)
+
+		local talkName = GB.Quest and GB.Quest.liveTalkName and GB.Quest.liveTalkName()
+		if (GB.Quest and GB.Quest.dialogueOpen and GB.Quest.dialogueOpen()) or talkName then
+			local name = talkName or (GB.PlayerData and GB.PlayerData.current and GB.PlayerData.current())
+			if name and not GB.Config.SkipQuests[name] then
+				if GB.Combat and GB.Combat.stopLock then
+					GB.Combat.stopLock()
+				end
+				setTask("quest:" .. name)
+				logQuestDoing(name)
+				GB.Quest.doLive(name)
+				afterQuest(name)
+				return
+			end
+		end
 
 		-- Recovery dumps / strategy change, then resume story. Do not freeze.
 		-- ContinueOverlay owns its own attempt budget — do not recycle lookup.
@@ -11512,6 +11553,9 @@ return function(GB)
 	end
 
 	function M.approachMarker(plan, targetName)
+		if GB.Quest and ((GB.Quest.dialogueOpen and GB.Quest.dialogueOpen()) or (GB.Quest.liveTalkName and GB.Quest.liveTalkName())) then
+			return false
+		end
 		local marker = markerForPlan(plan)
 		if not marker then
 			return false
@@ -11928,6 +11972,9 @@ return function(GB)
 	end
 
 	function M.hunt(name, questName, targetPlan)
+		if GB.Quest and ((GB.Quest.dialogueOpen and GB.Quest.dialogueOpen()) or (GB.Quest.liveTalkName and GB.Quest.liveTalkName())) then
+			return false
+		end
 		local objectHunt = (type(targetPlan) == "table" and (targetPlan.Object == true or targetPlan.ObjectiveType == "Destroy"))
 			or (GB.QuestData and GB.QuestData.isObjectTarget and GB.QuestData.isObjectTarget(name))
 		local ctx = { Name = name, Object = objectHunt == true }
@@ -13229,6 +13276,24 @@ return function(GB)
 		return #rows > 0
 	end
 
+	function M.liveTalkName()
+		if not (GB.PlayerData and GB.QuestData and GB.QuestData.CHAINS) then
+			return nil
+		end
+		for _, ch in ipairs(GB.QuestData.CHAINS) do
+			for _, name in ipairs(ch.order) do
+				if GB.PlayerData.live and GB.PlayerData.live(name) then
+					local qs = M.questState(name)
+					local typ = qs and qs.Objective and qs.Objective.Type
+					if typ == "Talk" or typ == "Automatic Talk" or typ == "GiveItemTo" then
+						return name
+					end
+				end
+			end
+		end
+		return nil
+	end
+
 	-- Choices live in DialogueUI.Main as cloned NodeFrames. ImageButton has no .Text;
 	-- label is sibling TextLabel. Template under DialogueHandler.NodeFrame is not clickable.
 	local function clickAccept(opts)
@@ -14294,6 +14359,9 @@ return function(GB)
 			deep = opts.deep,
 		})
 		if not pack then
+			if dialogueOpen() then
+				return false, "waiting"
+			end
 			if island then
 				local snap = GB.State.get()
 				if snap.PhysicalIsland and snap.PhysicalIsland ~= island then

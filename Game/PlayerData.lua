@@ -295,6 +295,20 @@ return function(GB)
 	end
 
 	local function pickCurrent()
+		if GB.Quest and GB.Quest.questState and GB.QuestData and GB.QuestData.CHAINS then
+			for _, ch in ipairs(GB.QuestData.CHAINS) do
+				for _, name in ipairs(ch.order) do
+					if M._live[name] then
+						local qs = GB.Quest.questState(name)
+						local o = qs and qs.Objective
+						local typ = o and o.Type
+						if typ == "Talk" or typ == "Automatic Talk" or typ == "GiveItemTo" then
+							return name
+						end
+					end
+				end
+			end
+		end
 		local tr = M._tracker
 		if tr and M._live[tr] then
 			return tr

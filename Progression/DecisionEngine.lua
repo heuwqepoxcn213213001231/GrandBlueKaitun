@@ -661,6 +661,21 @@ return function(GB)
 		local gate = GB.Tutorial and GB.Tutorial.GetCurrentGate and GB.Tutorial.GetCurrentGate()
 		local continueOverlay = gate and gate.Type == (GB.Tutorial.GateTypes and GB.Tutorial.GateTypes.ContinueOverlay)
 
+		local talkName = GB.Quest and GB.Quest.liveTalkName and GB.Quest.liveTalkName()
+		if (GB.Quest and GB.Quest.dialogueOpen and GB.Quest.dialogueOpen()) or talkName then
+			local name = talkName or (GB.PlayerData and GB.PlayerData.current and GB.PlayerData.current())
+			if name and not GB.Config.SkipQuests[name] then
+				if GB.Combat and GB.Combat.stopLock then
+					GB.Combat.stopLock()
+				end
+				setTask("quest:" .. name)
+				logQuestDoing(name)
+				GB.Quest.doLive(name)
+				afterQuest(name)
+				return
+			end
+		end
+
 		-- Recovery dumps / strategy change, then resume story. Do not freeze.
 		-- ContinueOverlay owns its own attempt budget — do not recycle lookup.
 		if GB.Recovery.stuck() and not continueOverlay then

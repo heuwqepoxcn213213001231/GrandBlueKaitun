@@ -609,6 +609,9 @@ return function(GB)
 	end
 
 	function M.approachMarker(plan, targetName)
+		if GB.Quest and ((GB.Quest.dialogueOpen and GB.Quest.dialogueOpen()) or (GB.Quest.liveTalkName and GB.Quest.liveTalkName())) then
+			return false
+		end
 		local marker = markerForPlan(plan)
 		if not marker then
 			return false
@@ -1025,6 +1028,9 @@ return function(GB)
 	end
 
 	function M.hunt(name, questName, targetPlan)
+		if GB.Quest and ((GB.Quest.dialogueOpen and GB.Quest.dialogueOpen()) or (GB.Quest.liveTalkName and GB.Quest.liveTalkName())) then
+			return false
+		end
 		local objectHunt = (type(targetPlan) == "table" and (targetPlan.Object == true or targetPlan.ObjectiveType == "Destroy"))
 			or (GB.QuestData and GB.QuestData.isObjectTarget and GB.QuestData.isObjectTarget(name))
 		local ctx = { Name = name, Object = objectHunt == true }

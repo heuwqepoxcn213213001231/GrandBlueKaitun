@@ -1038,6 +1038,9 @@ return function(GB)
 		if not inst then
 			return false
 		end
+		if GB.Quest and GB.Quest.dialogueOpen and GB.Quest.dialogueOpen() then
+			return true
+		end
 		local talkRange = GB.Config.TalkRange or 14
 		local npcPos = GB.Resolver.positionOf(inst)
 		local snapOpts = npcPos and { MaxGroundY = npcPos.Y + 4, SkipGround = true } or { SkipGround = true }
@@ -1084,6 +1087,9 @@ return function(GB)
 
 	function M.ToEnemy(inst, range)
 		if not inst then
+			return false
+		end
+		if GB.Quest and ((GB.Quest.dialogueOpen and GB.Quest.dialogueOpen()) or (GB.Quest.liveTalkName and GB.Quest.liveTalkName())) then
 			return false
 		end
 		if GB.Combat and GB.Combat.IsEnemyAlive and not GB.Combat.IsEnemyAlive(inst) then
@@ -1266,6 +1272,9 @@ return function(GB)
 
 	function M.pullStream(island)
 		if type(island) ~= "string" or island == "" then
+			return false
+		end
+		if GB.Quest and ((GB.Quest.dialogueOpen and GB.Quest.dialogueOpen()) or (GB.Quest.liveTalkName and GB.Quest.liveTalkName())) then
 			return false
 		end
 		local dests = {}
