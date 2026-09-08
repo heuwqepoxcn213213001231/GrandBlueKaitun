@@ -458,7 +458,7 @@ return function(GB)
 		},
 		["Supply Crate"] = {
 			Island = "Maple Village",
-			Tags = { "Supply Crate" },
+			Tags = { "Supply Crate", "SupplyCrate", "Wooden Crate", "Crate" },
 		},
 		["North Camp Signal Fire"] = {
 			Island = "Maple Village",

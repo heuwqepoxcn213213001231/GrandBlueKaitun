@@ -489,6 +489,8 @@ return function(GB)
 			score = score + 320
 		elseif typ == "Kill" or typ == "Defeat" or typ == "Hit" then
 			score = score + 180
+		elseif typ == "Destroy" then
+			score = score + 260
 		end
 		if isStory(name) then
 			score = score + 400

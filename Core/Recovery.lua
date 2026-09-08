@@ -103,6 +103,8 @@ return function(GB)
 			or typ == "Harvest"
 			or typ == "Water"
 			or typ == "Rescue"
+			or typ == "CollectLocalItem"
+			or typ == "CollectLocal"
 	end
 
 	local function scopedInvalidate(qs)
@@ -173,7 +175,7 @@ return function(GB)
 		local cur = GB.PlayerData and GB.PlayerData.current and GB.PlayerData.current()
 		local qs = cur and GB.Quest and GB.Quest.questState and GB.Quest.questState(cur)
 		local o = qs and qs.Objective
-		if o and isInteractLike(o.Type) then
+		if o and (isInteractLike(o.Type) or o.Type == "Destroy") then
 			if strat == "enemy" then
 				strat = M.advanceStrategy()
 			end

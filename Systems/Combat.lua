@@ -447,6 +447,9 @@ return function(GB)
 				end
 			end
 			if context.Object and GB.Resolver then
+				if GB.Resolver.isCrateLike and GB.Resolver.isCrateLike(target, want) then
+					return true
+				end
 				local ot = target:GetAttribute("ObjectType")
 				if type(ot) == "string" and (ot == want or string.lower(ot) == string.lower(want)) then
 					return true
@@ -824,6 +827,15 @@ return function(GB)
 		end
 		M._streamHuntAt = now
 		local island = type(plan) == "table" and plan.Island or nil
+		local destroy = type(plan) == "table" and plan.ObjectiveType == "Destroy"
+		if destroy and GB.Resolver and GB.Resolver.findCrateLike then
+			local crate = GB.Resolver.findCrateLike(island, targetName)
+			if crate and GB.World and GB.World.goPlace then
+				GB.Log.log("TRAVEL", "combat dest " .. tostring(crate.Name))
+				GB.World.goPlace(crate)
+				return true
+			end
+		end
 		local obj = findWorldTarget(targetName, plan)
 		if obj and GB.World and GB.World.goPlace then
 			GB.Log.log("TRAVEL", "combat dest " .. tostring(obj.Name))
@@ -836,7 +848,7 @@ return function(GB)
 			GB.World.goPlace(marker)
 			return true
 		end
-		if GB.Resolver and GB.Resolver.enemies then
+		if (not destroy) and GB.Resolver and GB.Resolver.enemies then
 			local mobs = GB.Resolver.enemies("Black Noir Pirate")
 			local mob = mobs and mobs[1]
 			local mpos = mob and GB.Resolver.positionOf and GB.Resolver.positionOf(mob)
@@ -1617,6 +1629,14 @@ return function(GB)
 		if not M.IsEnemyAlive(mob) then
 			M.markDead(mob, "pre-travel")
 			return false
+		end
+		if objectHunt and GB.World and GB.World.goPlace then
+			local pos = GB.Resolver and GB.Resolver.positionOf and GB.Resolver.positionOf(mob)
+			local hrp = GB.World.hrp and GB.World.hrp()
+			if pos and hrp and GB.World.planarDist and GB.World.planarDist(hrp.Position, pos) > 18 then
+				GB.Log.log("TRAVEL", "combat hop " .. tostring(mob.Name))
+				GB.World.goPlace(mob)
+			end
 		end
 		local usedHover = false
 		if not objectHunt and M.preferredAction(questName) ~= "GUN" then

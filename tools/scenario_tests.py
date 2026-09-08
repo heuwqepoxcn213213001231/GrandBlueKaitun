@@ -212,6 +212,14 @@ def main() -> int:
         fail("Combat must not resolve Campsite zone as a marker")
     if "GB.World.onIsland(before.Island)" not in quest:
         fail("Kill/Destroy must not spawn-pull while on the quest island")
+    if "function M.findCrateLike" not in resolver:
+        fail("Resolver.findCrateLike missing")
+    if "combat hop" not in combat:
+        fail("Destroy must AllowFar hop onto the crate")
+    if 'typ == "Destroy"' not in engine:
+        fail("scoreActive missing Destroy bias")
+    if 'o.Type == "Destroy"' not in recovery:
+        fail("Recovery must not enemy-hunt during Destroy")
 
     if FAILS:
         print("FAIL scenario_tests")

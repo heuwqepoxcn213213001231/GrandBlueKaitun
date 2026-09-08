@@ -60,6 +60,8 @@ return function(GB)
 		["Hostage"] = { "Child Captive", "Adult Captive", "Captured Child", "Captured Civilian" },
 		["Cage Container"] = { "CageContainer" },
 		["CageContainer"] = { "Cage Container" },
+		["Supply Crate"] = { "SupplyCrate", "Wooden Crate", "Crate" },
+		["Wooden Crate"] = { "Supply Crate", "Crate" },
 	}
 
 	local missLog = {}
@@ -2418,6 +2420,87 @@ return function(GB)
 		return nil, nil, sites[1]
 	end
 
+	function M.isCrateLike(inst, want)
+		if not (inst and inst.Parent) then
+			return false
+		end
+		local n = string.lower(tostring(inst.Name or "") .. " " .. tostring(M.displayName(inst) or ""))
+		if not string.find(n, "crate", 1, true) then
+			return false
+		end
+		local explosive = string.find(n, "explosive", 1, true)
+		local tomato = string.find(n, "tomato", 1, true)
+		if want == "Explosive Wooden Crate" then
+			return explosive ~= nil
+		end
+		if want == "Tomato Crate" then
+			return tomato ~= nil
+		end
+		return not explosive and not tomato
+	end
+
+	function M.findCrateLike(island, want)
+		want = want or "Supply Crate"
+		local function accept(inst)
+			if not M.isCrateLike(inst, want) or M.isMarkerContainer(inst) or inRS(inst) or M.isPet(inst) then
+				return nil
+			end
+			if island then
+				local got = islandOf(inst)
+				if got and got ~= island then
+					return nil
+				end
+			end
+			if GB.Combat and GB.Combat.isRecentlyDead and GB.Combat.isRecentlyDead(inst) then
+				return nil
+			end
+			if not (M.part(inst) or M.positionOf(inst)) then
+				return nil
+			end
+			return inst
+		end
+		local okTags, tags = pcall(function()
+			return CS:GetRegisteredTags()
+		end)
+		if okTags and type(tags) == "table" then
+			for i = 1, #tags do
+				local t = tags[i]
+				if type(t) == "string" and string.find(string.lower(t), "crate", 1, true) then
+					local hit = accept(M.taggedAny(t))
+					if hit then
+						return hit
+					end
+				end
+			end
+		end
+		local roots = {}
+		local isles = workspace:FindFirstChild("Islands")
+		if isles and type(island) == "string" and island ~= "" then
+			roots[#roots + 1] = isles:FindFirstChild(island)
+		end
+		roots[#roots + 1] = workspace:FindFirstChild("AA IMPORTANT")
+		for _, root in ipairs(roots) do
+			if root then
+				local q = { root }
+				local i = 1
+				local seen = 0
+				while i <= #q and seen < 420 do
+					local inst = q[i]
+					i = i + 1
+					seen = seen + 1
+					local hit = accept(inst)
+					if hit then
+						return hit
+					end
+					for _, ch in ipairs(inst:GetChildren()) do
+						q[#q + 1] = ch
+					end
+				end
+			end
+		end
+		return nil
+	end
+
 	function M.findDestroyable(name, opts)
 		opts = opts or {}
 		if type(name) ~= "string" or name == "" then
@@ -2514,6 +2597,12 @@ return function(GB)
 						return hit
 					end
 				end
+			end
+		end
+		if name == "Supply Crate" or string.find(string.lower(name), "crate", 1, true) then
+			local loose = M.findCrateLike(island, name)
+			if loose then
+				return loose
 			end
 		end
 		return nil
