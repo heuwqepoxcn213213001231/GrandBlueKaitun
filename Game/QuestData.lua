@@ -378,6 +378,12 @@ return function(GB)
 		["Unlock"] = "Afuaru's Gate",
 	}
 
+	-- Investigate credits at the trail origin, not the first footprint decal.
+	M.INVESTIGATE_ORIGIN = {
+		["Investigate The Footsteps (1)"] = "Black Noir Campsite 1",
+		["Investigate The Footsteps (2)"] = "Black Noir Campsite 2",
+	}
+
 	M.DELIVER = {
 		["Stolen Goods"] = { object = "StolenGoods", location = "Esopo Delivery" },
 	}

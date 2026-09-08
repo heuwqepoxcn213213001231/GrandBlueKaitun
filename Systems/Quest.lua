@@ -875,6 +875,54 @@ return function(GB)
 		return inst
 	end
 
+	local function dismissPartyPrompt()
+		if os.clock() - (M._partyPromptAt or 0) < 2.5 then
+			return
+		end
+		local pg = GB.lp and GB.lp.PlayerGui
+		if not pg then
+			return
+		end
+		for _, gui in ipairs(pg:GetChildren()) do
+			if gui:IsA("LayerCollector") and gui.Enabled then
+				local hasParticipate = false
+				local noBtn
+				local ok, desc = pcall(gui.GetDescendants, gui)
+				if ok and type(desc) == "table" then
+					for _, d in ipairs(desc) do
+						local text = ""
+						if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+							text = tostring(d.Text or "")
+						end
+						local low = string.lower(text)
+						if string.find(low, "participate", 1, true) then
+							hasParticipate = true
+						end
+						if d:IsA("GuiButton") then
+							local label = d:FindFirstChildWhichIsA("TextLabel")
+							local bt = string.lower(tostring(d.Text or "") .. " " .. tostring(label and label.Text or ""))
+							if bt == "no" or string.find(bt, "^no%s") or string.find(bt, "%sno%s*$") then
+								noBtn = d
+							end
+						end
+					end
+				end
+				if hasParticipate and noBtn then
+					M._partyPromptAt = os.clock()
+					if GB.State and GB.State.clickGui then
+						GB.State.clickGui(noBtn)
+					else
+						pcall(function()
+							firesignal(noBtn.MouseButton1Click)
+						end)
+					end
+					GB.Log.log("UI", "dismiss participate")
+					return
+				end
+			end
+		end
+	end
+
 	local function goTagged(tag, dist)
 		if not tag or tag == "" or tag == "Markers" then
 			return false
@@ -902,6 +950,7 @@ return function(GB)
 		if GB.Combat and GB.Combat.stopLock then
 			GB.Combat.stopLock()
 		end
+		dismissPartyPrompt()
 		local spec = GB.QuestSpecs and GB.QuestSpecs.lookup and GB.QuestSpecs.lookup(questName, stage, typ, target)
 		local tag = spec and spec.marker
 		if (not tag or tag == "" or tag == "Markers") and GB.QuestData.combatMarker then
@@ -913,9 +962,22 @@ return function(GB)
 		if not tag or tag == "" or tag == "Markers" then
 			tag = typ
 		end
+		local origin = GB.QuestData.INVESTIGATE_ORIGIN and GB.QuestData.INVESTIGATE_ORIGIN[typ]
 		local inst = resolveMarkerLeaf(tag, questName)
+		if not inst and origin then
+			inst = resolveMarkerLeaf(origin, questName)
+		end
 		if not inst and GB.Resolver.findQuestBeam then
 			inst = GB.Resolver.findQuestBeam(questName, typ)
+		end
+		if not inst and GB.Resolver.findHudAdornee then
+			inst = GB.Resolver.findHudAdornee(questName)
+		end
+		if not inst and origin then
+			local mobs = GB.Resolver.enemies and GB.Resolver.enemies("Black Noir Pirate")
+			if type(mobs) == "table" then
+				inst = mobs[1]
+			end
 		end
 		if inst and GB.World.standOn then
 			GB.World.standOn(inst, 8)
@@ -927,6 +989,9 @@ return function(GB)
 		end
 		M._investZoneN = (M._investZoneN or 0) + 1
 		local names = { tag }
+		if origin and origin ~= tag then
+			names[#names + 1] = origin
+		end
 		if type(typ) == "string" and typ ~= "" and typ ~= tag then
 			names[#names + 1] = typ
 		end
@@ -944,7 +1009,10 @@ return function(GB)
 		if GB.Recovery and GB.Recovery.markSuccess then
 			GB.Recovery.markSuccess()
 		end
-		GB.Log.log("QUEST", string.format("investigate %s zone=%s", tostring(tag), tostring(zone)))
+		GB.Log.log(
+			"QUEST",
+			string.format("investigate %s dest=%s zone=%s", tostring(tag), tostring(inst and inst.Name or "none"), tostring(zone))
+		)
 		return true
 	end
 

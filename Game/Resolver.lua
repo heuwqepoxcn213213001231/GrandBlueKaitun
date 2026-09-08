@@ -1691,11 +1691,97 @@ return function(GB)
 		local pg = GB.lp and GB.lp.PlayerGui
 		if not hit and pg then
 			hit = scan(pg:FindFirstChild("Markers")) or scan(pg:FindFirstChild("QuestMarkers"))
+			if not hit then
+				for _, gui in ipairs(pg:GetChildren()) do
+					if gui:IsA("LayerCollector") and gui.Enabled then
+						local n = gui.Name
+						if n == "HUD" or n == "Hud" or n == "Main" or n == "MainGui" or n == "Quests"
+							or string.find(n, "Marker", 1, true) or string.find(n, "Quest", 1, true)
+							or string.find(n, "Compass", 1, true) or string.find(n, "Tracker", 1, true)
+						then
+							hit = scan(gui)
+							if hit then
+								break
+							end
+						end
+					end
+				end
+			end
 		end
 		M._beamKey = key
 		M._beamAt = now
 		M._beamCache = hit
 		return hit
+	end
+
+	function M.findHudAdornee(questName)
+		local now = os.clock()
+		if M._hudCache and M._hudKey == questName and now - (M._hudAt or 0) < 1.2 and M._hudCache.Parent then
+			return M._hudCache
+		end
+		local pg = GB.lp and GB.lp.PlayerGui
+		if not pg then
+			return nil
+		end
+		local best
+		for _, gui in ipairs(pg:GetChildren()) do
+			if gui:IsA("LayerCollector") and gui.Enabled then
+				local n = gui.Name
+				local look = n == "HUD" or n == "Hud" or n == "Main" or n == "MainGui" or n == "Quests"
+					or string.find(n, "Marker", 1, true) or string.find(n, "Quest", 1, true)
+					or string.find(n, "Compass", 1, true) or string.find(n, "Tracker", 1, true)
+				if look then
+					local ok, desc = pcall(gui.GetDescendants, gui)
+					if ok and type(desc) == "table" then
+						for _, d in ipairs(desc) do
+							if d:IsA("ObjectValue") and d.Value and typeof(d.Value) == "Instance" then
+								local vn = d.Name
+								if vn == "Target" or vn == "Adornee" or vn == "Marker" or vn == "Objective" or vn == "Instance" then
+									if d.Value.Parent and not M.isMarkerContainer(d.Value) then
+										if questName and (d.Value.Name == questName or M.displayName(d.Value) == questName) then
+											M._hudKey = questName
+											M._hudAt = now
+											M._hudCache = d.Value
+											return d.Value
+										end
+										best = best or d.Value
+									end
+								end
+							elseif d:IsA("BillboardGui") and d.Adornee and d.Adornee.Parent and not M.isMarkerContainer(d.Adornee) then
+								local questHit = false
+								local distHit = false
+								for _, c in ipairs(d:GetDescendants()) do
+									if c:IsA("TextLabel") or c:IsA("TextButton") then
+										local t = c.Text
+										if type(t) == "string" then
+											if questName and string.find(t, questName, 1, true) then
+												questHit = true
+											end
+											if string.match(t, "^%d+m$") then
+												distHit = true
+											end
+										end
+									end
+								end
+								if questHit then
+									M._hudKey = questName
+									M._hudAt = now
+									M._hudCache = d.Adornee
+									return d.Adornee
+								end
+								if distHit then
+									best = best or d.Adornee
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+		M._hudKey = questName
+		M._hudAt = now
+		M._hudCache = best
+		return best
 	end
 
 	function M.taggedLeaf(tag)

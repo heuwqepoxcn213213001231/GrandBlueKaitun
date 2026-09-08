@@ -135,6 +135,14 @@ def main() -> int:
         fail("Resolver.scanMarkerFolder missing")
     if "zone-only" not in quest:
         fail("Investigate must Enter Zone even on marker miss")
+    if "INVESTIGATE_ORIGIN" not in read("Game/QuestData.lua"):
+        fail("Investigate origin fallback missing")
+    if "function M.findHudAdornee" not in resolver:
+        fail("Resolver.findHudAdornee missing")
+    if "dismiss participate" not in quest:
+        fail("Investigate must dismiss participate prompt")
+    if '["Investigate The Footsteps (1)"] = "Black Noir Campsite 1"' not in read("Game/QuestData.lua"):
+        fail("Investigate (1) must fall back to Black Noir Campsite 1")
     if "waitTaggedLeaf(tag, 0.8)" in quest:
         fail("Investigate still blocks decide on waitTaggedLeaf")
     if "isInteractLike(o.Type)" not in recovery:
