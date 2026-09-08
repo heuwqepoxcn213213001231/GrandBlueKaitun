@@ -676,6 +676,15 @@ return function(GB)
 			end
 		end
 
+		local escortName = GB.Quest and GB.Quest.liveEscortName and GB.Quest.liveEscortName()
+		if escortName and not GB.Config.SkipQuests[escortName] then
+			setTask("quest:" .. escortName)
+			logQuestDoing(escortName)
+			GB.Quest.doLive(escortName)
+			afterQuest(escortName)
+			return
+		end
+
 		-- Recovery dumps / strategy change, then resume story. Do not freeze.
 		-- ContinueOverlay owns its own attempt budget — do not recycle lookup.
 		if GB.Recovery.stuck() and not continueOverlay then

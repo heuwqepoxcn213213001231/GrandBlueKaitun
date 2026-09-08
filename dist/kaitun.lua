@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
--- Version: 1.1.40
--- Commit: 26c052d
--- BuiltAt: 2026-09-08T16:06:20+07:00
+-- Version: 1.1.41
+-- Commit: d0a1db8
+-- BuiltAt: 2026-09-08T16:15:56+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -35,9 +35,9 @@ return function(meta)
 
 	stopPreviousInstance()
 
-	local BUILD_VERSION = "1.1.40"
-	local BUILD_COMMIT = "26c052d"
-	local BUILD_AT = "2026-09-08T16:06:20+07:00"
+	local BUILD_VERSION = "1.1.41"
+	local BUILD_COMMIT = "d0a1db8"
+	local BUILD_AT = "2026-09-08T16:15:56+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -916,6 +916,9 @@ return function(GB)
 		if GB.Quest and GB.Quest.liveTalkName and GB.Quest.liveTalkName() then
 			return false
 		end
+		if GB.Quest and GB.Quest.liveEscortName and GB.Quest.liveEscortName() then
+			return false
+		end
 		if GB.Quest and GB.Quest.atFreeStand and GB.Quest.atFreeStand() then
 			return false
 		end
@@ -994,7 +997,7 @@ return function(GB)
 		local cur = GB.PlayerData and GB.PlayerData.current and GB.PlayerData.current()
 		local qs = cur and GB.Quest and GB.Quest.questState and GB.Quest.questState(cur)
 		local o = qs and qs.Objective
-		if o and (o.Type == "Unlock" or o.Type == "Loot" or o.Type == "Open" or o.Type == "Interact" or o.Type == "Free" or o.Type == "Wake" or o.Type == "Check On") then
+		if o and (o.Type == "Unlock" or o.Type == "Loot" or o.Type == "Open" or o.Type == "Interact" or o.Type == "Free" or o.Type == "Wake" or o.Type == "Check On" or o.Type == "Escort") then
 			if strat == "enemy" then
 				strat = M.advanceStrategy()
 			end
@@ -4235,7 +4238,7 @@ return function(GB)
 	M.STAGES["Clown Town's Militia|3|Talk|Clown Town Angry Civilian 3"] = { quest = "Clown Town's Militia", stage = 3, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Clown Town Angry Civilian 3", amount = 1, acquire = nil, source = "Clown Town Angry Civilian 3", location = "Clown Town", marker = "Clown Town Angry Civilian 3", handler = "Quest.talk", status = "IMPLEMENTED" }
 	M.STAGES["Escort The Mayor|1|Required|Level"] = { quest = "Escort The Mayor", stage = 1, island = "Clown Town", objective = "Required", goal = "LevelGate", target = "Level", amount = 1, acquire = nil, source = nil, location = "Clown Town", marker = nil, handler = "DecisionEngine.levelFarm", status = "IMPLEMENTED" }
 	M.STAGES["Escort The Mayor|2|Talk|Mayor Kiyoshi"] = { quest = "Escort The Mayor", stage = 2, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Mayor Kiyoshi", amount = 1, acquire = nil, source = "Mayor Kiyoshi", location = "Clown Town", marker = "Mayor Kiyoshi", handler = "Quest.talk", status = "IMPLEMENTED" }
-	M.STAGES["Escort The Mayor|3|Escort|Mayor Kiyoshi"] = { quest = "Escort The Mayor", stage = 3, island = "Clown Town", objective = "Escort", goal = "Escort", target = "Mayor Kiyoshi", amount = 1, acquire = nil, source = "Mayor Kiyoshi", location = "Clown Town", marker = nil, handler = "Quest.escort", status = "RUNTIME_REQUIRED" }
+	M.STAGES["Escort The Mayor|3|Escort|Mayor Kiyoshi"] = { quest = "Escort The Mayor", stage = 3, island = "Clown Town", objective = "Escort", goal = "Escort", target = "Mayor Kiyoshi", amount = 1, acquire = nil, source = "Mayor Kiyoshi", location = "Clown Town", marker = "Mayor Kiyoshi Escort", handler = "Quest.escort", status = "IMPLEMENTED" }
 	M.STAGES["Escort The Mayor|4|Talk|Mayor Kiyoshi [2]"] = { quest = "Escort The Mayor", stage = 4, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Mayor Kiyoshi [2]", amount = 1, acquire = nil, source = "Mayor Kiyoshi [2]", location = "Clown Town", marker = "Mayor Kiyoshi [2]", handler = "Quest.talk", status = "IMPLEMENTED" }
 	M.STAGES["Journey to Maple Village|1|Talk|Mayor Kiyoshi"] = { quest = "Journey to Maple Village", stage = 1, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Mayor Kiyoshi", amount = 1, acquire = nil, source = "Mayor Kiyoshi", location = "Clown Town", marker = "Mayor Kiyoshi", handler = "Quest.talk", status = "IMPLEMENTED" }
 	M.STAGES["Journey to Maple Village|2|Required|Level"] = { quest = "Journey to Maple Village", stage = 2, island = "Clown Town", objective = "Required", goal = "LevelGate", target = "Level", amount = 70, acquire = nil, source = nil, location = "Clown Town", marker = nil, handler = "DecisionEngine.levelFarm", status = "IMPLEMENTED" }
@@ -4365,7 +4368,7 @@ return function(GB)
 	M.STAGES["Mina's Request|1|Enter Zone|Anchor Town Fishing Shop"] = { quest = "Mina's Request", stage = 1, island = "Anchor Town", objective = "Enter Zone", goal = "Other", target = "Anchor Town Fishing Shop", amount = 1, acquire = nil, source = "Anchor Town Fishing Shop", location = "Anchor Town", marker = "Anchor Town Fishing Shop", handler = "UNKNOWN", status = "UNRESOLVED" }
 	M.STAGES["Mina's Request|1|Enter Zone|Anchor Town Food Foo"] = { quest = "Mina's Request", stage = 1, island = "Anchor Town", objective = "Enter Zone", goal = "Other", target = "Anchor Town Food Foo", amount = 1, acquire = nil, source = "Anchor Town Food Foo", location = "Anchor Town", marker = "Anchor Town Food Foo", handler = "UNKNOWN", status = "UNRESOLVED" }
 	M.STAGES["Mina's Request|1|Enter Zone|Anchor Town Plaza"] = { quest = "Mina's Request", stage = 1, island = "Anchor Town", objective = "Enter Zone", goal = "Other", target = "Anchor Town Plaza", amount = 1, acquire = nil, source = "Anchor Town Plaza", location = "Anchor Town", marker = "Anchor Town Plaza", handler = "UNKNOWN", status = "UNRESOLVED" }
-	M.STAGES["Mina's Request|2|Escort|Mina"] = { quest = "Mina's Request", stage = 2, island = "Anchor Town", objective = "Escort", goal = "Escort", target = "Mina", amount = 1, acquire = nil, source = "Mina", location = "Anchor Town", marker = nil, handler = "Quest.escort", status = "RUNTIME_REQUIRED" }
+	M.STAGES["Mina's Request|2|Escort|Mina"] = { quest = "Mina's Request", stage = 2, island = "Anchor Town", objective = "Escort", goal = "Escort", target = "Mina", amount = 1, acquire = nil, source = "Mina", location = "Anchor Town", marker = "Mina Escort", handler = "Quest.escort", status = "IMPLEMENTED" }
 	M.STAGES["Miners Bracelet|1|CollectLocalItem|Silver Miners Bracelet"] = { quest = "Miners Bracelet", stage = 1, island = "Anchor Town", objective = "CollectLocalItem", goal = "AcquireItem", target = "Silver Miners Bracelet", amount = 1, acquire = "WorldPickup", source = "Silver Miners Bracelet", location = "Anchor Town", marker = "Silver Miners Bracelet", handler = "Acquire.WorldPickup", status = "IMPLEMENTED" }
 	M.STAGES["Miners Bracelet|2|Talk|Miner Song Jil Wu"] = { quest = "Miners Bracelet", stage = 2, island = "Anchor Town", objective = "Talk", goal = "Talk", target = "Miner Song Jil Wu", amount = 1, acquire = nil, source = "Miner Song Jil Wu", location = "Anchor Town", marker = "Miner Song Jil Wu", handler = "Quest.talk", status = "IMPLEMENTED" }
 	M.STAGES["Miners Stone Ring|1|Craft|Stone Ring"] = { quest = "Miners Stone Ring", stage = 1, island = "Anchor Town", objective = "Craft", goal = "AcquireItem", target = "Stone Ring", amount = 1, acquire = "Crafting", source = "Stone Ring", location = "Anchor Town", marker = "CraftingTable", handler = "UNKNOWN", status = "UNRESOLVED" }
@@ -4413,7 +4416,7 @@ return function(GB)
 	M.STAGES["Arm Wrestling 2|2|Talk|Intermediate Arm Wrestler"] = { quest = "Arm Wrestling 2", stage = 2, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Intermediate Arm Wrestler", amount = 1, acquire = nil, source = "Intermediate Arm Wrestler", location = "Clown Town", marker = nil, handler = "Quest.talk", status = "IMPLEMENTED" }
 	M.STAGES["Arm Wrestling 3|1|Win Arm Wrestle|Arm Wrestling Champion"] = { quest = "Arm Wrestling 3", stage = 1, island = "Clown Town", objective = "Win Arm Wrestle", goal = "Other", target = "Arm Wrestling Champion", amount = 1, acquire = nil, source = "Arm Wrestling Champion", location = "Clown Town", marker = nil, handler = "UNKNOWN", status = "UNRESOLVED" }
 	M.STAGES["Arm Wrestling 3|2|Talk|Arm Wrestling Champion"] = { quest = "Arm Wrestling 3", stage = 2, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Arm Wrestling Champion", amount = 1, acquire = nil, source = "Arm Wrestling Champion", location = "Clown Town", marker = nil, handler = "Quest.talk", status = "IMPLEMENTED" }
-	M.STAGES["Clown Imposter|1|Escort|Fake Clown"] = { quest = "Clown Imposter", stage = 1, island = "Clown Town", objective = "Escort", goal = "Escort", target = "Fake Clown", amount = 1, acquire = nil, source = "Fake Clown", location = "Clown Town", marker = nil, handler = "Quest.escort", status = "RUNTIME_REQUIRED" }
+	M.STAGES["Clown Imposter|1|Escort|Fake Clown"] = { quest = "Clown Imposter", stage = 1, island = "Clown Town", objective = "Escort", goal = "Escort", target = "Fake Clown", amount = 1, acquire = nil, source = "Fake Clown", location = "Clown Town", marker = "Clown Imposter Escort", handler = "Quest.escort", status = "IMPLEMENTED" }
 	M.STAGES["Clown Propaganda|1|CollectLocalItem|Clown Propaganda Poster"] = { quest = "Clown Propaganda", stage = 1, island = "Clown Town", objective = "CollectLocalItem", goal = "AcquireItem", target = "Clown Propaganda Poster", amount = 10, acquire = "WorldPickup", source = "Clown Propaganda Poster", location = "Clown Town", marker = "Clown Propaganda Poster", handler = "Acquire.WorldPickup", status = "IMPLEMENTED" }
 	M.STAGES["Clown Propaganda|2|Talk|Benny"] = { quest = "Clown Propaganda", stage = 2, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Benny", amount = 1, acquire = nil, source = "Benny", location = "Clown Town", marker = "Benny", handler = "Quest.talk", status = "IMPLEMENTED" }
 	M.STAGES["Emergency Deliveries|1|Talk|Billy's Customer 1"] = { quest = "Emergency Deliveries", stage = 1, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Billy's Customer 1", amount = 1, acquire = nil, source = "Billy's Customer 1", location = "Clown Town", marker = "Billy's Customer 1", handler = "Quest.talk", status = "IMPLEMENTED" }
@@ -9487,6 +9490,15 @@ return function(GB)
 			end
 		end
 
+		local escortName = GB.Quest and GB.Quest.liveEscortName and GB.Quest.liveEscortName()
+		if escortName and not GB.Config.SkipQuests[escortName] then
+			setTask("quest:" .. escortName)
+			logQuestDoing(escortName)
+			GB.Quest.doLive(escortName)
+			afterQuest(escortName)
+			return
+		end
+
 		-- Recovery dumps / strategy change, then resume story. Do not freeze.
 		-- ContinueOverlay owns its own attempt budget — do not recycle lookup.
 		if GB.Recovery.stuck() and not continueOverlay then
@@ -12967,6 +12979,8 @@ end
 -- Talk: ClientQuest("Talk", DisplayName) + DialogueBindable(Configuration). Never BeginQuest.
 
 return function(GB)
+	local CS = game:GetService("CollectionService")
+	local Players = game:GetService("Players")
 	local M = {
 		lastTalk = {},
 		lastClick = 0,
@@ -13330,6 +13344,163 @@ return function(GB)
 			end
 		end
 		return nil
+	end
+
+	local function isDialogueNpc(inst)
+		if not inst then
+			return true
+		end
+		local ok, tagged = pcall(CS.HasTag, CS, inst, "Dialogue")
+		if ok and tagged then
+			return true
+		end
+		local p = inst
+		while p and p ~= workspace do
+			if p.Name == "DialogueNPCs" then
+				return true
+			end
+			p = p.Parent
+		end
+		return inst:IsDescendantOf(game:GetService("ReplicatedStorage"))
+	end
+
+	function M.findEscortModel(target)
+		if type(target) ~= "string" or target == "" then
+			return nil
+		end
+		local lp = Players.LocalPlayer
+		local personal = lp and (target .. " - " .. lp.Name) or nil
+		local function firstLive(tag)
+			if not tag then
+				return nil
+			end
+			local ok, list = pcall(CS.GetTagged, CS, tag)
+			if not ok or type(list) ~= "table" then
+				return nil
+			end
+			for _, inst in ipairs(list) do
+				if inst and inst.Parent and not isDialogueNpc(inst) then
+					return inst
+				end
+			end
+			return nil
+		end
+		local model = firstLive(personal) or firstLive(target)
+		if model then
+			return model
+		end
+		local entities = workspace:FindFirstChild("Entities")
+		if entities then
+			local prefix = target .. " "
+			for _, inst in ipairs(entities:GetChildren()) do
+				if inst:IsA("Model") and not isDialogueNpc(inst) then
+					local n = inst.Name
+					if n == target then
+						return inst
+					end
+					if string.sub(n, 1, #prefix) == prefix then
+						local rest = string.sub(n, #prefix + 1)
+						if string.match(rest, "^%d+$") then
+							return inst
+						end
+					end
+				end
+			end
+		end
+		return nil
+	end
+
+	function M.liveEscortName()
+		local name = GB.PlayerData and (GB.PlayerData._current or (GB.PlayerData.current and GB.PlayerData.current()))
+		if not name then
+			return nil
+		end
+		local typ = GB.PlayerData.liveObjectiveType and GB.PlayerData.liveObjectiveType(name)
+		if typ == "Escort" then
+			return name
+		end
+		return nil
+	end
+
+	local function escortThreat(escort, radius)
+		if not escort then
+			return nil
+		end
+		local origin = GB.Resolver and GB.Resolver.positionOf and GB.Resolver.positionOf(escort)
+		if not origin then
+			return nil
+		end
+		local entities = workspace:FindFirstChild("Entities")
+		if not entities then
+			return nil
+		end
+		local best, bestD
+		for _, inst in ipairs(entities:GetChildren()) do
+			if inst:IsA("Model") and inst ~= escort then
+				local party = inst:GetAttribute("Party")
+				local hostile = party == "Clown Pirates"
+				if hostile and GB.Combat and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(inst) then
+					local p = GB.Resolver.positionOf(inst)
+					if p then
+						local d = (p - origin).Magnitude
+						if d <= (radius or 42) and (not bestD or d < bestD) then
+							best, bestD = inst, d
+						end
+					end
+				end
+			end
+		end
+		return best
+	end
+
+	function M.escort(questName, target)
+		local model = M.findEscortModel(target)
+		if not model then
+			if not M._escortWaitLog or os.clock() - M._escortWaitLog > 4 then
+				M._escortWaitLog = os.clock()
+				GB.Log.warn("QUEST", "escort spawn wait " .. tostring(target))
+			end
+			return false
+		end
+		local threat = escortThreat(model, 42)
+		if threat then
+			if GB.Recovery and GB.Recovery.markSuccess then
+				GB.Recovery.markSuccess()
+			end
+			GB.Log.log("QUEST", "escort protect " .. tostring(target) .. " vs " .. tostring(threat.Name))
+			if GB.Combat and GB.Combat.hunt then
+				return GB.Combat.hunt(threat.Name, questName, {
+					Instance = threat,
+					Island = GB.QuestData and GB.QuestData.islandOf and GB.QuestData.islandOf(questName),
+				}) == true
+			end
+		elseif GB.Combat and GB.Combat.stopLock then
+			GB.Combat.stopLock()
+		end
+		local pos = GB.Resolver and GB.Resolver.positionOf and GB.Resolver.positionOf(model)
+		local hrp = GB.World and GB.World.hrp and GB.World.hrp()
+		if not (pos and hrp) then
+			return false
+		end
+		local last = M._escortLastPos
+		if last and (pos - last).Magnitude > 2.5 then
+			if GB.Recovery and GB.Recovery.markSuccess then
+				GB.Recovery.markSuccess()
+			end
+		end
+		M._escortLastPos = pos
+		local dist = (hrp.Position - pos).Magnitude
+		if not M._escortFollowLog or os.clock() - M._escortFollowLog > 3.5 then
+			M._escortFollowLog = os.clock()
+			GB.Log.log("QUEST", string.format("escort follow %s d=%.1f", tostring(target), dist))
+		end
+		if dist > 9 then
+			GB.World.moveTo(model, 6)
+		end
+		if GB.Recovery and GB.Recovery.markSuccess then
+			GB.Recovery.markSuccess()
+		end
+		return true
 	end
 
 	-- Choices live in DialogueUI.Main as cloned NodeFrames. ImageButton has no .Text;
@@ -15253,16 +15424,7 @@ return function(GB)
 			return M.talk(target, false, { Quest = questName, DisplayName = target })
 		end
 		if typ == "Escort" then
-			GB.Log.warn("QUEST", "Escort " .. tostring(target) .. " NeverSkip — follow only")
-			local pack = GB.Resolver.resolveNPC(target, {
-				Island = GB.QuestData.islandOf(questName),
-				ExpectedRole = "npc",
-			})
-			if pack then
-				GB.World.moveTo(pack.Instance, 8)
-				return true
-			end
-			return false
+			return M.escort(questName, target)
 		end
 		if typ == "Dash" then
 			GB.Combat.stopLock()

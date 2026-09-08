@@ -2,6 +2,8 @@
 -- Talk: ClientQuest("Talk", DisplayName) + DialogueBindable(Configuration). Never BeginQuest.
 
 return function(GB)
+	local CS = game:GetService("CollectionService")
+	local Players = game:GetService("Players")
 	local M = {
 		lastTalk = {},
 		lastClick = 0,
@@ -365,6 +367,163 @@ return function(GB)
 			end
 		end
 		return nil
+	end
+
+	local function isDialogueNpc(inst)
+		if not inst then
+			return true
+		end
+		local ok, tagged = pcall(CS.HasTag, CS, inst, "Dialogue")
+		if ok and tagged then
+			return true
+		end
+		local p = inst
+		while p and p ~= workspace do
+			if p.Name == "DialogueNPCs" then
+				return true
+			end
+			p = p.Parent
+		end
+		return inst:IsDescendantOf(game:GetService("ReplicatedStorage"))
+	end
+
+	function M.findEscortModel(target)
+		if type(target) ~= "string" or target == "" then
+			return nil
+		end
+		local lp = Players.LocalPlayer
+		local personal = lp and (target .. " - " .. lp.Name) or nil
+		local function firstLive(tag)
+			if not tag then
+				return nil
+			end
+			local ok, list = pcall(CS.GetTagged, CS, tag)
+			if not ok or type(list) ~= "table" then
+				return nil
+			end
+			for _, inst in ipairs(list) do
+				if inst and inst.Parent and not isDialogueNpc(inst) then
+					return inst
+				end
+			end
+			return nil
+		end
+		local model = firstLive(personal) or firstLive(target)
+		if model then
+			return model
+		end
+		local entities = workspace:FindFirstChild("Entities")
+		if entities then
+			local prefix = target .. " "
+			for _, inst in ipairs(entities:GetChildren()) do
+				if inst:IsA("Model") and not isDialogueNpc(inst) then
+					local n = inst.Name
+					if n == target then
+						return inst
+					end
+					if string.sub(n, 1, #prefix) == prefix then
+						local rest = string.sub(n, #prefix + 1)
+						if string.match(rest, "^%d+$") then
+							return inst
+						end
+					end
+				end
+			end
+		end
+		return nil
+	end
+
+	function M.liveEscortName()
+		local name = GB.PlayerData and (GB.PlayerData._current or (GB.PlayerData.current and GB.PlayerData.current()))
+		if not name then
+			return nil
+		end
+		local typ = GB.PlayerData.liveObjectiveType and GB.PlayerData.liveObjectiveType(name)
+		if typ == "Escort" then
+			return name
+		end
+		return nil
+	end
+
+	local function escortThreat(escort, radius)
+		if not escort then
+			return nil
+		end
+		local origin = GB.Resolver and GB.Resolver.positionOf and GB.Resolver.positionOf(escort)
+		if not origin then
+			return nil
+		end
+		local entities = workspace:FindFirstChild("Entities")
+		if not entities then
+			return nil
+		end
+		local best, bestD
+		for _, inst in ipairs(entities:GetChildren()) do
+			if inst:IsA("Model") and inst ~= escort then
+				local party = inst:GetAttribute("Party")
+				local hostile = party == "Clown Pirates"
+				if hostile and GB.Combat and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(inst) then
+					local p = GB.Resolver.positionOf(inst)
+					if p then
+						local d = (p - origin).Magnitude
+						if d <= (radius or 42) and (not bestD or d < bestD) then
+							best, bestD = inst, d
+						end
+					end
+				end
+			end
+		end
+		return best
+	end
+
+	function M.escort(questName, target)
+		local model = M.findEscortModel(target)
+		if not model then
+			if not M._escortWaitLog or os.clock() - M._escortWaitLog > 4 then
+				M._escortWaitLog = os.clock()
+				GB.Log.warn("QUEST", "escort spawn wait " .. tostring(target))
+			end
+			return false
+		end
+		local threat = escortThreat(model, 42)
+		if threat then
+			if GB.Recovery and GB.Recovery.markSuccess then
+				GB.Recovery.markSuccess()
+			end
+			GB.Log.log("QUEST", "escort protect " .. tostring(target) .. " vs " .. tostring(threat.Name))
+			if GB.Combat and GB.Combat.hunt then
+				return GB.Combat.hunt(threat.Name, questName, {
+					Instance = threat,
+					Island = GB.QuestData and GB.QuestData.islandOf and GB.QuestData.islandOf(questName),
+				}) == true
+			end
+		elseif GB.Combat and GB.Combat.stopLock then
+			GB.Combat.stopLock()
+		end
+		local pos = GB.Resolver and GB.Resolver.positionOf and GB.Resolver.positionOf(model)
+		local hrp = GB.World and GB.World.hrp and GB.World.hrp()
+		if not (pos and hrp) then
+			return false
+		end
+		local last = M._escortLastPos
+		if last and (pos - last).Magnitude > 2.5 then
+			if GB.Recovery and GB.Recovery.markSuccess then
+				GB.Recovery.markSuccess()
+			end
+		end
+		M._escortLastPos = pos
+		local dist = (hrp.Position - pos).Magnitude
+		if not M._escortFollowLog or os.clock() - M._escortFollowLog > 3.5 then
+			M._escortFollowLog = os.clock()
+			GB.Log.log("QUEST", string.format("escort follow %s d=%.1f", tostring(target), dist))
+		end
+		if dist > 9 then
+			GB.World.moveTo(model, 6)
+		end
+		if GB.Recovery and GB.Recovery.markSuccess then
+			GB.Recovery.markSuccess()
+		end
+		return true
 	end
 
 	-- Choices live in DialogueUI.Main as cloned NodeFrames. ImageButton has no .Text;
@@ -2288,16 +2447,7 @@ return function(GB)
 			return M.talk(target, false, { Quest = questName, DisplayName = target })
 		end
 		if typ == "Escort" then
-			GB.Log.warn("QUEST", "Escort " .. tostring(target) .. " NeverSkip — follow only")
-			local pack = GB.Resolver.resolveNPC(target, {
-				Island = GB.QuestData.islandOf(questName),
-				ExpectedRole = "npc",
-			})
-			if pack then
-				GB.World.moveTo(pack.Instance, 8)
-				return true
-			end
-			return false
+			return M.escort(questName, target)
 		end
 		if typ == "Dash" then
 			GB.Combat.stopLock()
