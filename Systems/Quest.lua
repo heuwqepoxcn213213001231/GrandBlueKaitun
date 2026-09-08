@@ -993,7 +993,23 @@ return function(GB)
 				return nil
 			end
 			local n = string.lower(tostring(inst.Name or ""))
-			if string.find(n, "camp", 1, true) or string.find(n, "footstep", 1, true) or string.find(n, "marker", 1, true) then
+			-- Path decals named "Campsite Footsteps" are not the credit point.
+			if string.find(n, "footstep", 1, true) and not string.find(n, "marker", 1, true) then
+				return nil
+			end
+			if string.find(n, "black noir campsite", 1, true) then
+				return inst
+			end
+			if string.find(n, "footsteps marker", 1, true) then
+				return inst
+			end
+			if string.find(n, "pirate marker", 1, true) then
+				return inst
+			end
+			if string.find(n, "supply crate", 1, true) or string.find(n, "signal fire", 1, true) then
+				return inst
+			end
+			if string.find(n, "marker", 1, true) and (string.find(n, "camp", 1, true) or string.find(n, "wreck", 1, true) or string.find(n, "den", 1, true) or string.find(n, "garden", 1, true) or string.find(n, "fountain", 1, true)) then
 				return inst
 			end
 			if string.find(n, "pirate", 1, true) or string.find(n, "officer", 1, true) then
@@ -1002,7 +1018,7 @@ return function(GB)
 			if inst:FindFirstChildOfClass("Humanoid") then
 				return nil
 			end
-			return inst
+			return nil
 		end
 		local function onWantedIsland()
 			local snap = GB.State and GB.State.get and GB.State.get()
@@ -1048,11 +1064,15 @@ return function(GB)
 			if not inst and GB.Resolver.findPlace then
 				inst = usableInvestigateDest(GB.Resolver.findPlace("Black Noir Pirate Marker", wantIsland))
 			end
+			if not inst and GB.Resolver.findPlace then
+				inst = usableInvestigateDest(GB.Resolver.findPlace("Supply Crate", wantIsland))
+			end
 			if not inst and GB.Resolver.findLoosePlace then
 				inst = usableInvestigateDest(GB.Resolver.findLoosePlace({
-					"Campsite",
-					"Footsteps",
-					"Black Noir Camp",
+					"Black Noir Campsite",
+					"Footsteps Marker",
+					"Supply Crate",
+					"Signal Fire",
 					"Pirate Marker",
 				}, wantIsland))
 			end

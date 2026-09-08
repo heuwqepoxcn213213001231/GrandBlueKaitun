@@ -191,6 +191,13 @@ def main() -> int:
         fail("World.goPos missing")
     if "investigate sweep" not in quest:
         fail("Investigate must sweep Maple when dest is none")
+    if 'string.find(n, "footstep", 1, true) and not string.find(n, "marker", 1, true)' not in quest:
+        fail("Investigate must reject Campsite Footsteps trail decals")
+    if 'findPlace("Supply Crate"' not in quest:
+        fail("Investigate must use camp Supply Crate as origin proxy")
+    inv = quest[quest.find("local function investigateMarker") : quest.find("local function gateRequirement")]
+    if "Combat.attack" in inv or "Combat.lock" in inv:
+        fail("Investigate must not attack Signal Fire or lock combat")
     if "GB.World.pullStream(wantIsland)" in quest and "onWantedIsland" not in quest:
         fail("pullStream Maple spawn loop still unguarded")
 

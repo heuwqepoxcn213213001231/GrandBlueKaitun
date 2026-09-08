@@ -1482,6 +1482,21 @@ return function(GB)
 		MobZones = true,
 	}
 
+	local GENERIC_MARKER_WORDS = {
+		footsteps = true,
+		campsite = true,
+		marker = true,
+		black = true,
+		noir = true,
+		pirate = true,
+		camp = true,
+		signal = true,
+		fire = true,
+		village = true,
+		supply = true,
+		crate = true,
+	}
+
 	function M.isMarkerContainer(inst)
 		return inst ~= nil and MARKER_CONTAINERS[inst.Name] == true
 	end
@@ -1502,8 +1517,9 @@ return function(GB)
 		local needles = {}
 		if type(tag) == "string" and tag ~= "" then
 			needles[#needles + 1] = tag
-			for part in string.gmatch(tag, "[^%s]+") do
-				if #part >= 5 then
+			for part in string.gmatch(tag, "[^%s%(%)]+") do
+				local low = string.lower(part)
+				if #part >= 5 and not GENERIC_MARKER_WORDS[low] then
 					needles[#needles + 1] = part
 				end
 			end
@@ -1693,10 +1709,13 @@ return function(GB)
 				return false
 			end
 			local n = string.lower(tostring(inst.Name or ""))
+			if string.find(n, "footstep", 1, true) and not string.find(n, "marker", 1, true) then
+				return false
+			end
 			for i = 1, #needles do
 				local nd = string.lower(tostring(needles[i] or ""))
 				if #nd >= 4 and string.find(n, nd, 1, true) then
-					if string.find(n, "marker", 1, true) or string.find(n, "camp", 1, true) or string.find(n, "footstep", 1, true) then
+					if string.find(n, "marker", 1, true) or string.find(n, "campsite", 1, true) or string.find(n, "signal fire", 1, true) or string.find(n, "supply crate", 1, true) then
 						return true
 					end
 					if not string.find(n, "pirate", 1, true) and not string.find(n, "officer", 1, true) then
