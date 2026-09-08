@@ -163,6 +163,18 @@ def main() -> int:
         fail("Investigate must not teleport onto a pirate")
     if "usableInvestigateDest" not in quest:
         fail("Investigate dest filter missing")
+    if '["Journey to Maple Village"] = 70' not in read("Game/QuestData.lua"):
+        fail("STORY_DONE_AT must imply Journey done at lv70+")
+    if '["Setting Sail"] = 30' not in read("Game/QuestData.lua"):
+        fail("STORY_DONE_AT must imply Setting Sail done at lv30+")
+    if "function storyPos" not in read("Game/QuestData.lua"):
+        fail("impliedFinished missing later-story evidence")
+    if "GB.PlayerData._current" not in world:
+        fail("islandFromProgress must prefer live quest island")
+    if "investigate %s -> %s" not in quest:
+        fail("Investigate must travel to quest island when dest is missing")
+    if "mapleLive" not in read("Systems/Travel.lua"):
+        fail("goIsland must allow Maple when Maple story is live")
 
     if FAILS:
         print("FAIL scenario_tests")

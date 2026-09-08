@@ -81,6 +81,20 @@ return function(GB)
 		["Captive Swordsman"] = 26,
 		["Axe-Handed Tyrant"] = 26,
 		["A Voice in a Shell"] = 26,
+		["Setting Sail"] = 30,
+		["A Joke Gone Too Far"] = 35,
+		["Sabotage The Cannon"] = 35,
+		["Lion's Victim"] = 40,
+		["Stephon's Tormentor"] = 43,
+		["Butcher's Business"] = 45,
+		["Circus Suppliers"] = 50,
+		["Clown Captives"] = 50,
+		["Revenge of the Nibblebottom"] = 55,
+		["Escort The Mayor"] = 58,
+		["Mayor's Stache"] = 58,
+		["Clown Town's Militia"] = 60,
+		["The Ringmaster"] = 60,
+		["Journey to Maple Village"] = 70,
 	}
 
 	M.SIDES = {
@@ -329,6 +343,20 @@ return function(GB)
 		return M.GATES[name] or 0
 	end
 
+	local function storyPos(name)
+		if not M._storyPos then
+			M._storyPos = {}
+			local n = 0
+			for _, ch in ipairs(M.CHAINS) do
+				for _, q in ipairs(ch.order) do
+					n = n + 1
+					M._storyPos[q] = n
+				end
+			end
+		end
+		return M._storyPos[name]
+	end
+
 	function M.impliedFinished(name, lv)
 		if type(name) ~= "string" or name == "" then
 			return false
@@ -354,6 +382,25 @@ return function(GB)
 					end
 				end
 				break
+			end
+		end
+		local mine = storyPos(name)
+		if mine and GB and GB.PlayerData then
+			local cur = GB.PlayerData._current
+			if type(cur) == "string" then
+				local pos = storyPos(cur)
+				if pos and pos > mine then
+					return true
+				end
+			end
+			local live = GB.PlayerData._live
+			if type(live) == "table" then
+				for q in pairs(live) do
+					local pos = storyPos(q)
+					if pos and pos > mine then
+						return true
+					end
+				end
 			end
 		end
 		return false

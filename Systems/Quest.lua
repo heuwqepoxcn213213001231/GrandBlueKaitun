@@ -1013,6 +1013,23 @@ return function(GB)
 		if not inst and GB.Resolver.findHudAdornee then
 			inst = usableInvestigateDest(GB.Resolver.findHudAdornee(questName))
 		end
+		local qs = M.questState and M.questState(questName)
+		local wantIsland = (qs and qs.Island) or (GB.QuestData.islandOf and GB.QuestData.islandOf(questName))
+		local snap = GB.State and GB.State.get and GB.State.get()
+		local here = snap and (snap.PhysicalIsland or snap.CurrentIsland)
+		if wantIsland and here and here ~= wantIsland then
+			if os.clock() - (M._investIslandAt or 0) > 2 then
+				M._investIslandAt = os.clock()
+				GB.Log.log("TRAVEL", string.format("investigate %s -> %s", tostring(here), tostring(wantIsland)))
+				if GB.Travel and GB.Travel.goIsland then
+					GB.Travel.goIsland(wantIsland)
+				end
+				if GB.World.pullStream then
+					GB.World.pullStream(wantIsland)
+				end
+			end
+			return true
+		end
 		if inst and GB.World.standOn then
 			local pos = GB.Resolver.positionOf and GB.Resolver.positionOf(inst)
 			local key = tostring(inst.Name) .. ":" .. tostring(pos and math.floor(pos.X) or 0)
@@ -1023,18 +1040,28 @@ return function(GB)
 				GB.World.standOn(inst, 8)
 			end
 		elseif not inst then
+			if wantIsland and GB.World.pullStream and os.clock() - (M._investPullAt or 0) > 3 then
+				M._investPullAt = os.clock()
+				GB.World.pullStream(wantIsland)
+			end
 			if os.clock() - (M._investMissAt or 0) > 4 then
 				M._investMissAt = os.clock()
 				GB.Log.warn("QUEST", "marker miss " .. tostring(tag) .. " zone-only")
 			end
 		end
 		M._investZoneN = (M._investZoneN or 0) + 1
-		local names = { tag }
-		if origin and origin ~= tag then
+		local names = {}
+		if origin and origin ~= "" then
 			names[#names + 1] = origin
 		end
-		if type(typ) == "string" and typ ~= "" and typ ~= tag then
+		if tag and tag ~= origin then
+			names[#names + 1] = tag
+		end
+		if type(typ) == "string" and typ ~= "" and typ ~= tag and typ ~= origin then
 			names[#names + 1] = typ
+		end
+		if #names == 0 then
+			names[1] = tag or typ
 		end
 		local zone = names[((M._investZoneN - 1) % #names) + 1]
 		GB.Remotes.enterZone(zone)

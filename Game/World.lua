@@ -969,6 +969,13 @@ return function(GB)
 
 	function M.islandFromProgress(snap)
 		snap = snap or GB.State.get()
+		local cur = GB.PlayerData and GB.PlayerData._current
+		if type(cur) == "string" and cur ~= "" and GB.QuestData and GB.QuestData.islandOf then
+			local isl = GB.QuestData.islandOf(cur)
+			if type(isl) == "string" and isl ~= "" then
+				return isl
+			end
+		end
 		if not GB.PlayerData.finished("Setting Sail", true) then
 			return "Anchor Town"
 		end
