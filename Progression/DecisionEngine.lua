@@ -485,6 +485,8 @@ return function(GB)
 		local typ = o and o.Type
 		if typ == "Talk" or typ == "Automatic Talk" or typ == "GiveItemTo" then
 			score = score + 250
+		elseif type(typ) == "string" and (string.sub(typ, 1, 11) == "Investigate" or typ == "Interact" or typ == "Open") then
+			score = score + 320
 		elseif typ == "Kill" or typ == "Defeat" or typ == "Hit" then
 			score = score + 180
 		end
@@ -953,7 +955,10 @@ return function(GB)
 			farmSessionClear("level_met")
 		end
 		if GB.Broker and GB.Broker.isPending and GB.Broker.isPending("GetDataQuests") then
-			setIdle("WAIT_DATA", "GetDataQuests")
+			local curQuest = GB.PlayerData and GB.PlayerData.current and GB.PlayerData.current()
+			if not curQuest then
+				setIdle("WAIT_DATA", "GetDataQuests")
+			end
 		end
 		if not M._contextDirty and fastFarmPath(snap) then
 			return

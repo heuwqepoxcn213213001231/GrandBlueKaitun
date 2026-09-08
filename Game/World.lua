@@ -1057,6 +1057,10 @@ return function(GB)
 		if not inst then
 			return false
 		end
+		if GB.Resolver and GB.Resolver.isMarkerContainer and GB.Resolver.isMarkerContainer(inst) then
+			GB.Log.warn("TRAVEL", "refuse container " .. tostring(inst.Name))
+			return false
+		end
 		if GB.Quest and GB.Quest.dialogueOpen and GB.Quest.dialogueOpen() then
 			return true
 		end
@@ -1161,8 +1165,40 @@ return function(GB)
 		return M.tweenTo(dest, look, { wait = true, range = range + 1.2 })
 	end
 
+	function M.standOn(inst, range)
+		if not inst then
+			return false
+		end
+		if GB.Resolver and GB.Resolver.isMarkerContainer and GB.Resolver.isMarkerContainer(inst) then
+			GB.Log.warn("TRAVEL", "refuse container " .. tostring(inst.Name))
+			return false
+		end
+		local origin = GB.Resolver.positionOf(inst)
+		if not origin then
+			return false
+		end
+		range = tonumber(range) or 8
+		local root = M.hrp()
+		if root and M.planarDist(root.Position, origin) <= range and math.abs(root.Position.Y - origin.Y) <= 12 then
+			return true
+		end
+		local dest = M.floorAt(origin, origin.Y) or origin
+		if not M.destOk(dest, { MaxGroundY = origin.Y + 4 }) then
+			dest = Vector3.new(origin.X, origin.Y + 3, origin.Z)
+		end
+		if not M.destOk(dest, { MaxGroundY = origin.Y + 6 }) then
+			return false
+		end
+		GB.Log.log("TRAVEL", "Teleport -> " .. (GB.Resolver.displayName(inst) or inst.Name))
+		return M.setPos(dest, { MaxGroundY = origin.Y + 4, SkipGround = true })
+	end
+
 	function M.ToInteractable(inst, range)
 		range = range or 4
+		if GB.Resolver and GB.Resolver.isMarkerContainer and GB.Resolver.isMarkerContainer(inst) then
+			GB.Log.warn("TRAVEL", "refuse container " .. tostring(inst.Name))
+			return false
+		end
 		local origin, look = nil, nil
 		if GB.Resolver.promptAnchor then
 			origin, look = GB.Resolver.promptAnchor(inst)
@@ -1252,6 +1288,10 @@ return function(GB)
 
 	function M.interact(inst, range, hold)
 		if not inst then
+			return false
+		end
+		if GB.Resolver and GB.Resolver.isMarkerContainer and GB.Resolver.isMarkerContainer(inst) then
+			GB.Log.warn("TRAVEL", "refuse container " .. tostring(inst.Name))
 			return false
 		end
 		if not M.atTalk(inst, math.max(range or 4, GB.Config.TalkRange or 14)) then

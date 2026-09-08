@@ -27,7 +27,7 @@ return function(GB)
 		EquipRequired = "EquipRequired",
 		InputRequired = "InputRequired",
 	}
-	local OVERLAY_TEXT_TTL = 0.65
+	local OVERLAY_TEXT_TTL = 1.2
 
 	local function pbegin()
 		return GB.Profiler and GB.Profiler.begin and GB.Profiler.begin() or nil

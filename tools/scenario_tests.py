@@ -109,6 +109,27 @@ def main() -> int:
     if "talk not credited" in quest.split("if typ == \"Talk\"", 1)[-1][:900]:
         fail("Talk path still noteFail after one blocked wait")
 
+    resolver = read("Game/Resolver.lua")
+    recovery = read("Core/Recovery.lua")
+    if "function M.taggedLeaf" not in resolver:
+        fail("Resolver.taggedLeaf missing")
+    if "function M.isMarkerContainer" not in resolver:
+        fail("Resolver.isMarkerContainer missing")
+    if "function M.standOn" not in world:
+        fail("World.standOn missing")
+    if "investigateMarker" not in quest:
+        fail("Quest.investigateMarker missing")
+    if "refuse container" not in world:
+        fail("World must refuse Markers folder travel")
+    if "isInteractLike" not in recovery:
+        fail("Recovery isInteractLike missing")
+    if 'string.sub(typ, 1, 11) == "Investigate"' not in recovery:
+        fail("Recovery must skip enemy for Investigate*")
+    if "if not curQuest then" not in engine:
+        fail("WAIT_DATA must not fire while a live quest is cached")
+    if 'string.sub(typ, 1, 11) == "Investigate"' not in engine:
+        fail("scoreActive missing Investigate bias")
+
     if FAILS:
         print("FAIL scenario_tests")
         for row in FAILS:

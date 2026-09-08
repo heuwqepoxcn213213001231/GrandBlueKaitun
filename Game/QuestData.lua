@@ -550,6 +550,10 @@ return function(GB)
 		return M.conditionCurrent(cond) >= M.conditionAmount(cond)
 	end
 
+	function M.isInvestigate(typ)
+		return type(typ) == "string" and string.sub(typ, 1, 11) == "Investigate"
+	end
+
 	function M.markerOf(typ, target)
 		if typ == "Unlock" then
 			return target or M.MARKER_TAG.Unlock

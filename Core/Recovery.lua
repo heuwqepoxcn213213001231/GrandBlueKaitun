@@ -79,6 +79,32 @@ return function(GB)
 		return idle >= (cfg.StuckSeconds or 18)
 	end
 
+	local function isInteractLike(typ)
+		if type(typ) ~= "string" or typ == "" then
+			return false
+		end
+		if string.sub(typ, 1, 11) == "Investigate" then
+			return true
+		end
+		return typ == "Unlock"
+			or typ == "Loot"
+			or typ == "Open"
+			or typ == "Interact"
+			or typ == "Free"
+			or typ == "Wake"
+			or typ == "Check On"
+			or typ == "Escort"
+			or typ == "Deliver Object"
+			or typ == "Deliver"
+			or typ == "Talk"
+			or typ == "Automatic Talk"
+			or typ == "GiveItemTo"
+			or typ == "Plant"
+			or typ == "Harvest"
+			or typ == "Water"
+			or typ == "Rescue"
+	end
+
 	local function scopedInvalidate(qs)
 		if not GB.Cache then
 			return
@@ -101,7 +127,7 @@ return function(GB)
 			GB.Cache.invalidatePrefix("res:npc:")
 			return
 		end
-		if typ == "Open" or typ == "Unlock" or typ == "Interact" or typ == "Free" or typ == "Collect" or typ == "CollectLocal" then
+		if isInteractLike(typ) or typ == "Collect" or typ == "CollectLocal" then
 			GB.Cache.invalidatePrefix("res:object:")
 			GB.Cache.invalidatePrefix("res:marker:")
 			return
@@ -147,7 +173,7 @@ return function(GB)
 		local cur = GB.PlayerData and GB.PlayerData.current and GB.PlayerData.current()
 		local qs = cur and GB.Quest and GB.Quest.questState and GB.Quest.questState(cur)
 		local o = qs and qs.Objective
-		if o and (o.Type == "Unlock" or o.Type == "Loot" or o.Type == "Open" or o.Type == "Interact" or o.Type == "Free" or o.Type == "Wake" or o.Type == "Check On" or o.Type == "Escort" or o.Type == "Deliver Object" or o.Type == "Deliver" or o.Type == "Talk" or o.Type == "Automatic Talk") then
+		if o and isInteractLike(o.Type) then
 			if strat == "enemy" then
 				strat = M.advanceStrategy()
 			end

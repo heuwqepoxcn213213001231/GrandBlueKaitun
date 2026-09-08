@@ -355,6 +355,9 @@ return function(GB)
 						if typ == "Talk" or typ == "Automatic Talk" or typ == "GiveItemTo" then
 							return name
 						end
+						if type(typ) == "string" and string.sub(typ, 1, 11) == "Investigate" then
+							return name
+						end
 					end
 				end
 			end

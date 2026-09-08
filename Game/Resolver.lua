@@ -1474,14 +1474,136 @@ return function(GB)
 		return nil
 	end
 
+	local MARKER_CONTAINERS = {
+		Markers = true,
+		NPCAreas = true,
+		PointsOfInterest = true,
+		["Spawn Locations"] = true,
+		MobZones = true,
+	}
+
+	function M.isMarkerContainer(inst)
+		return inst ~= nil and MARKER_CONTAINERS[inst.Name] == true
+	end
+
+	function M.markerLeafOf(inst, tag)
+		if not inst then
+			return nil
+		end
+		local function usableLeaf(x)
+			if not (x and x.Parent) or inRS(x) or M.isPet(x) then
+				return false
+			end
+			if M.isMarkerContainer(x) then
+				return false
+			end
+			return x:IsA("BasePart") or x:IsA("Model") or x:IsA("Folder") or x:IsA("Attachment")
+		end
+		local exact, taggedLeaf
+		local function consider(x)
+			if not usableLeaf(x) then
+				return
+			end
+			if tag and (x.Name == tag or M.displayName(x) == tag) then
+				exact = exact or x
+				return
+			end
+			local tagged = false
+			if tag then
+				pcall(function()
+					tagged = x:HasTag(tag)
+				end)
+			end
+			if tagged then
+				taggedLeaf = taggedLeaf or x
+			end
+		end
+		if not M.isMarkerContainer(inst) then
+			consider(inst)
+		end
+		if exact then
+			return exact
+		end
+		local ok, desc = pcall(inst.GetDescendants, inst)
+		if ok and type(desc) == "table" then
+			for _, d in ipairs(desc) do
+				consider(d)
+				if exact then
+					return exact
+				end
+			end
+		end
+		return taggedLeaf
+	end
+
 	function M.taggedAny(tag)
 		if type(tag) ~= "string" or tag == "" then
 			return nil
 		end
+		if MARKER_CONTAINERS[tag] then
+			return nil
+		end
 		for _, inst in ipairs(CS:GetTagged(tag)) do
 			if inst.Parent and not inRS(inst) and not M.isPet(inst) then
-				return inst
+				if M.isMarkerContainer(inst) then
+					local leaf = M.markerLeafOf(inst, tag)
+					if leaf then
+						return leaf
+					end
+				else
+					return inst
+				end
 			end
+		end
+		return nil
+	end
+
+	function M.taggedLeaf(tag)
+		if type(tag) ~= "string" or tag == "" or MARKER_CONTAINERS[tag] then
+			return nil
+		end
+		local leaf = M.taggedAny(tag)
+		if leaf and not M.isMarkerContainer(leaf) then
+			if leaf.Name == tag or M.displayName(leaf) == tag then
+				return leaf
+			end
+			local unwrapped = M.markerLeafOf(leaf, tag)
+			if unwrapped then
+				return unwrapped
+			end
+			return leaf
+		end
+		local pack = M.resolveMarker and M.resolveMarker(tag, { ExpectedRole = "marker", kind = "marker" })
+		local inst = pack and pack.Instance
+		if inst and M.isMarkerContainer(inst) then
+			inst = M.markerLeafOf(inst, tag)
+		end
+		if inst and not M.isMarkerContainer(inst) then
+			return inst
+		end
+		local by = M.byName(tag, "marker")
+		if by and M.isMarkerContainer(by) then
+			by = M.markerLeafOf(by, tag)
+		end
+		if by and not M.isMarkerContainer(by) then
+			return by
+		end
+		return nil
+	end
+
+	function M.waitTaggedLeaf(tag, timeout)
+		timeout = timeout or 0.8
+		local hit = M.taggedLeaf(tag)
+		if hit then
+			return hit
+		end
+		local t0 = os.clock()
+		while os.clock() - t0 < timeout do
+			hit = M.taggedLeaf(tag)
+			if hit then
+				return hit
+			end
+			task.wait(0.1)
 		end
 		return nil
 	end

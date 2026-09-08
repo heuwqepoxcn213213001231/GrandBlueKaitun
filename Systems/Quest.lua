@@ -855,17 +855,34 @@ return function(GB)
 		return ok == true
 	end
 
+	local function resolveMarkerLeaf(tag)
+		if not tag or tag == "" or tag == "Markers" then
+			return nil
+		end
+		local inst = GB.Resolver.taggedLeaf and GB.Resolver.taggedLeaf(tag)
+		if not inst and GB.Resolver.waitTaggedLeaf then
+			inst = GB.Resolver.waitTaggedLeaf(tag, 0.8)
+		end
+		if not inst and GB.Resolver.taggedAny then
+			inst = GB.Resolver.taggedAny(tag)
+		end
+		if not inst and GB.Resolver.byName then
+			inst = GB.Resolver.byName(tag, "marker")
+		end
+		if inst and GB.Resolver.markerLeafOf then
+			inst = GB.Resolver.markerLeafOf(inst, tag) or inst
+		end
+		if inst and GB.Resolver.isMarkerContainer and GB.Resolver.isMarkerContainer(inst) then
+			return nil
+		end
+		return inst
+	end
+
 	local function goTagged(tag, dist)
-		if not tag or tag == "" then
+		if not tag or tag == "" or tag == "Markers" then
 			return false
 		end
-		local inst = GB.Resolver.taggedAny and GB.Resolver.taggedAny(tag)
-		if not inst then
-			inst = GB.Resolver.waitTagged(tag, 0.8)
-		end
-		if not inst then
-			inst = GB.Resolver.byName(tag)
-		end
+		local inst = resolveMarkerLeaf(tag)
 		if not inst then
 			GB.Log.warn("QUEST", "marker miss " .. tostring(tag))
 			return false
@@ -880,6 +897,52 @@ return function(GB)
 			end
 		end
 		GB.Remotes.enterZone(tag)
+		return true
+	end
+
+	local function investigateMarker(questName, typ, target, stage)
+		if GB.Combat and GB.Combat.stopLock then
+			GB.Combat.stopLock()
+		end
+		local spec = GB.QuestSpecs and GB.QuestSpecs.lookup and GB.QuestSpecs.lookup(questName, stage, typ, target)
+		local tag = spec and spec.marker
+		if (not tag or tag == "" or tag == "Markers") and GB.QuestData.combatMarker then
+			tag = GB.QuestData.combatMarker(questName, stage, typ, target)
+		end
+		if not tag or tag == "" or tag == "Markers" then
+			tag = GB.QuestData.markerOf(typ, target)
+		end
+		if not tag or tag == "" or tag == "Markers" then
+			GB.Log.warn("QUEST", "investigate tag miss " .. tostring(typ))
+			return false
+		end
+		local inst = resolveMarkerLeaf(tag)
+		if not inst then
+			GB.Log.warn("QUEST", "marker miss " .. tostring(tag))
+			return false
+		end
+		local arrived = GB.World.standOn and GB.World.standOn(inst, 8)
+		if not arrived then
+			return false
+		end
+		M._investZoneN = (M._investZoneN or 0) + 1
+		local names = { tag }
+		if type(typ) == "string" and typ ~= "" and typ ~= tag then
+			names[#names + 1] = typ
+		end
+		local zone = names[((M._investZoneN - 1) % #names) + 1]
+		GB.Remotes.enterZone(zone)
+		local pr = GB.Resolver.prompt and GB.Resolver.prompt(inst)
+		if pr and GB.World.firePrompt then
+			GB.World.firePrompt(pr)
+		end
+		if GB.PlayerData and GB.PlayerData.requestLive then
+			GB.PlayerData.requestLive("investigate:" .. tostring(questName) .. ":" .. tostring(typ))
+		end
+		if GB.Recovery and GB.Recovery.markSuccess then
+			GB.Recovery.markSuccess()
+		end
+		GB.Log.log("QUEST", string.format("investigate %s zone=%s", tostring(tag), tostring(zone)))
 		return true
 	end
 
@@ -1104,7 +1167,7 @@ return function(GB)
 
 	local function inferObjective(name)
 		local now = os.clock()
-		if M._inferName == name and M._inferObj and now - (M._inferAt or 0) < 1.1 then
+		if M._inferName == name and now - (M._inferAt or 0) < 2.5 then
 			return M._inferObj
 		end
 		perfCount("QuestGuiScan", 1)
@@ -2496,8 +2559,7 @@ return function(GB)
 			return true
 		end
 		if type(typ) == "string" and string.sub(typ, 1, 11) == "Investigate" then
-			GB.Combat.stopLock()
-			return goTagged(GB.QuestData.markerOf(typ, target) or target, 10)
+			return investigateMarker(questName, typ, target, stage)
 		end
 		if typ == "Defend" then
 			rememberUnknown(questName .. "Defend", "UNKNOWN_OBJECTIVE Defend " .. tostring(target) .. " — skip")
