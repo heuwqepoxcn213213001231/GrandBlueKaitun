@@ -1,6 +1,6 @@
 -- FindTarget / MoveToTarget / AttackTarget / ValidateKill / RecoverCombat.
 -- Death = Dead attribute / Health<=0 / StateService Dead. Parent nil is despawn, not death.
--- AttackModule.Swing at CanSwing. CombatSwingBypass clears Swing/SwingCD/Endlag/Whifflag (farm).
+-- AttackModule.Swing only at CanSwing. No dash weave, no AttackPlayer pulse, no SwingCD clear.
 
 return function(GB)
 	local RS = game:GetService("ReplicatedStorage")
@@ -155,9 +155,6 @@ return function(GB)
 	end
 
 	function M.minSwingInterval()
-		if GB.Config and GB.Config.CombatSwingBypass == true then
-			return SWING_FLOOR
-		end
 		local mode = GB.Config and GB.Config.CombatMode or "SAFE_FAST"
 		local verified = math.max(SWING_VERIFIED, M.readSwingDuration())
 		if mode ~= "SAFE_FAST" then
@@ -981,7 +978,6 @@ return function(GB)
 		if os.clock() - M.lastSwing < M.minSwingInterval() then
 			return
 		end
-		M.clearSwingLock(c)
 		if not M.canSwing(c) then
 			return
 		end
@@ -1211,8 +1207,6 @@ return function(GB)
 				end
 				M._hpBefore = hp
 				M.swing()
-				M.attackPulse(mob2)
-				M.dashPulse()
 			else
 				M.onTargetDead(mob2, "post-swing")
 			end

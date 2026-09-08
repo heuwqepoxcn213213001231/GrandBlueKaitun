@@ -89,11 +89,14 @@ return function(GB)
 	def("StuckSeconds", 18)
 	def("RecoveryCooldown", 8)
 	def("CombatMode", "SAFE_FAST") -- NORMAL | SAFE_FAST
-	def("CombatDashWeave", true) -- farm-style Input Dash pulse while locked
+	def("CombatDashWeave", false)
 	def("CombatDashWeaveGap", 0.12)
-	def("CombatAttackPulse", true) -- SwingEvent + AttackPlayer while locked
+	def("CombatAttackPulse", false)
 	def("CombatAttackPulseGap", 0.06)
-	def("CombatSwingBypass", true) -- ClearState Swing/SwingCD/Endlag/Whifflag like farm
+	def("CombatSwingBypass", false)
+	C.CombatDashWeave = false
+	C.CombatAttackPulse = false
+	C.CombatSwingBypass = false
 	def("CombatDebug", false)
 	def("ActionTimeout", 25)
 	def("MaxRetries", 3)
