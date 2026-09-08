@@ -112,6 +112,10 @@ def main() -> None:
         fail("Combat missing dashPulse")
     if "function M.attackPulse" not in combat_src:
         fail("Combat missing attackPulse")
+    if "function M.clearSwingLock" not in combat_src:
+        fail("Combat missing clearSwingLock")
+    if 'def("CombatSwingBypass"' not in (root / "Config.lua").read_text(encoding="utf-8"):
+        fail("Config missing CombatSwingBypass")
     if 'def("CombatAttackPulse"' not in (root / "Config.lua").read_text(encoding="utf-8"):
         fail("Config missing CombatAttackPulse")
     if 'def("CombatDashWeave"' not in (root / "Config.lua").read_text(encoding="utf-8"):

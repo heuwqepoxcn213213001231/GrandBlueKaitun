@@ -1,7 +1,6 @@
 -- FindTarget / MoveToTarget / AttackTarget / ValidateKill / RecoverCombat.
 -- Death = Dead attribute / Health<=0 / StateService Dead. Parent nil is despawn, not death.
--- AttackModule.Swing only at CanSwing + swingStateDuration.
--- UNSAFE / NOT ENABLED: clearing SwingCD/Endlag, forging attack remotes, Swing spam.
+-- AttackModule.Swing at CanSwing. CombatSwingBypass clears Swing/SwingCD/Endlag/Whifflag (farm).
 
 return function(GB)
 	local RS = game:GetService("ReplicatedStorage")
@@ -156,6 +155,9 @@ return function(GB)
 	end
 
 	function M.minSwingInterval()
+		if GB.Config and GB.Config.CombatSwingBypass == true then
+			return SWING_FLOOR
+		end
 		local mode = GB.Config and GB.Config.CombatMode or "SAFE_FAST"
 		local verified = math.max(SWING_VERIFIED, M.readSwingDuration())
 		if mode ~= "SAFE_FAST" then
@@ -165,6 +167,22 @@ return function(GB)
 			return verified
 		end
 		return SWING_FLOOR
+	end
+
+	function M.clearSwingLock(char)
+		if not (GB.Config and GB.Config.CombatSwingBypass == true) then
+			return false
+		end
+		char = char or (GB.World and GB.World.char and GB.World.char())
+		local st = loadState()
+		if not (char and st and st.ClearState) then
+			return false
+		end
+		pcall(st.ClearState, char, "Swing")
+		pcall(st.ClearState, char, "SwingCD")
+		pcall(st.ClearState, char, "Endlag")
+		pcall(st.ClearState, char, "Whifflag")
+		return true
 	end
 
 	function M.preferredAction(questName)
@@ -963,6 +981,7 @@ return function(GB)
 		if os.clock() - M.lastSwing < M.minSwingInterval() then
 			return
 		end
+		M.clearSwingLock(c)
 		if not M.canSwing(c) then
 			return
 		end
@@ -1074,6 +1093,7 @@ return function(GB)
 		if not char then
 			return false
 		end
+		M.clearSwingLock(char)
 		local root = GB.World.hrp and GB.World.hrp()
 		local part = GB.Resolver and GB.Resolver.part and GB.Resolver.part(mob)
 		if root and part and part:IsA("BasePart") then

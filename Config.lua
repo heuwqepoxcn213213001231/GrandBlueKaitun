@@ -93,6 +93,7 @@ return function(GB)
 	def("CombatDashWeaveGap", 0.12)
 	def("CombatAttackPulse", true) -- SwingEvent + AttackPlayer while locked
 	def("CombatAttackPulseGap", 0.06)
+	def("CombatSwingBypass", true) -- ClearState Swing/SwingCD/Endlag/Whifflag like farm
 	def("CombatDebug", false)
 	def("ActionTimeout", 25)
 	def("MaxRetries", 3)

@@ -1,7 +1,7 @@
 {
-  "version": "1.1.44",
-  "commit": "37315b9",
-  "built_at": "2026-09-08T17:04:06+07:00",
+  "version": "1.1.45",
+  "commit": "cae4802",
+  "built_at": "2026-09-08T17:07:37+07:00",
   "coverage": {
     "quests": 151,
     "all": {
