@@ -54,6 +54,8 @@ return function(GB)
 		["Tired Child"] = { "Child Captive", "Captured Child", "Hostage" },
 		["Adult Captive"] = { "Captured Adult", "Hostage" },
 		["Hostage"] = { "Child Captive", "Adult Captive", "Captured Child" },
+		["Cage Container"] = { "CageContainer", "Cage" },
+		["CageContainer"] = { "Cage Container" },
 	}
 
 	local missLog = {}
@@ -1607,6 +1609,110 @@ return function(GB)
 			end)
 		end
 		return out
+	end
+
+	function M.findCageContainer(kind)
+		kind = string.lower(tostring(kind or "any"))
+		local seen = {}
+		local boxes = {}
+		local function consider(inst)
+			if not inst or seen[inst] or not inst.Parent or inRS(inst) or M.isPet(inst) then
+				return
+			end
+			local root = M.objectCombatRoot(inst, "Cage Container") or inst
+			if seen[root] then
+				return
+			end
+			local n = string.lower(tostring(root.Name or "") .. " " .. tostring(M.displayName(root) or ""))
+			local named = root.Name == "Cage Container" or string.find(n, "cage container", 1, true)
+			local tagged = false
+			pcall(function()
+				tagged = root:HasTag("Cage Container") or inst:HasTag("Cage Container")
+			end)
+			if not (named or tagged) then
+				return
+			end
+			if GB.Combat and GB.Combat.readHealth then
+				local hp = GB.Combat.readHealth(root)
+				if type(hp) == "number" and hp <= 0 then
+					return
+				end
+			end
+			if GB.Combat and GB.Combat.hasDeadFlag and GB.Combat.hasDeadFlag(root) then
+				return
+			end
+			if not (M.part(root) or M.positionOf(root)) then
+				return
+			end
+			seen[root] = true
+			boxes[#boxes + 1] = root
+		end
+		local ok, tagged = pcall(CS.GetTagged, CS, "Cage Container")
+		if ok and type(tagged) == "table" then
+			for _, inst in ipairs(tagged) do
+				consider(inst)
+			end
+		end
+		local ent = workspace:FindFirstChild("Entities")
+		if ent then
+			for _, ch in ipairs(ent:GetChildren()) do
+				if ch.Name == "Cage Container" then
+					consider(ch)
+				end
+			end
+		end
+		local islands = workspace:FindFirstChild("Islands")
+		local town = islands and islands:FindFirstChild("Clown Town")
+		local island = town and town:FindFirstChild("Island")
+		local jail = island and island:FindFirstChild("Jail")
+		if jail then
+			consider(jail:FindFirstChild("Cage Container", true))
+			local hostage = jail:FindFirstChild("Hostage")
+			if hostage then
+				consider(hostage:FindFirstChild("Cage Container", true))
+			end
+		end
+		local byName = M.byName and M.byName("Cage Container")
+		consider(byName)
+		if #boxes == 0 then
+			return nil
+		end
+		local captives = M.findCaptiveCages(kind)
+		local here = GB.World and GB.World.hrp and GB.World.hrp()
+		local herePos = here and here.Position
+		local function nearCaptive(box)
+			local bp = M.positionOf(box)
+			if not bp then
+				return 1e9
+			end
+			local best = 1e9
+			for _, cap in ipairs(captives) do
+				local cp = M.positionOf(cap)
+				if cp then
+					local d = (bp - cp).Magnitude
+					if d < best then
+						best = d
+					end
+				end
+			end
+			return best
+		end
+		table.sort(boxes, function(a, b)
+			local da = nearCaptive(a)
+			local db = nearCaptive(b)
+			if math.abs(da - db) > 4 then
+				return da < db
+			end
+			if herePos then
+				local pa = M.positionOf(a)
+				local pb = M.positionOf(b)
+				local ha = pa and (pa - herePos).Magnitude or 1e9
+				local hb = pb and (pb - herePos).Magnitude or 1e9
+				return ha < hb
+			end
+			return da < db
+		end)
+		return boxes[1], boxes
 	end
 
 	function M.findDestroyable(name, opts)

@@ -1001,12 +1001,15 @@ return function(GB)
 	end
 
 	function M.hunt(name, questName, targetPlan)
+		local objectHunt = (type(targetPlan) == "table" and (targetPlan.Object == true or targetPlan.ObjectiveType == "Destroy"))
+			or (GB.QuestData and GB.QuestData.isObjectTarget and GB.QuestData.isObjectTarget(name))
+		local ctx = { Name = name, Object = objectHunt == true }
 		local preset = type(targetPlan) == "table" and targetPlan.Instance or nil
-		local mob = (preset and M.IsValidTarget(preset, { Name = name }) and preset) or M.findTarget(name, questName, targetPlan)
+		local mob = (preset and M.IsValidTarget(preset, ctx) and preset) or M.findTarget(name, questName, targetPlan)
 		if not mob then
 			return false
 		end
-		if not M.IsValidTarget(mob, { Name = name }) then
+		if not M.IsValidTarget(mob, ctx) then
 			return false
 		end
 		GB.Log.log("COMBAT", "Next target " .. tostring(name))

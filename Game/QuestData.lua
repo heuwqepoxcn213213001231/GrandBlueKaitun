@@ -434,6 +434,10 @@ return function(GB)
 			Path = { "Islands", "Clown Town", "Island", "Jail", "Hostage" },
 			Tags = { "Captured Child", "Child Captive" },
 		},
+		["Cage Container"] = {
+			Island = "Clown Town",
+			Tags = { "Cage Container" },
+		},
 	}
 
 	M.QUEST_REQUIREMENTS = {

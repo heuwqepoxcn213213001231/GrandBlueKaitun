@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
--- Version: 1.1.34
--- Commit: 5ce1adf
--- BuiltAt: 2026-09-08T14:29:00+07:00
+-- Version: 1.1.35
+-- Commit: e8d5ec4
+-- BuiltAt: 2026-09-08T14:33:19+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -35,9 +35,9 @@ return function(meta)
 
 	stopPreviousInstance()
 
-	local BUILD_VERSION = "1.1.34"
-	local BUILD_COMMIT = "5ce1adf"
-	local BUILD_AT = "2026-09-08T14:29:00+07:00"
+	local BUILD_VERSION = "1.1.35"
+	local BUILD_COMMIT = "e8d5ec4"
+	local BUILD_AT = "2026-09-08T14:33:19+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -3772,6 +3772,10 @@ return function(GB)
 			Path = { "Islands", "Clown Town", "Island", "Jail", "Hostage" },
 			Tags = { "Captured Child", "Child Captive" },
 		},
+		["Cage Container"] = {
+			Island = "Clown Town",
+			Tags = { "Cage Container" },
+		},
 	}
 
 	M.QUEST_REQUIREMENTS = {
@@ -4161,8 +4165,8 @@ return function(GB)
 	M.STAGES["Circus Suppliers|3|Kill|Circus Supplier"] = { quest = "Circus Suppliers", stage = 3, island = "Clown Town", objective = "Kill", goal = "Kill", target = "Circus Supplier", amount = 2, acquire = nil, source = "Circus Supplier", location = "Clown Town", marker = nil, handler = "Combat.attack", status = "IMPLEMENTED" }
 	M.STAGES["Circus Suppliers|4|Talk|Mayor Kiyoshi"] = { quest = "Circus Suppliers", stage = 4, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Mayor Kiyoshi", amount = 1, acquire = nil, source = "Mayor Kiyoshi", location = "Clown Town", marker = "Mayor Kiyoshi", handler = "Quest.talk", status = "IMPLEMENTED" }
 	M.STAGES["Clown Captives|1|Talk|Mayor Kiyoshi"] = { quest = "Clown Captives", stage = 1, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Mayor Kiyoshi", amount = 1, acquire = nil, source = "Mayor Kiyoshi", location = "Clown Town", marker = "Mayor Kiyoshi", handler = "Quest.talk", status = "IMPLEMENTED" }
-	M.STAGES["Clown Captives|2|Free|Child Captive"] = { quest = "Clown Captives", stage = 2, island = "Clown Town", objective = "Free", goal = "Interact", target = "Child Captive", amount = 2, acquire = nil, source = "Child Captive", location = "Clown Town", marker = "Hostage", handler = "Quest.stayAndFree", status = "IMPLEMENTED" }
-	M.STAGES["Clown Captives|2|Free|Adult Captive"] = { quest = "Clown Captives", stage = 2, island = "Clown Town", objective = "Free", goal = "Interact", target = "Adult Captive", amount = 4, acquire = nil, source = "Adult Captive", location = "Clown Town", marker = "Hostage", handler = "Quest.stayAndFree", status = "IMPLEMENTED" }
+	M.STAGES["Clown Captives|2|Free|Child Captive"] = { quest = "Clown Captives", stage = 2, island = "Clown Town", objective = "Free", goal = "Destroy", target = "Child Captive", amount = 2, acquire = nil, source = "Cage Container", location = "Clown Town", marker = "Cage Container", handler = "Combat.hunt", status = "IMPLEMENTED" }
+	M.STAGES["Clown Captives|2|Free|Adult Captive"] = { quest = "Clown Captives", stage = 2, island = "Clown Town", objective = "Free", goal = "Destroy", target = "Adult Captive", amount = 4, acquire = nil, source = "Cage Container", location = "Clown Town", marker = "Cage Container", handler = "Combat.hunt", status = "IMPLEMENTED" }
 	M.STAGES["Clown Captives|3|Talk|Mayor Kiyoshi"] = { quest = "Clown Captives", stage = 3, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Mayor Kiyoshi", amount = 1, acquire = nil, source = "Mayor Kiyoshi", location = "Clown Town", marker = "Mayor Kiyoshi", handler = "Quest.talk", status = "IMPLEMENTED" }
 	M.STAGES["Clown Town's Militia|1|Talk|Mayor Kiyoshi [2]"] = { quest = "Clown Town's Militia", stage = 1, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Mayor Kiyoshi [2]", amount = 1, acquire = nil, source = "Mayor Kiyoshi [2]", location = "Clown Town", marker = "Mayor Kiyoshi [2]", handler = "Quest.talk", status = "IMPLEMENTED" }
 	M.STAGES["Clown Town's Militia|2|CollectLocalItem|Sturdy Stick"] = { quest = "Clown Town's Militia", stage = 2, island = "Clown Town", objective = "CollectLocalItem", goal = "AcquireItem", target = "Sturdy Stick", amount = 1, acquire = "WorldPickup", source = "Sturdy Stick", location = "Clown Town", marker = "Sturdy Stick", handler = "Acquire.WorldPickup", status = "IMPLEMENTED" }
@@ -4942,6 +4946,8 @@ return function(GB)
 		["Tired Child"] = { "Child Captive", "Captured Child", "Hostage" },
 		["Adult Captive"] = { "Captured Adult", "Hostage" },
 		["Hostage"] = { "Child Captive", "Adult Captive", "Captured Child" },
+		["Cage Container"] = { "CageContainer", "Cage" },
+		["CageContainer"] = { "Cage Container" },
 	}
 
 	local missLog = {}
@@ -6495,6 +6501,110 @@ return function(GB)
 			end)
 		end
 		return out
+	end
+
+	function M.findCageContainer(kind)
+		kind = string.lower(tostring(kind or "any"))
+		local seen = {}
+		local boxes = {}
+		local function consider(inst)
+			if not inst or seen[inst] or not inst.Parent or inRS(inst) or M.isPet(inst) then
+				return
+			end
+			local root = M.objectCombatRoot(inst, "Cage Container") or inst
+			if seen[root] then
+				return
+			end
+			local n = string.lower(tostring(root.Name or "") .. " " .. tostring(M.displayName(root) or ""))
+			local named = root.Name == "Cage Container" or string.find(n, "cage container", 1, true)
+			local tagged = false
+			pcall(function()
+				tagged = root:HasTag("Cage Container") or inst:HasTag("Cage Container")
+			end)
+			if not (named or tagged) then
+				return
+			end
+			if GB.Combat and GB.Combat.readHealth then
+				local hp = GB.Combat.readHealth(root)
+				if type(hp) == "number" and hp <= 0 then
+					return
+				end
+			end
+			if GB.Combat and GB.Combat.hasDeadFlag and GB.Combat.hasDeadFlag(root) then
+				return
+			end
+			if not (M.part(root) or M.positionOf(root)) then
+				return
+			end
+			seen[root] = true
+			boxes[#boxes + 1] = root
+		end
+		local ok, tagged = pcall(CS.GetTagged, CS, "Cage Container")
+		if ok and type(tagged) == "table" then
+			for _, inst in ipairs(tagged) do
+				consider(inst)
+			end
+		end
+		local ent = workspace:FindFirstChild("Entities")
+		if ent then
+			for _, ch in ipairs(ent:GetChildren()) do
+				if ch.Name == "Cage Container" then
+					consider(ch)
+				end
+			end
+		end
+		local islands = workspace:FindFirstChild("Islands")
+		local town = islands and islands:FindFirstChild("Clown Town")
+		local island = town and town:FindFirstChild("Island")
+		local jail = island and island:FindFirstChild("Jail")
+		if jail then
+			consider(jail:FindFirstChild("Cage Container", true))
+			local hostage = jail:FindFirstChild("Hostage")
+			if hostage then
+				consider(hostage:FindFirstChild("Cage Container", true))
+			end
+		end
+		local byName = M.byName and M.byName("Cage Container")
+		consider(byName)
+		if #boxes == 0 then
+			return nil
+		end
+		local captives = M.findCaptiveCages(kind)
+		local here = GB.World and GB.World.hrp and GB.World.hrp()
+		local herePos = here and here.Position
+		local function nearCaptive(box)
+			local bp = M.positionOf(box)
+			if not bp then
+				return 1e9
+			end
+			local best = 1e9
+			for _, cap in ipairs(captives) do
+				local cp = M.positionOf(cap)
+				if cp then
+					local d = (bp - cp).Magnitude
+					if d < best then
+						best = d
+					end
+				end
+			end
+			return best
+		end
+		table.sort(boxes, function(a, b)
+			local da = nearCaptive(a)
+			local db = nearCaptive(b)
+			if math.abs(da - db) > 4 then
+				return da < db
+			end
+			if herePos then
+				local pa = M.positionOf(a)
+				local pb = M.positionOf(b)
+				local ha = pa and (pa - herePos).Magnitude or 1e9
+				local hb = pb and (pb - herePos).Magnitude or 1e9
+				return ha < hb
+			end
+			return da < db
+		end)
+		return boxes[1], boxes
 	end
 
 	function M.findDestroyable(name, opts)
@@ -11489,12 +11599,15 @@ return function(GB)
 	end
 
 	function M.hunt(name, questName, targetPlan)
+		local objectHunt = (type(targetPlan) == "table" and (targetPlan.Object == true or targetPlan.ObjectiveType == "Destroy"))
+			or (GB.QuestData and GB.QuestData.isObjectTarget and GB.QuestData.isObjectTarget(name))
+		local ctx = { Name = name, Object = objectHunt == true }
 		local preset = type(targetPlan) == "table" and targetPlan.Instance or nil
-		local mob = (preset and M.IsValidTarget(preset, { Name = name }) and preset) or M.findTarget(name, questName, targetPlan)
+		local mob = (preset and M.IsValidTarget(preset, ctx) and preset) or M.findTarget(name, questName, targetPlan)
 		if not mob then
 			return false
 		end
-		if not M.IsValidTarget(mob, { Name = name }) then
+		if not M.IsValidTarget(mob, ctx) then
 			return false
 		end
 		GB.Log.log("COMBAT", "Next target " .. tostring(name))
@@ -12956,54 +13069,63 @@ return function(GB)
 	end
 
 	local function stayAndFree(questName, target)
+		local kind = captiveKind(target)
+		local lock = GB.Combat and GB.Combat.lockMob
+		if lock and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(lock) then
+			local n = string.lower(tostring(lock.Name or ""))
+			if n == "cage container" or string.find(n, "cage", 1, true) then
+				M._freeStandAt = os.clock()
+				return true
+			end
+		end
 		if GB.Combat and GB.Combat.stopLock then
 			GB.Combat.stopLock()
 		end
-		local kind = captiveKind(target)
-		local cages = GB.Resolver.findCaptiveCages and GB.Resolver.findCaptiveCages(kind) or {}
-		local obj = cages[1]
-		if not obj then
-			local pack = GB.Resolver.resolveObject and GB.Resolver.resolveObject(target, {
-				Island = "Clown Town",
-			})
-			obj = pack and pack.Instance
+		local container = GB.Resolver.findCageContainer and GB.Resolver.findCageContainer(kind) or nil
+		if not container and GB.Resolver.findDestroyable then
+			container = GB.Resolver.findDestroyable("Cage Container", { Island = "Clown Town" })
 		end
-		if not obj then
-			obj = GB.Resolver.byName and (GB.Resolver.byName(target) or GB.Resolver.byName("Hostage") or GB.Resolver.byName("Captured Child"))
-		end
-		if not obj then
-			M.noteFail(questName, "resolve miss " .. tostring(target))
+		if not container then
+			M.noteFail(questName, "resolve miss Cage Container")
 			return false
 		end
 		M._freeStandAt = os.clock()
-		M._freeStandInst = obj
+		M._freeStandInst = container
+		local hp = GB.Combat and GB.Combat.readHealth and GB.Combat.readHealth(container)
+		GB.Log.log("QUEST", string.format("break Cage Container hp=%s", tostring(hp or "?")))
 		local qs = M.questState(questName)
 		local before = M.signature(qs)
-		if GB.World.standOn then
-			GB.World.standOn(obj, 2.4)
-		elseif GB.World.setPos and GB.Resolver.positionOf then
-			local pos = GB.Resolver.positionOf(obj)
-			if pos then
-				GB.World.setPos(pos + Vector3.new(0, 2.4, 0), { SkipGround = true })
-			end
+		local beforeCur = qs and qs.Objective and qs.Objective.Current or 0
+		local plan = {
+			Quest = questName,
+			Target = "Cage Container",
+			Island = "Clown Town",
+			Instance = container,
+			Marker = container,
+			ObjectiveType = "Destroy",
+			SkipStream = true,
+			Object = true,
+		}
+		local ok = GB.Combat and GB.Combat.hunt and GB.Combat.hunt("Cage Container", questName, plan)
+		if GB.PlayerData and GB.PlayerData.forceQuestRefresh then
+			GB.PlayerData.forceQuestRefresh("cage_credit")
 		end
-		local pr = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
-		if not pr and GB.Resolver.prompt then
-			pr = GB.Resolver.prompt(obj)
-		end
-		if pr and GB.World.firePrompt then
-			GB.World.firePrompt(pr, pr.HoldDuration or 0, obj)
-		elseif GB.World.interact then
-			GB.World.interact(obj, 4)
-		end
-		if M.waitProgress(questName, before, 2.2) then
+		local after = M.questState(questName)
+		if after.IsComplete or (after.Objective and after.Objective.Current and after.Objective.Current > beforeCur) or after.StageIndex ~= (qs and qs.StageIndex) then
 			M.noteOk(questName)
 			if GB.Recovery and GB.Recovery.markSuccess then
 				GB.Recovery.markSuccess()
 			end
 			return true
 		end
-		return true
+		if M.waitProgress(questName, before, 1.6) then
+			M.noteOk(questName)
+			if GB.Recovery and GB.Recovery.markSuccess then
+				GB.Recovery.markSuccess()
+			end
+			return true
+		end
+		return ok == true
 	end
 
 	local function goTagged(tag, dist)

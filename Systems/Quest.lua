@@ -516,54 +516,63 @@ return function(GB)
 	end
 
 	local function stayAndFree(questName, target)
+		local kind = captiveKind(target)
+		local lock = GB.Combat and GB.Combat.lockMob
+		if lock and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(lock) then
+			local n = string.lower(tostring(lock.Name or ""))
+			if n == "cage container" or string.find(n, "cage", 1, true) then
+				M._freeStandAt = os.clock()
+				return true
+			end
+		end
 		if GB.Combat and GB.Combat.stopLock then
 			GB.Combat.stopLock()
 		end
-		local kind = captiveKind(target)
-		local cages = GB.Resolver.findCaptiveCages and GB.Resolver.findCaptiveCages(kind) or {}
-		local obj = cages[1]
-		if not obj then
-			local pack = GB.Resolver.resolveObject and GB.Resolver.resolveObject(target, {
-				Island = "Clown Town",
-			})
-			obj = pack and pack.Instance
+		local container = GB.Resolver.findCageContainer and GB.Resolver.findCageContainer(kind) or nil
+		if not container and GB.Resolver.findDestroyable then
+			container = GB.Resolver.findDestroyable("Cage Container", { Island = "Clown Town" })
 		end
-		if not obj then
-			obj = GB.Resolver.byName and (GB.Resolver.byName(target) or GB.Resolver.byName("Hostage") or GB.Resolver.byName("Captured Child"))
-		end
-		if not obj then
-			M.noteFail(questName, "resolve miss " .. tostring(target))
+		if not container then
+			M.noteFail(questName, "resolve miss Cage Container")
 			return false
 		end
 		M._freeStandAt = os.clock()
-		M._freeStandInst = obj
+		M._freeStandInst = container
+		local hp = GB.Combat and GB.Combat.readHealth and GB.Combat.readHealth(container)
+		GB.Log.log("QUEST", string.format("break Cage Container hp=%s", tostring(hp or "?")))
 		local qs = M.questState(questName)
 		local before = M.signature(qs)
-		if GB.World.standOn then
-			GB.World.standOn(obj, 2.4)
-		elseif GB.World.setPos and GB.Resolver.positionOf then
-			local pos = GB.Resolver.positionOf(obj)
-			if pos then
-				GB.World.setPos(pos + Vector3.new(0, 2.4, 0), { SkipGround = true })
-			end
+		local beforeCur = qs and qs.Objective and qs.Objective.Current or 0
+		local plan = {
+			Quest = questName,
+			Target = "Cage Container",
+			Island = "Clown Town",
+			Instance = container,
+			Marker = container,
+			ObjectiveType = "Destroy",
+			SkipStream = true,
+			Object = true,
+		}
+		local ok = GB.Combat and GB.Combat.hunt and GB.Combat.hunt("Cage Container", questName, plan)
+		if GB.PlayerData and GB.PlayerData.forceQuestRefresh then
+			GB.PlayerData.forceQuestRefresh("cage_credit")
 		end
-		local pr = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
-		if not pr and GB.Resolver.prompt then
-			pr = GB.Resolver.prompt(obj)
-		end
-		if pr and GB.World.firePrompt then
-			GB.World.firePrompt(pr, pr.HoldDuration or 0, obj)
-		elseif GB.World.interact then
-			GB.World.interact(obj, 4)
-		end
-		if M.waitProgress(questName, before, 2.2) then
+		local after = M.questState(questName)
+		if after.IsComplete or (after.Objective and after.Objective.Current and after.Objective.Current > beforeCur) or after.StageIndex ~= (qs and qs.StageIndex) then
 			M.noteOk(questName)
 			if GB.Recovery and GB.Recovery.markSuccess then
 				GB.Recovery.markSuccess()
 			end
 			return true
 		end
-		return true
+		if M.waitProgress(questName, before, 1.6) then
+			M.noteOk(questName)
+			if GB.Recovery and GB.Recovery.markSuccess then
+				GB.Recovery.markSuccess()
+			end
+			return true
+		end
+		return ok == true
 	end
 
 	local function goTagged(tag, dist)
