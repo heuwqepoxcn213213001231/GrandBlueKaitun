@@ -1,9 +1,9 @@
 {
   "name": "GrandBlueKaitun",
-  "version": "1.1.32",
+  "version": "1.1.33",
   "build": {
-    "commit": "506a298",
-    "built_at": "2026-09-08T06:08:01+07:00"
+    "commit": "5c915f3",
+    "built_at": "2026-09-08T14:21:08+07:00"
   },
   "entry": "kaitun.lua",
   "files": {
@@ -46,6 +46,7 @@
     "Systems/Rewards.lua": "Systems/Rewards.lua",
     "Systems/Backpack.lua": "Systems/Backpack.lua",
     "Systems/Tutorial.lua": "Systems/Tutorial.lua",
+    "Systems/Respawn.lua": "Systems/Respawn.lua",
     "Progression/Planner.lua": "Progression/Planner.lua",
     "Progression/DecisionEngine.lua": "Progression/DecisionEngine.lua",
     "dist/kaitun.lua": "dist/kaitun.lua"
@@ -94,6 +95,11 @@
     {
       "key": "Recovery",
       "path": "Core/Recovery.lua",
+      "kind": "core"
+    },
+    {
+      "key": "Respawn",
+      "path": "Systems/Respawn.lua",
       "kind": "core"
     },
     {

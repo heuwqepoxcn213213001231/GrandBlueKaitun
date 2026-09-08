@@ -333,6 +333,7 @@ return function(GB)
 		end
 		M._overlayLastScanAt = now
 		perfCount("PlayerGuiFullScan", 1)
+		perfCount("GetDescendants", 1)
 		for _, ui in ipairs(pg:GetChildren()) do
 			if ui:IsA("LayerCollector") and layerOn(ui) then
 				if ui:FindFirstChild("ClickToContinue", true) or ui:FindFirstChild("ContinueButton", true) then
@@ -884,7 +885,11 @@ return function(GB)
 		s.Character = char
 		s.HRP = hrp
 		s.Humanoid = hum
-		s.Alive = char and hum and hum.Health > 0
+		s.Alive = char ~= nil
+			and hum ~= nil
+			and hum.Health > 0
+			and char:GetAttribute("Dead") ~= true
+			and hrp ~= nil
 		s.Position = hrp and hrp.Position
 		s.GameplayPaused = lp and lp:GetAttribute("GameplayPaused") == true
 

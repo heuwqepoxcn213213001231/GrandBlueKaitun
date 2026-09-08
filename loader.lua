@@ -153,6 +153,9 @@ if type(getgenv().GB_BASE_URL) == "string" and trim(getgenv().GB_BASE_URL) ~= ""
 	LOCKED_PREFIX = BASE_URL
 	HAS_CUSTOM_BASE = true
 end
+if not HAS_CUSTOM_BASE and RAW_BOOTSTRAP_BASE then
+	BASE_URL = RAW_BOOTSTRAP_BASE
+end
 
 local function jsonDecode(s)
 	local ok, Http = pcall(function()
@@ -351,73 +354,6 @@ local function fetch(rel, rootBase)
 	return fetchRemote(rel, rootBase)
 end
 
-local function pushUnique(list, seen, value)
-	if type(value) ~= "string" or value == "" or seen[value] then
-		return
-	end
-	seen[value] = true
-	list[#list + 1] = value
-end
-
-local function bootRoots()
-	local out, seen = {}, {}
-	pushUnique(out, seen, BASE_URL)
-	if MODE ~= "REMOTE" or HAS_CUSTOM_BASE then
-		return out
-	end
-	pushUnique(out, seen, RAW_BOOTSTRAP_BASE)
-	pushUnique(out, seen, RAW_BRANCH_BASE)
-	pushUnique(out, seen, LOCKED_PREFIX)
-	return out
-end
-
-local function manifestBuildAt(m)
-	local b = type(m.build) == "table" and m.build or {}
-	return trim(b.built_at or b.builtAt or m.built_at or "")
-end
-
-local function manifestBuildCommit(m)
-	local b = type(m.build) == "table" and m.build or {}
-	return trim(b.commit or m.commit or "")
-end
-
-local function pickNewerManifest(current, candidate)
-	if not current then
-		return candidate
-	end
-	local ca = manifestBuildAt(current.Manifest)
-	local cb = manifestBuildAt(candidate.Manifest)
-	if cb ~= "" and (ca == "" or cb > ca) then
-		return candidate
-	end
-	if cb == ca then
-		local cc = manifestBuildCommit(current.Manifest)
-		local cd = manifestBuildCommit(candidate.Manifest)
-		if cd ~= "" and (cc == "" or cd > cc) then
-			return candidate
-		end
-	end
-	return current
-end
-
-local function fetchBestManifest()
-	local best = nil
-	for _, root in ipairs(bootRoots()) do
-		local url = lockUrl("manifest.json", nil, root)
-		local ok, src = pcall(httpGetRetry, url, "manifest.json")
-		if ok and type(src) == "string" and #src > 0 then
-			local okM, man = pcall(jsonDecode, src)
-			if okM and type(man) == "table" and type(man.version) == "string" then
-				best = pickNewerManifest(best, { Root = root, Manifest = man, Raw = src })
-			end
-		end
-	end
-	if best then
-		return best.Manifest, best.Root
-	end
-	return jsonDecode(fetch("manifest.json", BASE_URL)), BASE_URL
-end
-
 print("[Kaitun][Loader] Source " .. MODE)
 if MODE == "REMOTE" then
 	print("[Kaitun][Loader] Base " .. BASE_URL)
@@ -426,13 +362,14 @@ if MODE == "REMOTE" then
 	end
 end
 
-local manifest, manifestRoot = fetchBestManifest()
-if type(manifest.version) ~= "string" or type(manifest.files) ~= "table" or type(manifest.order) ~= "table" then
-	error("[Kaitun][Loader] manifest missing version/files/order")
-end
-local versionText = trim(fetch("VERSION", manifestRoot))
+-- VERSION is authoritative. Same root only. Mismatch is fatal — no continue, no shop.
+local versionText = trim(fetch("VERSION", BASE_URL))
 if versionText == "" then
 	error("[Kaitun][Loader] VERSION empty")
+end
+local manifest = jsonDecode(fetch("manifest.json", BASE_URL))
+if type(manifest) ~= "table" or type(manifest.version) ~= "string" or type(manifest.files) ~= "table" or type(manifest.order) ~= "table" then
+	error("[Kaitun][Loader] manifest missing version/files/order")
 end
 if trim(manifest.version) ~= versionText then
 	error(string.format(
@@ -441,8 +378,8 @@ if trim(manifest.version) ~= versionText then
 		tostring(manifest.version)
 	))
 end
-MANIFEST_VER = trim(manifest.version)
-BASE_URL = manifestRoot
+MANIFEST_VER = versionText
+local manifestRoot = BASE_URL
 if MODE == "REMOTE" then
 	print("[Kaitun][Loader] ManifestBase " .. BASE_URL)
 end
@@ -457,12 +394,11 @@ end
 if BUILD_AT == "" then
 	BUILD_AT = "unknown"
 end
+print(string.format("[Kaitun][BOOT] version=%s build=%s", MANIFEST_VER, BUILD_COMMIT))
 
-if MODE == "REMOTE" and BUILD_COMMIT:match("^[0-9a-fA-F]+$") and #BUILD_COMMIT >= 7 and #BUILD_COMMIT <= 40 then
-	CONTENT_BASE_URL = string.format("https://raw.githubusercontent.com/%s/%s/%s/", OWNER, REPO, BUILD_COMMIT)
-	print("[Kaitun][Loader] Pin " .. BUILD_COMMIT)
-else
-	CONTENT_BASE_URL = BASE_URL
+CONTENT_BASE_URL = BASE_URL
+if MODE == "REMOTE" then
+	print("[Kaitun][Loader] Content " .. CONTENT_BASE_URL)
 end
 getgenv().GB_VERSION = MANIFEST_VER
 getgenv().GB_COMMIT = BUILD_COMMIT

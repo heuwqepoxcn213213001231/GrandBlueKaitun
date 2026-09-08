@@ -410,16 +410,32 @@ return function(GB)
 		return true
 	end
 
+	local function skillCooldownSec(name)
+		local info = skillInfo(name)
+		if not info then
+			return nil
+		end
+		local base = info.BaseInfo or info
+		local cd = tonumber(base.Cooldown or base.CD or info.Cooldown)
+		if cd and cd > 0.2 and cd < 60 then
+			return cd
+		end
+		return nil
+	end
+
 	function M.castHold(name, opts)
 		opts = opts or {}
 		if not name then
+			return false
+		end
+		if GB.Respawn and GB.Respawn.isBusy and GB.Respawn.isBusy() then
 			return false
 		end
 		if GB.State.tutorialOverlayVisible() then
 			GB.State.dismissTutorialOverlay()
 			return false
 		end
-		local cd = opts.cooldown or 6.2
+		local cd = opts.cooldown or skillCooldownSec(name) or 6.2
 		if os.clock() - (M.lastCast[name] or 0) < cd then
 			return false
 		end
@@ -472,6 +488,9 @@ return function(GB)
 			return M.castHold(name, opts)
 		end
 		if not name then
+			return false
+		end
+		if GB.Respawn and GB.Respawn.isBusy and GB.Respawn.isBusy() then
 			return false
 		end
 		if GB.State.tutorialOverlayVisible() then

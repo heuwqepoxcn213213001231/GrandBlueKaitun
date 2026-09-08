@@ -625,10 +625,32 @@ return function(GB)
 	end
 
 	function M.decide()
+		if GB.Respawn then
+			if GB.Respawn.Detect then
+				GB.Respawn.Detect()
+			end
+			if GB.Respawn.isBusy and GB.Respawn.isBusy() then
+				setTask("respawn")
+				logDoing("respawn", GB.Respawn.currentPhase and GB.Respawn.currentPhase())
+				if GB.Respawn.tick then
+					GB.Respawn.tick()
+				end
+				return
+			end
+		end
 		local snap = GB.State.refresh()
 		if not snap.Alive then
-			setTask("wait_spawn")
-			logDoing("wait_spawn")
+			if GB.Respawn and GB.Respawn.onDeath then
+				GB.Respawn.onDeath("engine")
+				setTask("respawn")
+				logDoing("respawn", GB.Respawn.currentPhase and GB.Respawn.currentPhase())
+				if GB.Respawn.tick then
+					GB.Respawn.tick()
+				end
+			else
+				setTask("wait_spawn")
+				logDoing("wait_spawn")
+			end
 			return
 		end
 		if GB.PlayerData and GB.PlayerData.refreshLive then

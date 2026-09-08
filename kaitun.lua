@@ -257,6 +257,13 @@ return function(GB)
 		if GB.Recovery.deadOnce[key] then
 			return dump
 		end
+		local n = 0
+		for _ in pairs(GB.Recovery.deadOnce) do
+			n = n + 1
+		end
+		if n > 80 then
+			GB.Recovery.deadOnce = {}
+		end
 		GB.Recovery.deadOnce[key] = true
 		if canWrite() then
 			local sid = GB.Persist.data and GB.Persist.data.session or "session"
@@ -281,6 +288,9 @@ return function(GB)
 		end
 		if GB.Combat then
 			pcall(GB.Combat.stopLock)
+		end
+		if GB.Respawn and GB.Respawn.unbind then
+			pcall(GB.Respawn.unbind)
 		end
 		for _, c in ipairs(GB.conns) do
 			pcall(function()
@@ -324,32 +334,27 @@ return function(GB)
 				connected = connected + 1
 			end
 		end
+		local respawn = GB.Respawn and GB.Respawn.connectionCounts and GB.Respawn.connectionCounts() or nil
 		return {
 			Total = total,
 			Connected = connected,
 			SchedulerRunning = GB.Scheduler and GB.Scheduler._running == true or false,
 			CombatLock = GB.Combat and GB.Combat.lockConn ~= nil or false,
+			Respawn = respawn,
 		}
 	end
 
 	getgenv()._GBKaitunUnload = GB.unload
 
-	GB.conns[#GB.conns + 1] = GB.lp.CharacterAdded:Connect(function()
-		task.wait(0.4)
-		if GB.dead() then
-			return
+	if GB.Respawn and GB.Respawn.bind then
+		GB.Respawn.bind()
+	end
+
+	GB.Scheduler.add("respawn", function()
+		if GB.Respawn and GB.Respawn.tick then
+			GB.Respawn.tick()
 		end
-		GB._respawnAt = os.clock()
-		GB.Cache.invalidate()
-		GB.Remotes.statReplicate()
-		if GB.Combat then
-			GB.Combat.stopLock()
-		end
-		GB.Log.log("STATE", "respawn")
-		if GB.World and GB.World.lastSafe and GB.lp and GB.lp:GetAttribute("GameplayPaused") ~= true then
-			GB.World.goSafe()
-		end
-	end)
+	end, 0.25, { critical = true, first = true })
 
 	GB.Scheduler.add("recovery", function()
 		GB.Recovery.tick()
@@ -410,6 +415,6 @@ return function(GB)
 		)
 	)
 	GB.Log.log("PERF", "SourceHttpAfterBoot=0")
-	print("[Kaitun][BOOT] starting version " .. ver .. " commit=" .. commit)
+	print(string.format("[Kaitun][BOOT] version=%s build=%s", ver, commit))
 	return GB
 end

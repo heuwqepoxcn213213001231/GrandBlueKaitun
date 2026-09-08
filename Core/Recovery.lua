@@ -57,6 +57,9 @@ return function(GB)
 		if started == 0 then
 			return false
 		end
+		if GB.Respawn and GB.Respawn.isBusy and GB.Respawn.isBusy() then
+			return false
+		end
 		if GB.Quest and GB.Quest.dialogueOpen and GB.Quest.dialogueOpen() then
 			return false
 		end

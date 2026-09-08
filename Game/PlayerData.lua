@@ -25,7 +25,7 @@ return function(GB)
 		_lastQuestFetchAt = 0,
 	}
 
-	local LIVE_SAFETY_TTL = 5.4
+	local LIVE_SAFETY_TTL = 8.0
 	local TRACKER_TTL = 0.75
 	local UNUSED_TTL = 2.8
 	local STAT_NAMES = { "Health", "Strength", "Agility", "Precision", "Energy", "Willpower", "Level" }

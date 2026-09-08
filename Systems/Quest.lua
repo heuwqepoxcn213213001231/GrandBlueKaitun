@@ -30,6 +30,10 @@ return function(GB)
 	local FAIL_FINGERPRINT_GAP = 1.2
 	local FAIL_DEFER_GAP = 30
 
+	local function respawnBusy()
+		return GB.Respawn and GB.Respawn.isBusy and GB.Respawn.isBusy() == true
+	end
+
 	local function pbegin()
 		return GB.Profiler and GB.Profiler.begin and GB.Profiler.begin() or nil
 	end
@@ -1199,6 +1203,9 @@ return function(GB)
 				local waitFor = okTalk and 1.8 or ((whyTalk == "rate") and 0.9 or 0.45)
 				local untilAt = os.clock() + waitFor
 				while os.clock() < untilAt do
+					if respawnBusy() then
+						return nil, "respawn"
+					end
 					if dialogueOpen() then
 						return who, lastWhy
 					end
@@ -1418,6 +1425,9 @@ return function(GB)
 		local t0 = os.clock()
 		local nextRefreshAt = 0
 		while os.clock() - t0 < timeout do
+			if respawnBusy() then
+				return false, "respawn"
+			end
 			if questAcceptedNow(name) then
 				return true, "accepted"
 			end
@@ -1443,6 +1453,9 @@ return function(GB)
 		timeout = timeout or 2.8
 		local t0 = os.clock()
 		while os.clock() - t0 < timeout do
+			if respawnBusy() then
+				return false, "respawn"
+			end
 			task.wait(0.2)
 			if (not isRepeatable(name)) and GB.PlayerData.finished(name, true) then
 				return true, "done"
@@ -2209,6 +2222,9 @@ return function(GB)
 	end
 
 	local function doLiveRaw(name)
+		if respawnBusy() then
+			return resultRow(name, true, false, "respawn")
+		end
 		if GB.Config.SkipQuests[name] then
 			return resultRow(name, false, false, "skip")
 		end

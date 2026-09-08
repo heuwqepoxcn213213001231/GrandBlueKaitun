@@ -26,6 +26,7 @@ def main() -> None:
     player_data_path = root / "Game" / "PlayerData.lua"
     combat_path = root / "Systems" / "Combat.lua"
     engine_path = root / "Progression" / "DecisionEngine.lua"
+    respawn_path = root / "Systems" / "Respawn.lua"
     dist_path = root / "dist" / "kaitun.lua"
 
     if not version_path.is_file():
@@ -76,8 +77,39 @@ def main() -> None:
         fail("loader.lua missing VERSION/manifest cache-bust token")
     if "[Kaitun][Loader][FATAL] VERSION mismatch file=" not in loader_src:
         fail("loader.lua missing fatal VERSION mismatch guard")
+    if "fetchBestManifest" in loader_src or "pickNewerManifest" in loader_src:
+        fail("loader.lua still shops VERSION/manifest across roots")
+    if '[Kaitun][BOOT] version=%s build=%s' not in loader_src:
+        fail("loader.lua missing authoritative BOOT version/build line")
+    if '[Kaitun][BOOT] version=%s build=%s' not in kaitun_src:
+        fail("kaitun.lua missing authoritative BOOT version/build line")
     if "GB_VERSION or \"1." in kaitun_src:
         fail("kaitun.lua still has numeric GB_VERSION fallback")
+    if "GB.lp.CharacterAdded:Connect" in kaitun_src:
+        fail("kaitun.lua still owns CharacterAdded; Respawn.bind must own it")
+    if not respawn_path.is_file():
+        fail("missing Systems/Respawn.lua")
+    respawn_src = respawn_path.read_text(encoding="utf-8")
+    for marker in (
+        "function M.onDeath",
+        "function M.GetReviveAction",
+        "function M.ExecuteRevive",
+        "RESTORE_CONTEXT",
+        "LoadCharacter",
+    ):
+        if marker == "LoadCharacter":
+            if "LoadCharacter(" in respawn_src:
+                fail("Respawn.lua must not call LoadCharacter")
+        elif marker not in respawn_src:
+            fail(f"Respawn.lua missing {marker}")
+    if "Systems/Respawn.lua" not in files:
+        fail("manifest.files missing Systems/Respawn.lua")
+    if not any(isinstance(row, dict) and row.get("path") == "Systems/Respawn.lua" for row in order):
+        fail("manifest.order missing Systems/Respawn.lua")
+    if "function M.minSwingInterval" not in combat_src:
+        fail("Combat missing minSwingInterval")
+    if 'def("CombatMode"' not in (root / "Config.lua").read_text(encoding="utf-8"):
+        fail("Config missing CombatMode")
     if "GB.Scheduler.add(\"stats\"" in kaitun_src:
         fail("kaitun.lua still has dedicated stats scheduler job")
     if "function M.report(force)" not in profiler_src or "SourceHttpAfterBoot=" not in profiler_src:

@@ -85,6 +85,8 @@ return function(GB)
 	def("TweenMaxDur", 1.8)
 	def("StuckSeconds", 18)
 	def("RecoveryCooldown", 8)
+	def("CombatMode", "SAFE_FAST") -- NORMAL | SAFE_FAST
+	def("CombatDebug", false)
 	def("ActionTimeout", 25)
 	def("MaxRetries", 3)
 	def("QuestMaxAcquireCycles", 8)

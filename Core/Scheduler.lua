@@ -19,11 +19,13 @@ return function(GB)
 		end
 	end
 
-	function M.add(name, fn, every)
+	function M.add(name, fn, every, opts)
+		opts = type(opts) == "table" and opts or {}
 		M._jobs[name] = {
 			fn = fn,
 			every = every or 0,
 			at = 0,
+			critical = opts.critical == true,
 		}
 		local found
 		for _, n in ipairs(M._order) do
@@ -33,7 +35,11 @@ return function(GB)
 			end
 		end
 		if not found then
-			table.insert(M._order, name)
+			if opts.first == true then
+				table.insert(M._order, 1, name)
+			else
+				table.insert(M._order, name)
+			end
 		end
 	end
 
@@ -51,16 +57,21 @@ return function(GB)
 			pdone("Scheduler.step", t0)
 			return
 		end
+		local busy = GB.Respawn and GB.Respawn.isBusy and GB.Respawn.isBusy()
 		local now = os.clock()
 		for _, name in ipairs(M._order) do
 			local j = M._jobs[name]
 			if j and now - j.at >= (j.every or 0) then
-				j.at = now
-				local jt = pbegin()
-				local ok, err = pcall(j.fn)
-				pdone("Scheduler.job." .. tostring(name), jt)
-				if not ok then
-					GB.Log.err("ERROR", name .. " " .. tostring(err))
+				if busy and not j.critical and name ~= "respawn" and name ~= "perfCounters" then
+					-- Death owns the tick. No quest/combat/travel/deep work.
+				else
+					j.at = now
+					local jt = pbegin()
+					local ok, err = pcall(j.fn)
+					pdone("Scheduler.job." .. tostring(name), jt)
+					if not ok then
+						GB.Log.err("ERROR", name .. " " .. tostring(err))
+					end
 				end
 			end
 		end

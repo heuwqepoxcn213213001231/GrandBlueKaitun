@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
--- Version: 1.1.32
--- Commit: 506a298
--- BuiltAt: 2026-09-08T06:08:01+07:00
+-- Version: 1.1.33
+-- Commit: 5c915f3
+-- BuiltAt: 2026-09-08T14:21:08+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -35,9 +35,9 @@ return function(meta)
 
 	stopPreviousInstance()
 
-	local BUILD_VERSION = "1.1.32"
-	local BUILD_COMMIT = "506a298"
-	local BUILD_AT = "2026-09-08T06:08:01+07:00"
+	local BUILD_VERSION = "1.1.33"
+	local BUILD_COMMIT = "5c915f3"
+	local BUILD_AT = "2026-09-08T14:21:08+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -133,6 +133,8 @@ return function(GB)
 	def("TweenMaxDur", 1.8)
 	def("StuckSeconds", 18)
 	def("RecoveryCooldown", 8)
+	def("CombatMode", "SAFE_FAST") -- NORMAL | SAFE_FAST
+	def("CombatDebug", false)
 	def("ActionTimeout", 25)
 	def("MaxRetries", 3)
 	def("QuestMaxAcquireCycles", 8)
@@ -610,12 +612,15 @@ return function(GB)
 		"QuestGuiScan",
 		"WorkspaceDeepScan",
 		"ResolverDeepScan",
+		"GetDescendants",
 		"getgc",
 		"getconnections",
 		"RuntimeFileWrite",
 		"PersistWrite",
 		"HeartbeatQuestCheck",
+		"HeartbeatCallbacks",
 		"PlayerDataRefresh",
+		"ResolverMiss",
 	}
 
 	local function capOrder(order, map, maxN)
@@ -730,6 +735,13 @@ return function(GB)
 					M.lastSpikeAt[name] = now
 					print(string.format("[Kaitun][PERF][SPIKE] %s %sms", name, metricMs(dt)))
 				end
+			end
+			local spikeN = 0
+			for _ in pairs(M.lastSpikeAt) do
+				spikeN = spikeN + 1
+			end
+			if spikeN > 80 then
+				M.lastSpikeAt = {}
 			end
 		end
 		if dt >= 0.033 then
@@ -892,6 +904,9 @@ return function(GB)
 		end
 		local started = tr.TaskStartedAt or 0
 		if started == 0 then
+			return false
+		end
+		if GB.Respawn and GB.Respawn.isBusy and GB.Respawn.isBusy() then
 			return false
 		end
 		if GB.Quest and GB.Quest.dialogueOpen and GB.Quest.dialogueOpen() then
@@ -1241,11 +1256,13 @@ return function(GB)
 		end
 	end
 
-	function M.add(name, fn, every)
+	function M.add(name, fn, every, opts)
+		opts = type(opts) == "table" and opts or {}
 		M._jobs[name] = {
 			fn = fn,
 			every = every or 0,
 			at = 0,
+			critical = opts.critical == true,
 		}
 		local found
 		for _, n in ipairs(M._order) do
@@ -1255,7 +1272,11 @@ return function(GB)
 			end
 		end
 		if not found then
-			table.insert(M._order, name)
+			if opts.first == true then
+				table.insert(M._order, 1, name)
+			else
+				table.insert(M._order, name)
+			end
 		end
 	end
 
@@ -1273,16 +1294,21 @@ return function(GB)
 			pdone("Scheduler.step", t0)
 			return
 		end
+		local busy = GB.Respawn and GB.Respawn.isBusy and GB.Respawn.isBusy()
 		local now = os.clock()
 		for _, name in ipairs(M._order) do
 			local j = M._jobs[name]
 			if j and now - j.at >= (j.every or 0) then
-				j.at = now
-				local jt = pbegin()
-				local ok, err = pcall(j.fn)
-				pdone("Scheduler.job." .. tostring(name), jt)
-				if not ok then
-					GB.Log.err("ERROR", name .. " " .. tostring(err))
+				if busy and not j.critical and name ~= "respawn" and name ~= "perfCounters" then
+					-- Death owns the tick. No quest/combat/travel/deep work.
+				else
+					j.at = now
+					local jt = pbegin()
+					local ok, err = pcall(j.fn)
+					pdone("Scheduler.job." .. tostring(name), jt)
+					if not ok then
+						GB.Log.err("ERROR", name .. " " .. tostring(err))
+					end
 				end
 			end
 		end
@@ -1647,6 +1673,7 @@ return function(GB)
 		end
 		M._overlayLastScanAt = now
 		perfCount("PlayerGuiFullScan", 1)
+		perfCount("GetDescendants", 1)
 		for _, ui in ipairs(pg:GetChildren()) do
 			if ui:IsA("LayerCollector") and layerOn(ui) then
 				if ui:FindFirstChild("ClickToContinue", true) or ui:FindFirstChild("ContinueButton", true) then
@@ -2198,7 +2225,11 @@ return function(GB)
 		s.Character = char
 		s.HRP = hrp
 		s.Humanoid = hum
-		s.Alive = char and hum and hum.Health > 0
+		s.Alive = char ~= nil
+			and hum ~= nil
+			and hum.Health > 0
+			and char:GetAttribute("Dead") ~= true
+			and hrp ~= nil
 		s.Position = hrp and hrp.Position
 		s.GameplayPaused = lp and lp:GetAttribute("GameplayPaused") == true
 
@@ -2546,7 +2577,7 @@ return function(GB)
 		_lastQuestFetchAt = 0,
 	}
 
-	local LIVE_SAFETY_TTL = 5.4
+	local LIVE_SAFETY_TTL = 8.0
 	local TRACKER_TTL = 0.75
 	local UNUSED_TTL = 2.8
 	local STAT_NAMES = { "Health", "Strength", "Agility", "Precision", "Energy", "Willpower", "Level" }
@@ -4950,9 +4981,33 @@ return function(GB)
 		return tostring(kind or "any") .. ":" .. base .. "|" .. isl
 	end
 
+	local NEG_MAX = 240
+
+	local function pruneNegative(bucket)
+		local now = os.clock()
+		local n = 0
+		local drop
+		local dropAt
+		for k, untilAt in pairs(bucket) do
+			n = n + 1
+			if untilAt <= now then
+				bucket[k] = nil
+				n = n - 1
+			elseif not dropAt or untilAt < dropAt then
+				dropAt = untilAt
+				drop = k
+			end
+		end
+		if n > NEG_MAX and drop then
+			bucket[drop] = nil
+		end
+	end
+
 	local function noteNegative(kind, names, island, ttl)
+		perfCount("ResolverMiss", 1)
 		local untilAt = os.clock() + (ttl or NEG_TTL)
 		local bucket = bucketFor(kind)
+		pruneNegative(bucket)
 		for _, raw in ipairs(names or {}) do
 			local n = normalizeKey(raw)
 			if n ~= "" then
@@ -5637,6 +5692,7 @@ return function(GB)
 		local t0 = pbegin()
 		limit = limit or 8
 		perfCount("ResolverDeepScan", 1)
+		perfCount("GetDescendants", 1)
 		local hits = {}
 		for _, root in ipairs(npcRoots()) do
 			if pred(root) then
@@ -5916,6 +5972,7 @@ return function(GB)
 			string.format("miss '%s' nearby=%d %s", tostring(request), #cand, table.concat(bits, " | "))
 		)
 		M.lastCandidates = {}
+		n = math.min(n, 16)
 		for i = 1, n do
 			local c = cand[i]
 			M.lastCandidates[i] = {
@@ -8781,10 +8838,32 @@ return function(GB)
 	end
 
 	function M.decide()
+		if GB.Respawn then
+			if GB.Respawn.Detect then
+				GB.Respawn.Detect()
+			end
+			if GB.Respawn.isBusy and GB.Respawn.isBusy() then
+				setTask("respawn")
+				logDoing("respawn", GB.Respawn.currentPhase and GB.Respawn.currentPhase())
+				if GB.Respawn.tick then
+					GB.Respawn.tick()
+				end
+				return
+			end
+		end
 		local snap = GB.State.refresh()
 		if not snap.Alive then
-			setTask("wait_spawn")
-			logDoing("wait_spawn")
+			if GB.Respawn and GB.Respawn.onDeath then
+				GB.Respawn.onDeath("engine")
+				setTask("respawn")
+				logDoing("respawn", GB.Respawn.currentPhase and GB.Respawn.currentPhase())
+				if GB.Respawn.tick then
+					GB.Respawn.tick()
+				end
+			else
+				setTask("wait_spawn")
+				logDoing("wait_spawn")
+			end
 			return
 		end
 		if GB.PlayerData and GB.PlayerData.refreshLive then
@@ -10289,6 +10368,7 @@ end
     ["Systems/Combat.lua"] = [[-- FindTarget / MoveToTarget / AttackTarget / ValidateKill / RecoverCombat.
 -- Death = Dead attribute / Health<=0 / StateService Dead. Parent nil is despawn, not death.
 -- AttackModule.Swing only at CanSwing + swingStateDuration.
+-- UNSAFE / NOT ENABLED: clearing SwingCD/Endlag, forging attack remotes, Swing spam.
 
 return function(GB)
 	local RS = game:GetService("ReplicatedStorage")
@@ -10323,7 +10403,10 @@ return function(GB)
 		},
 	}
 
+	-- Verified AttackModule basic: swingStateDuration = 0.35 * 1.05 ≈ 0.3675. CanSwing is authoritative.
 	local SWING_GAP = 0.42
+	local SWING_VERIFIED = 0.3675
+	local SWING_FLOOR = 0.05
 	local REPOS_DIST = 4.2
 	local TARGET_MOVED = 3.5
 	local DEAD_TTL = 12
@@ -10332,6 +10415,8 @@ return function(GB)
 	local APPROACH_SWING_GAP = 0.95
 	local QUEST_CHECK_MIN_GAP = 0.32
 	local QUEST_CHECK_SAFETY = 2.8
+	M._tel = { attempt = 0, accepted = 0, reject = 0, damage = 0, at = 0 }
+	M._noCredit = 0
 
 	local function pbegin()
 		return GB.Profiler and GB.Profiler.begin and GB.Profiler.begin() or nil
@@ -10381,6 +10466,62 @@ return function(GB)
 			return false
 		end
 		return loadState().GetPermission(char, "CanSwing") == true
+	end
+
+	function M.readSwingDuration()
+		local atk = loadAttack()
+		if type(atk) == "table" then
+			local d = tonumber(atk.swingStateDuration or atk.SwingStateDuration or atk.SwingDuration)
+			if d and d > 0.12 and d < 1.6 then
+				return d
+			end
+		end
+		return SWING_VERIFIED
+	end
+
+	function M.minSwingInterval()
+		local mode = GB.Config and GB.Config.CombatMode or "SAFE_FAST"
+		local verified = math.max(SWING_VERIFIED, M.readSwingDuration())
+		if mode ~= "SAFE_FAST" then
+			return math.max(verified, SWING_GAP)
+		end
+		if (M._noCredit or 0) >= 8 then
+			return verified
+		end
+		return SWING_FLOOR
+	end
+
+	function M.preferredAction(questName)
+		local qs = questName and GB.Quest and GB.Quest.questState and GB.Quest.questState(questName)
+		local typ = qs and qs.Objective and qs.Objective.Type
+		if typ == "Shoot" then
+			return "GUN"
+		end
+		return "SWING"
+	end
+
+	local function noteSwing(accepted)
+		local t = M._tel
+		t.attempt = t.attempt + 1
+		if accepted then
+			t.accepted = t.accepted + 1
+		else
+			t.reject = t.reject + 1
+		end
+		if GB.Config and GB.Config.CombatDebug == true and os.clock() - (t.at or 0) >= 20 then
+			t.at = os.clock()
+			GB.Log.log(
+				"COMBAT",
+				string.format(
+					"rate attempt=%d accepted=%d reject=%d damage=%d",
+					t.attempt,
+					t.accepted,
+					t.reject,
+					t.damage or 0
+				)
+			)
+			t.attempt, t.accepted, t.reject, t.damage = 0, 0, 0, 0
+		end
 	end
 
 	function M.canDodge(char)
@@ -11112,7 +11253,10 @@ return function(GB)
 		if not c then
 			return
 		end
-		if os.clock() - M.lastSwing < SWING_GAP then
+		if GB.Respawn and GB.Respawn.isBusy and GB.Respawn.isBusy() then
+			return
+		end
+		if os.clock() - M.lastSwing < M.minSwingInterval() then
 			return
 		end
 		if not M.canSwing(c) then
@@ -11150,6 +11294,13 @@ return function(GB)
 		if atk and atk.Swing then
 			atk.Swing(c)
 		end
+		local accepted = M.canSwing(c) ~= true
+		noteSwing(accepted)
+		if accepted then
+			M._noCredit = 0
+		else
+			M._noCredit = (M._noCredit or 0) + 1
+		end
 	end
 
 	function M.startLock(mob, questName)
@@ -11171,7 +11322,14 @@ return function(GB)
 		M.setActive(mob, questName)
 		GB.Log.log("STATE", string.format("doing=combat target=%s", mob.Name))
 		M.lockConn = RunService.Heartbeat:Connect(function()
+			if GB.Profiler and GB.Profiler.count then
+				GB.Profiler.count("HeartbeatCallbacks", 1)
+			end
 			if GB.dead and GB.dead() then
+				M.stopLock()
+				return
+			end
+			if GB.Respawn and GB.Respawn.isBusy and GB.Respawn.isBusy() then
 				M.stopLock()
 				return
 			end
@@ -11196,6 +11354,12 @@ return function(GB)
 				M.standPose(mob2)
 			end
 			if M.IsEnemyAlive(mob2) then
+				local hp = M.readHealth(mob2)
+				if hp and M._hpBefore and hp < M._hpBefore then
+					M._tel.damage = (M._tel.damage or 0) + 1
+					M._noCredit = 0
+				end
+				M._hpBefore = hp
 				M.swing()
 			else
 				M.onTargetDead(mob2, "post-swing")
@@ -11284,6 +11448,10 @@ return function(GB)
 		local t0 = os.clock()
 		local tracked = M.lockMob or mob
 		while os.clock() - t0 < timeout do
+			if GB.Respawn and GB.Respawn.isBusy and GB.Respawn.isBusy() then
+				M.stopLock()
+				return false, "respawn"
+			end
 			if questName and M.lastQuestDone == questName then
 				M.stopLock()
 				return true, "quest_done"
@@ -12180,6 +12348,10 @@ return function(GB)
 	local TRACK_LIMIT = 96
 	local FAIL_FINGERPRINT_GAP = 1.2
 	local FAIL_DEFER_GAP = 30
+
+	local function respawnBusy()
+		return GB.Respawn and GB.Respawn.isBusy and GB.Respawn.isBusy() == true
+	end
 
 	local function pbegin()
 		return GB.Profiler and GB.Profiler.begin and GB.Profiler.begin() or nil
@@ -13350,6 +13522,9 @@ return function(GB)
 				local waitFor = okTalk and 1.8 or ((whyTalk == "rate") and 0.9 or 0.45)
 				local untilAt = os.clock() + waitFor
 				while os.clock() < untilAt do
+					if respawnBusy() then
+						return nil, "respawn"
+					end
 					if dialogueOpen() then
 						return who, lastWhy
 					end
@@ -13569,6 +13744,9 @@ return function(GB)
 		local t0 = os.clock()
 		local nextRefreshAt = 0
 		while os.clock() - t0 < timeout do
+			if respawnBusy() then
+				return false, "respawn"
+			end
 			if questAcceptedNow(name) then
 				return true, "accepted"
 			end
@@ -13594,6 +13772,9 @@ return function(GB)
 		timeout = timeout or 2.8
 		local t0 = os.clock()
 		while os.clock() - t0 < timeout do
+			if respawnBusy() then
+				return false, "respawn"
+			end
 			task.wait(0.2)
 			if (not isRepeatable(name)) and GB.PlayerData.finished(name, true) then
 				return true, "done"
@@ -14360,6 +14541,9 @@ return function(GB)
 	end
 
 	local function doLiveRaw(name)
+		if respawnBusy() then
+			return resultRow(name, true, false, "respawn")
+		end
 		if GB.Config.SkipQuests[name] then
 			return resultRow(name, false, false, "skip")
 		end
@@ -14609,6 +14793,502 @@ return function(GB)
 		end
 		GB.Log.warn("RACE", "AutoRaceTrait on but race remote UNRESOLVED; trait reroll not auto-fired")
 		M.rolled = true
+	end
+
+	return M
+end
+]],
+    ["Systems/Respawn.lua"] = [[-- Death / revive lifecycle. One CharacterAdded + one Humanoid.Died.
+-- Revive uses the same client UI/remote path as a normal player. No fake local alive.
+
+return function(GB)
+	local Players = game:GetService("Players")
+	local M = {
+		phase = "ALIVE",
+		_bound = false,
+		_humDied = nil,
+		_charAdded = nil,
+		_charRemoving = nil,
+		_ctx = nil,
+		_deathAt = 0,
+		_reviveAt = 0,
+		_charToken = 0,
+		_lastClick = 0,
+		_lastRemote = 0,
+		_readyAt = 0,
+	}
+
+	local PHASE = {
+		ALIVE = "ALIVE",
+		DYING = "DYING",
+		DEAD = "DEAD",
+		REVIVE_UI = "REVIVE_UI",
+		RESPAWNING = "RESPAWNING",
+		CHARACTER_LOADING = "CHARACTER_LOADING",
+		RESTORE_CONTEXT = "RESTORE_CONTEXT",
+	}
+
+	local DEATH_GUI = {
+		"DeathScreen",
+		"Death",
+		"YouDied",
+		"You Died",
+		"Dead",
+		"DeathUI",
+		"DeathGui",
+		"Respawn",
+		"Revive",
+	}
+
+	local REVIVE_BTN = {
+		"Respawn",
+		"Revive",
+		"Retry",
+		"Continue",
+		"Return",
+		"Spawn",
+		"RespawnButton",
+		"ReviveButton",
+		"Play",
+	}
+
+	local function log(msg)
+		if GB.Log and GB.Log.log then
+			GB.Log.log("RESPAWN", msg)
+		end
+	end
+
+	local function warn(msg)
+		if GB.Log and GB.Log.warn then
+			GB.Log.warn("RESPAWN", msg)
+		end
+	end
+
+	local function deathLog(msg)
+		if GB.Log and GB.Log.log then
+			GB.Log.log("DEATH", msg)
+		end
+	end
+
+	function M.aliveNow()
+		local lp = GB.lp
+		local char = lp and lp.Character
+		if not char or not char.Parent then
+			return false
+		end
+		if char:GetAttribute("Dead") == true then
+			return false
+		end
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if not hum or hum.Health <= 0 then
+			return false
+		end
+		if GB.Combat and GB.Combat.hasDeadFlag and GB.Combat.hasDeadFlag(char) then
+			return false
+		end
+		return char:FindFirstChild("HumanoidRootPart") ~= nil
+	end
+
+	function M.isBusy()
+		return M.phase ~= PHASE.ALIVE
+	end
+
+	function M.currentPhase()
+		return M.phase
+	end
+
+	function M.context()
+		return M._ctx
+	end
+
+	local function snapshotContext()
+		local qs, obj
+		local qn = GB.PlayerData and GB.PlayerData.current and GB.PlayerData.current()
+		if qn and GB.Quest and GB.Quest.questState then
+			qs = GB.Quest.questState(qn)
+			obj = qs and qs.Objective
+		end
+		local island = (qs and qs.Island)
+			or (GB.State and GB.State.snap and GB.State.snap.CurrentIsland)
+		local goal = GB.Engine and (GB.Engine.task or (GB.Engine.goal and GB.Engine.goal.Note))
+		M._ctx = {
+			At = os.clock(),
+			Goal = goal,
+			Quest = qn,
+			Stage = qs and qs.StageIndex,
+			Objective = obj and obj.Type,
+			Target = obj and obj.TargetName,
+			Island = island,
+			Farm = GB.Engine and GB.Engine.goal and GB.Engine.goal.Note,
+		}
+		if GB.Persist and GB.Persist.data and type(GB.Persist.data.checkpoint) == "table" then
+			local ck = GB.Persist.data.checkpoint
+			ck.quest = qn
+			ck.stage = M._ctx.Stage
+			ck.objective = M._ctx.Objective
+			ck.target = M._ctx.Target
+			ck.island = island
+			ck.goal = goal
+			ck.respawn = {
+				quest = qn,
+				stage = M._ctx.Stage,
+				objective = M._ctx.Objective,
+				target = M._ctx.Target,
+				island = island,
+				goal = goal,
+			}
+			if GB.Persist.save then
+				GB.Persist.save()
+			end
+		end
+		return M._ctx
+	end
+
+	local function releaseActions()
+		if GB.Combat and GB.Combat.stopLock then
+			pcall(GB.Combat.stopLock)
+		end
+		if GB.World and GB.World.cancelTween then
+			pcall(GB.World.cancelTween)
+		end
+	end
+
+	local function setPhase(next)
+		if M.phase == next then
+			return
+		end
+		M.phase = next
+		log(string.lower(next))
+	end
+
+	function M.onDeath(reason)
+		if M.phase ~= PHASE.ALIVE and M.phase ~= PHASE.DYING then
+			return
+		end
+		setPhase(PHASE.DYING)
+		M._deathAt = os.clock()
+		deathLog(tostring(reason or "dead"))
+		snapshotContext()
+		releaseActions()
+		setPhase(PHASE.DEAD)
+	end
+
+	local function disconnectHum()
+		if M._humDied then
+			pcall(function()
+				M._humDied:Disconnect()
+			end)
+			M._humDied = nil
+		end
+	end
+
+	local function bindHumanoid(char)
+		disconnectHum()
+		if not char then
+			return
+		end
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if not hum then
+			return
+		end
+		M._humDied = hum.Died:Connect(function()
+			M.onDeath("humanoid died")
+		end)
+		if GB.conns then
+			GB.conns[#GB.conns + 1] = M._humDied
+		end
+	end
+
+	local function pg()
+		return GB.lp and GB.lp:FindFirstChild("PlayerGui")
+	end
+
+	local function findDeathGui()
+		local root = pg()
+		if not root then
+			return nil
+		end
+		for _, name in ipairs(DEATH_GUI) do
+			local ui = root:FindFirstChild(name)
+			if ui and ui.Parent then
+				if ui:IsA("LayerCollector") then
+					if ui.Enabled == true then
+						return ui
+					end
+				else
+					return ui
+				end
+			end
+		end
+		for _, ui in ipairs(root:GetChildren()) do
+			local nm = string.lower(tostring(ui.Name or ""))
+			if string.find(nm, "death", 1, true) or string.find(nm, "died", 1, true) or string.find(nm, "respawn", 1, true) or string.find(nm, "revive", 1, true) then
+				if ui:IsA("LayerCollector") then
+					if ui.Enabled == true then
+						return ui
+					end
+				else
+					return ui
+				end
+			end
+		end
+		return nil
+	end
+
+	local function findReviveButton(ui)
+		if not ui then
+			return nil
+		end
+		for _, name in ipairs(REVIVE_BTN) do
+			local btn = ui:FindFirstChild(name, true)
+			if btn and btn:IsA("GuiButton") then
+				return btn
+			end
+		end
+		return ui:FindFirstChildWhichIsA("GuiButton", true)
+	end
+
+	local function fireDeathRemote()
+		local now = os.clock()
+		if now - (M._lastRemote or 0) < 1.4 then
+			return false
+		end
+		M._lastRemote = now
+		local ev = game:GetService("ReplicatedStorage"):FindFirstChild("Events")
+		local rf = ev and ev:FindFirstChild("DeathScreen")
+		if not (rf and rf:IsA("RemoteFunction")) then
+			return false
+		end
+		warn("activating DeathScreen remote")
+		pcall(function()
+			rf:InvokeServer()
+		end)
+		return true
+	end
+
+	function M.GetReviveAction()
+		local ui = findDeathGui()
+		if ui then
+			local btn = findReviveButton(ui)
+			if btn then
+				return {
+					Kind = "button",
+					Gui = ui,
+					Button = btn,
+					Name = ui.Name .. "." .. btn.Name,
+				}
+			end
+			return { Kind = "gui", Gui = ui, Name = ui.Name }
+		end
+		local ev = game:GetService("ReplicatedStorage"):FindFirstChild("Events")
+		if ev and ev:FindFirstChild("DeathScreen") then
+			return { Kind = "remote", Name = "Events.DeathScreen" }
+		end
+		return nil
+	end
+
+	function M.ExecuteRevive()
+		local action = M.GetReviveAction()
+		if not action then
+			return false
+		end
+		local now = os.clock()
+		if now - (M._lastClick or 0) < 0.85 then
+			return false
+		end
+		M._lastClick = now
+		if action.Kind == "button" and GB.State and GB.State.clickGui then
+			warn("activating " .. tostring(action.Name))
+			return GB.State.clickGui(action.Button) == true
+		end
+		if action.Kind == "gui" and GB.State and GB.State.invokeContinueInput then
+			warn("activating overlay " .. tostring(action.Name))
+			local ok = GB.State.invokeContinueInput(action.Gui, "owner")
+			return ok == true
+		end
+		if action.Kind == "remote" then
+			return fireDeathRemote()
+		end
+		return false
+	end
+
+	function M.WaitCharacter()
+		return M.aliveNow()
+	end
+
+	local function restore()
+		if M.phase == PHASE.ALIVE and os.clock() - (M._readyAt or 0) < 0.8 then
+			return
+		end
+		if GB.Cache and GB.Cache.invalidatePrefix then
+			GB.Cache.invalidatePrefix("res:enemy:")
+		end
+		if GB.Remotes and GB.Remotes.statReplicate then
+			pcall(GB.Remotes.statReplicate)
+		end
+		if GB.Equipment and GB.Equipment.tick then
+			pcall(GB.Equipment.tick)
+		end
+		if GB.PlayerData and GB.PlayerData.forceQuestRefresh then
+			GB.PlayerData.forceQuestRefresh("respawn")
+		elseif GB.PlayerData and GB.PlayerData.refreshLive then
+			GB.PlayerData.refreshLive(true, "respawn")
+		end
+		local ctx = M._ctx
+		local label = (ctx and (ctx.Quest or ctx.Goal)) or "progression"
+		if GB.Log and GB.Log.log then
+			GB.Log.log("STATE", "resuming " .. tostring(label))
+		end
+		if GB.State and GB.State.track then
+			GB.State.track.TaskStartedAt = os.clock()
+			GB.State.track.SuccessfulAction = os.clock()
+		end
+		if GB.Recovery and GB.Recovery.markSuccess then
+			GB.Recovery.markSuccess()
+		end
+		M._readyAt = os.clock()
+		setPhase(PHASE.ALIVE)
+	end
+
+	function M.Restore()
+		restore()
+	end
+
+	function M.Detect()
+		if M.aliveNow() then
+			return false
+		end
+		if M.phase == PHASE.ALIVE then
+			M.onDeath("detect")
+		end
+		return true
+	end
+
+	function M.tick()
+		if GB.dead and GB.dead() then
+			return
+		end
+		if M.phase == PHASE.ALIVE then
+			if not M.aliveNow() then
+				M.onDeath("tick")
+			end
+			return
+		end
+		if M.aliveNow() then
+			if M.phase == PHASE.RESTORE_CONTEXT then
+				restore()
+				return
+			end
+			if M.phase == PHASE.CHARACTER_LOADING or M.phase == PHASE.RESPAWNING or M.phase == PHASE.REVIVE_UI or M.phase == PHASE.DEAD then
+				setPhase(PHASE.RESTORE_CONTEXT)
+				restore()
+				return
+			end
+		end
+		if M.phase == PHASE.DEAD or M.phase == PHASE.REVIVE_UI then
+			local action = M.GetReviveAction()
+			if action then
+				if M.phase == PHASE.DEAD then
+					warn("death screen detected")
+					setPhase(PHASE.REVIVE_UI)
+				end
+				if M.ExecuteRevive() then
+					setPhase(PHASE.RESPAWNING)
+				end
+			else
+				fireDeathRemote()
+			end
+			return
+		end
+		if M.phase == PHASE.RESPAWNING or M.phase == PHASE.CHARACTER_LOADING then
+			if os.clock() - (M._lastClick or 0) > 2.4 then
+				M.ExecuteRevive()
+			end
+		end
+	end
+
+	function M.onCharacterAdded(char)
+		M._charToken = M._charToken + 1
+		setPhase(PHASE.CHARACTER_LOADING)
+		log("new character")
+		releaseActions()
+		bindHumanoid(char)
+		task.defer(function()
+			local t0 = os.clock()
+			while os.clock() - t0 < 6 and not M.aliveNow() do
+				task.wait(0.12)
+			end
+			if M.aliveNow() then
+				log("character ready")
+				setPhase(PHASE.RESTORE_CONTEXT)
+				restore()
+			end
+		end)
+	end
+
+	function M.bind()
+		if M._bound then
+			return
+		end
+		M._bound = true
+		local lp = GB.lp or Players.LocalPlayer
+		if not lp then
+			return
+		end
+		if lp.Character then
+			bindHumanoid(lp.Character)
+			if not M.aliveNow() then
+				M.onDeath("boot dead")
+			end
+		end
+		M._charAdded = lp.CharacterAdded:Connect(function(char)
+			if GB.dead and GB.dead() then
+				return
+			end
+			M.onCharacterAdded(char)
+		end)
+		M._charRemoving = lp.CharacterRemoving:Connect(function(char)
+			if GB.dead and GB.dead() then
+				return
+			end
+			if M.phase ~= PHASE.ALIVE then
+				return
+			end
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+			if (hum and hum.Health <= 0) or (char and char:GetAttribute("Dead") == true) then
+				M.onDeath("character removed")
+			end
+		end)
+		if GB.conns then
+			GB.conns[#GB.conns + 1] = M._charAdded
+			GB.conns[#GB.conns + 1] = M._charRemoving
+		end
+	end
+
+	function M.unbind()
+		disconnectHum()
+		if M._charAdded then
+			pcall(function()
+				M._charAdded:Disconnect()
+			end)
+			M._charAdded = nil
+		end
+		if M._charRemoving then
+			pcall(function()
+				M._charRemoving:Disconnect()
+			end)
+			M._charRemoving = nil
+		end
+		M._bound = false
+	end
+
+	function M.connectionCounts()
+		return {
+			CharacterAdded = M._charAdded ~= nil,
+			CharacterRemoving = M._charRemoving ~= nil,
+			HumanoidDied = M._humDied ~= nil,
+			Phase = M.phase,
+		}
 	end
 
 	return M
@@ -15145,16 +15825,32 @@ return function(GB)
 		return true
 	end
 
+	local function skillCooldownSec(name)
+		local info = skillInfo(name)
+		if not info then
+			return nil
+		end
+		local base = info.BaseInfo or info
+		local cd = tonumber(base.Cooldown or base.CD or info.Cooldown)
+		if cd and cd > 0.2 and cd < 60 then
+			return cd
+		end
+		return nil
+	end
+
 	function M.castHold(name, opts)
 		opts = opts or {}
 		if not name then
+			return false
+		end
+		if GB.Respawn and GB.Respawn.isBusy and GB.Respawn.isBusy() then
 			return false
 		end
 		if GB.State.tutorialOverlayVisible() then
 			GB.State.dismissTutorialOverlay()
 			return false
 		end
-		local cd = opts.cooldown or 6.2
+		local cd = opts.cooldown or skillCooldownSec(name) or 6.2
 		if os.clock() - (M.lastCast[name] or 0) < cd then
 			return false
 		end
@@ -15207,6 +15903,9 @@ return function(GB)
 			return M.castHold(name, opts)
 		end
 		if not name then
+			return false
+		end
+		if GB.Respawn and GB.Respawn.isBusy and GB.Respawn.isBusy() then
 			return false
 		end
 		if GB.State.tutorialOverlayVisible() then
@@ -16850,6 +17549,13 @@ return function(GB)
 		if GB.Recovery.deadOnce[key] then
 			return dump
 		end
+		local n = 0
+		for _ in pairs(GB.Recovery.deadOnce) do
+			n = n + 1
+		end
+		if n > 80 then
+			GB.Recovery.deadOnce = {}
+		end
 		GB.Recovery.deadOnce[key] = true
 		if canWrite() then
 			local sid = GB.Persist.data and GB.Persist.data.session or "session"
@@ -16874,6 +17580,9 @@ return function(GB)
 		end
 		if GB.Combat then
 			pcall(GB.Combat.stopLock)
+		end
+		if GB.Respawn and GB.Respawn.unbind then
+			pcall(GB.Respawn.unbind)
 		end
 		for _, c in ipairs(GB.conns) do
 			pcall(function()
@@ -16917,32 +17626,27 @@ return function(GB)
 				connected = connected + 1
 			end
 		end
+		local respawn = GB.Respawn and GB.Respawn.connectionCounts and GB.Respawn.connectionCounts() or nil
 		return {
 			Total = total,
 			Connected = connected,
 			SchedulerRunning = GB.Scheduler and GB.Scheduler._running == true or false,
 			CombatLock = GB.Combat and GB.Combat.lockConn ~= nil or false,
+			Respawn = respawn,
 		}
 	end
 
 	getgenv()._GBKaitunUnload = GB.unload
 
-	GB.conns[#GB.conns + 1] = GB.lp.CharacterAdded:Connect(function()
-		task.wait(0.4)
-		if GB.dead() then
-			return
+	if GB.Respawn and GB.Respawn.bind then
+		GB.Respawn.bind()
+	end
+
+	GB.Scheduler.add("respawn", function()
+		if GB.Respawn and GB.Respawn.tick then
+			GB.Respawn.tick()
 		end
-		GB._respawnAt = os.clock()
-		GB.Cache.invalidate()
-		GB.Remotes.statReplicate()
-		if GB.Combat then
-			GB.Combat.stopLock()
-		end
-		GB.Log.log("STATE", "respawn")
-		if GB.World and GB.World.lastSafe and GB.lp and GB.lp:GetAttribute("GameplayPaused") ~= true then
-			GB.World.goSafe()
-		end
-	end)
+	end, 0.25, { critical = true, first = true })
 
 	GB.Scheduler.add("recovery", function()
 		GB.Recovery.tick()
@@ -17003,7 +17707,7 @@ return function(GB)
 		)
 	)
 	GB.Log.log("PERF", "SourceHttpAfterBoot=0")
-	print("[Kaitun][BOOT] starting version " .. ver .. " commit=" .. commit)
+	print(string.format("[Kaitun][BOOT] version=%s build=%s", ver, commit))
 	return GB
 end
 ]],
@@ -17867,6 +18571,7 @@ return P
     { key = "Persist", path = "Core/Persist.lua", kind = "core" },
     { key = "State", path = "Core/State.lua", kind = "core" },
     { key = "Recovery", path = "Core/Recovery.lua", kind = "core" },
+    { key = "Respawn", path = "Systems/Respawn.lua", kind = "core" },
     { key = "Remotes", path = "Game/Remotes.lua", kind = "core" },
     { key = "Resolver", path = "Game/Resolver.lua", kind = "core" },
     { key = "PlayerData", path = "Game/PlayerData.lua", kind = "core" },

@@ -24,12 +24,15 @@ return function(GB)
 		"QuestGuiScan",
 		"WorkspaceDeepScan",
 		"ResolverDeepScan",
+		"GetDescendants",
 		"getgc",
 		"getconnections",
 		"RuntimeFileWrite",
 		"PersistWrite",
 		"HeartbeatQuestCheck",
+		"HeartbeatCallbacks",
 		"PlayerDataRefresh",
+		"ResolverMiss",
 	}
 
 	local function capOrder(order, map, maxN)
@@ -144,6 +147,13 @@ return function(GB)
 					M.lastSpikeAt[name] = now
 					print(string.format("[Kaitun][PERF][SPIKE] %s %sms", name, metricMs(dt)))
 				end
+			end
+			local spikeN = 0
+			for _ in pairs(M.lastSpikeAt) do
+				spikeN = spikeN + 1
+			end
+			if spikeN > 80 then
+				M.lastSpikeAt = {}
 			end
 		end
 		if dt >= 0.033 then

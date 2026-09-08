@@ -1,6 +1,7 @@
 -- FindTarget / MoveToTarget / AttackTarget / ValidateKill / RecoverCombat.
 -- Death = Dead attribute / Health<=0 / StateService Dead. Parent nil is despawn, not death.
 -- AttackModule.Swing only at CanSwing + swingStateDuration.
+-- UNSAFE / NOT ENABLED: clearing SwingCD/Endlag, forging attack remotes, Swing spam.
 
 return function(GB)
 	local RS = game:GetService("ReplicatedStorage")
@@ -35,7 +36,10 @@ return function(GB)
 		},
 	}
 
+	-- Verified AttackModule basic: swingStateDuration = 0.35 * 1.05 ≈ 0.3675. CanSwing is authoritative.
 	local SWING_GAP = 0.42
+	local SWING_VERIFIED = 0.3675
+	local SWING_FLOOR = 0.05
 	local REPOS_DIST = 4.2
 	local TARGET_MOVED = 3.5
 	local DEAD_TTL = 12
@@ -44,6 +48,8 @@ return function(GB)
 	local APPROACH_SWING_GAP = 0.95
 	local QUEST_CHECK_MIN_GAP = 0.32
 	local QUEST_CHECK_SAFETY = 2.8
+	M._tel = { attempt = 0, accepted = 0, reject = 0, damage = 0, at = 0 }
+	M._noCredit = 0
 
 	local function pbegin()
 		return GB.Profiler and GB.Profiler.begin and GB.Profiler.begin() or nil
@@ -93,6 +99,62 @@ return function(GB)
 			return false
 		end
 		return loadState().GetPermission(char, "CanSwing") == true
+	end
+
+	function M.readSwingDuration()
+		local atk = loadAttack()
+		if type(atk) == "table" then
+			local d = tonumber(atk.swingStateDuration or atk.SwingStateDuration or atk.SwingDuration)
+			if d and d > 0.12 and d < 1.6 then
+				return d
+			end
+		end
+		return SWING_VERIFIED
+	end
+
+	function M.minSwingInterval()
+		local mode = GB.Config and GB.Config.CombatMode or "SAFE_FAST"
+		local verified = math.max(SWING_VERIFIED, M.readSwingDuration())
+		if mode ~= "SAFE_FAST" then
+			return math.max(verified, SWING_GAP)
+		end
+		if (M._noCredit or 0) >= 8 then
+			return verified
+		end
+		return SWING_FLOOR
+	end
+
+	function M.preferredAction(questName)
+		local qs = questName and GB.Quest and GB.Quest.questState and GB.Quest.questState(questName)
+		local typ = qs and qs.Objective and qs.Objective.Type
+		if typ == "Shoot" then
+			return "GUN"
+		end
+		return "SWING"
+	end
+
+	local function noteSwing(accepted)
+		local t = M._tel
+		t.attempt = t.attempt + 1
+		if accepted then
+			t.accepted = t.accepted + 1
+		else
+			t.reject = t.reject + 1
+		end
+		if GB.Config and GB.Config.CombatDebug == true and os.clock() - (t.at or 0) >= 20 then
+			t.at = os.clock()
+			GB.Log.log(
+				"COMBAT",
+				string.format(
+					"rate attempt=%d accepted=%d reject=%d damage=%d",
+					t.attempt,
+					t.accepted,
+					t.reject,
+					t.damage or 0
+				)
+			)
+			t.attempt, t.accepted, t.reject, t.damage = 0, 0, 0, 0
+		end
 	end
 
 	function M.canDodge(char)
@@ -824,7 +886,10 @@ return function(GB)
 		if not c then
 			return
 		end
-		if os.clock() - M.lastSwing < SWING_GAP then
+		if GB.Respawn and GB.Respawn.isBusy and GB.Respawn.isBusy() then
+			return
+		end
+		if os.clock() - M.lastSwing < M.minSwingInterval() then
 			return
 		end
 		if not M.canSwing(c) then
@@ -862,6 +927,13 @@ return function(GB)
 		if atk and atk.Swing then
 			atk.Swing(c)
 		end
+		local accepted = M.canSwing(c) ~= true
+		noteSwing(accepted)
+		if accepted then
+			M._noCredit = 0
+		else
+			M._noCredit = (M._noCredit or 0) + 1
+		end
 	end
 
 	function M.startLock(mob, questName)
@@ -883,7 +955,14 @@ return function(GB)
 		M.setActive(mob, questName)
 		GB.Log.log("STATE", string.format("doing=combat target=%s", mob.Name))
 		M.lockConn = RunService.Heartbeat:Connect(function()
+			if GB.Profiler and GB.Profiler.count then
+				GB.Profiler.count("HeartbeatCallbacks", 1)
+			end
 			if GB.dead and GB.dead() then
+				M.stopLock()
+				return
+			end
+			if GB.Respawn and GB.Respawn.isBusy and GB.Respawn.isBusy() then
 				M.stopLock()
 				return
 			end
@@ -908,6 +987,12 @@ return function(GB)
 				M.standPose(mob2)
 			end
 			if M.IsEnemyAlive(mob2) then
+				local hp = M.readHealth(mob2)
+				if hp and M._hpBefore and hp < M._hpBefore then
+					M._tel.damage = (M._tel.damage or 0) + 1
+					M._noCredit = 0
+				end
+				M._hpBefore = hp
 				M.swing()
 			else
 				M.onTargetDead(mob2, "post-swing")
@@ -996,6 +1081,10 @@ return function(GB)
 		local t0 = os.clock()
 		local tracked = M.lockMob or mob
 		while os.clock() - t0 < timeout do
+			if GB.Respawn and GB.Respawn.isBusy and GB.Respawn.isBusy() then
+				M.stopLock()
+				return false, "respawn"
+			end
 			if questName and M.lastQuestDone == questName then
 				M.stopLock()
 				return true, "quest_done"

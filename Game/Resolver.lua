@@ -111,9 +111,33 @@ return function(GB)
 		return tostring(kind or "any") .. ":" .. base .. "|" .. isl
 	end
 
+	local NEG_MAX = 240
+
+	local function pruneNegative(bucket)
+		local now = os.clock()
+		local n = 0
+		local drop
+		local dropAt
+		for k, untilAt in pairs(bucket) do
+			n = n + 1
+			if untilAt <= now then
+				bucket[k] = nil
+				n = n - 1
+			elseif not dropAt or untilAt < dropAt then
+				dropAt = untilAt
+				drop = k
+			end
+		end
+		if n > NEG_MAX and drop then
+			bucket[drop] = nil
+		end
+	end
+
 	local function noteNegative(kind, names, island, ttl)
+		perfCount("ResolverMiss", 1)
 		local untilAt = os.clock() + (ttl or NEG_TTL)
 		local bucket = bucketFor(kind)
+		pruneNegative(bucket)
 		for _, raw in ipairs(names or {}) do
 			local n = normalizeKey(raw)
 			if n ~= "" then
@@ -798,6 +822,7 @@ return function(GB)
 		local t0 = pbegin()
 		limit = limit or 8
 		perfCount("ResolverDeepScan", 1)
+		perfCount("GetDescendants", 1)
 		local hits = {}
 		for _, root in ipairs(npcRoots()) do
 			if pred(root) then
@@ -1077,6 +1102,7 @@ return function(GB)
 			string.format("miss '%s' nearby=%d %s", tostring(request), #cand, table.concat(bits, " | "))
 		)
 		M.lastCandidates = {}
+		n = math.min(n, 16)
 		for i = 1, n do
 			local c = cand[i]
 			M.lastCandidates[i] = {
