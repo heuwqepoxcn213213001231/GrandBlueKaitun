@@ -55,16 +55,43 @@ return function(GB)
 		return workspace.FallenPartsDestroyHeight and math.max(workspace.FallenPartsDestroyHeight + 20, 0) or 0
 	end
 
-	function M.destOk(pos)
+	function M.posSane(pos)
 		if typeof(pos) ~= "Vector3" then
 			return false
 		end
-		local y = pos.Y
+		if pos.X ~= pos.X or pos.Y ~= pos.Y or pos.Z ~= pos.Z then
+			return false
+		end
+		if math.abs(pos.X) > 12000 or math.abs(pos.Z) > 12000 then
+			return false
+		end
 		local yMin = math.max(GB.Config.DestYMin or 0, M.waterY() + 2)
-		if y < yMin or y > (GB.Config.DestYMax or 180) then
+		if pos.Y < yMin or pos.Y > (GB.Config.DestYMax or 260) then
 			return false
 		end
 		return true
+	end
+
+	function M.destOk(pos, opts)
+		if not M.posSane(pos) then
+			return false
+		end
+		opts = opts or {}
+		if opts.AllowFar == true then
+			return true
+		end
+		local root = M.hrp()
+		local from = root and root.Position
+		if typeof(from) ~= "Vector3" and M.lastSafe then
+			from = M.lastSafe.Position
+		end
+		if typeof(from) ~= "Vector3" or not M.posSane(from) then
+			return true
+		end
+		local maxHop = tonumber(opts.MaxHop) or tonumber(GB.Config.MaxTravelHop) or 800
+		local dx = pos.X - from.X
+		local dz = pos.Z - from.Z
+		return (dx * dx + dz * dz) <= maxHop * maxHop
 	end
 
 	function M.groundAt(pos)
@@ -217,21 +244,33 @@ return function(GB)
 		if not root then
 			return
 		end
-		local y = root.Position.Y
-		if y > M.waterY() + 10 and y < 250 and M.destOk(root.Position) then
+		if M.posSane(root.Position) and root.Position.Y > M.waterY() + 10 then
 			M.lastSafe = root.CFrame
 		end
 	end
 
 	function M.ensureAnchorSafe()
-		if M.anchorSafe then
+		if M.anchorSafe and M.posSane(M.anchorSafe.Position) then
 			return
 		end
+		M.anchorSafe = nil
 		local g = GB.Resolver.npc("Officer Graves") or GB.Resolver.npc("Officer Graves [2]")
 		local pos = g and GB.Resolver.positionOf(g)
-		if pos then
+		if pos and M.posSane(pos) then
 			M.anchorSafe = CFrame.new(pos + Vector3.new(0, 0, 6))
 		end
+	end
+
+	local function applySafeCf(root, dest)
+		if not (root and dest) then
+			return false
+		end
+		local pos = typeof(dest) == "CFrame" and dest.Position or dest
+		if not M.posSane(pos) then
+			return false
+		end
+		root.CFrame = typeof(dest) == "CFrame" and dest or CFrame.new(pos)
+		return true
 	end
 
 	function M.rescue()
@@ -240,33 +279,36 @@ return function(GB)
 			return
 		end
 		local y = root.Position.Y
-		local wet = y < M.waterY() + 4 or y > 240
+		local wet = (not M.posSane(root.Position)) or y < M.waterY() + 4 or y > 240
 		if not wet then
 			M.rememberSafe()
 			return
 		end
 		M.ensureAnchorSafe()
-		local dest = M.lastSafe or M.anchorSafe
-		if not dest then
-			return
-		end
 		if GB.Combat then
 			pcall(GB.Combat.stopLock)
 		end
 		M.cancelTween()
 		root.AssemblyLinearVelocity = Vector3.zero
-		root.CFrame = dest
-		GB.Log.warn("TRAVEL", "rescue swim/void")
+		local island = M.GetIslandFromPosition(M.lastSafe and M.lastSafe.Position) or "Clown Town"
+		local spawn = M.islandSpawn(island)
+		if applySafeCf(root, M.lastSafe) or applySafeCf(root, M.anchorSafe) or applySafeCf(root, spawn) then
+			GB.Log.warn("TRAVEL", "rescue swim/void")
+		end
 	end
 
 	function M.goSafe()
 		M.ensureAnchorSafe()
 		local root = M.hrp()
-		local dest = M.lastSafe or M.anchorSafe
-		if root and dest then
-			M.cancelTween()
-			root.CFrame = dest
+		if not root then
+			return
 		end
+		M.cancelTween()
+		if applySafeCf(root, M.lastSafe) or applySafeCf(root, M.anchorSafe) then
+			return
+		end
+		local spawn = M.islandSpawn("Clown Town") or M.islandSpawn("Anchor Town")
+		applySafeCf(root, spawn)
 	end
 
 	function M.waitUnpause()
@@ -307,7 +349,7 @@ return function(GB)
 			return false
 		end
 		local pos = typeof(cf) == "CFrame" and cf.Position or cf
-		if not M.destOk(pos) then
+		if not M.destOk(pos, opts) then
 			return false
 		end
 		-- NPC/talk dests already floor-snapped. groundAt(+40) hits tree canopy first.
@@ -556,18 +598,22 @@ return function(GB)
 		if typeof(pos) ~= "Vector3" then
 			return nil
 		end
-		if M.destOk(pos) then
+		if M.posSane(pos) then
 			return pos
 		end
 		local ymin = (GB.Config and GB.Config.DestYMin) or 8
-		local ymax = (GB.Config and GB.Config.DestYMax) or 180
+		local ymax = (GB.Config and GB.Config.DestYMax) or 260
 		local y = pos.Y
 		if y < ymin then
 			y = ymin + 4
 		elseif y > ymax then
 			y = ymax
 		end
-		return Vector3.new(pos.X, y, pos.Z)
+		local clamped = Vector3.new(pos.X, y, pos.Z)
+		if M.posSane(clamped) then
+			return clamped
+		end
+		return nil
 	end
 
 	local function computeGeo(island)
@@ -1245,35 +1291,27 @@ return function(GB)
 				end
 			end
 		end
-		local dlg = aa and aa:FindFirstChild("DialogueNPCs")
-		local folder = dlg and dlg:FindFirstChild(island)
-		if folder then
-			for _, c in ipairs(folder:GetChildren()) do
-				addPos(GB.Resolver.positionOf(c))
-			end
-		end
 		if #dests == 0 then
 			return false
 		end
 		local root = M.hrp()
 		local start = root and root.Position
 		local pick = dests[1]
-		if start then
+		if start and M.posSane(start) then
 			local bestD = (pick - start).Magnitude
 			for i = 2, #dests do
 				local d = (dests[i] - start).Magnitude
-				if d > 40 and d < bestD then
+				if d < bestD then
 					pick, bestD = dests[i], d
 				end
 			end
-			if bestD < 18 then
-				for i = 1, #dests do
-					if (dests[i] - start).Magnitude > 80 then
-						pick = dests[i]
-						break
-					end
-				end
+		end
+		if not M.destOk(pick) then
+			if not M.posSane(pick) then
+				return false
 			end
+			GB.Log.log("TRAVEL", "stream pull " .. island)
+			return M.setPos(pick, { AllowFar = true })
 		end
 		GB.Log.log("TRAVEL", "stream pull " .. island)
 		return M.setPos(pick)

@@ -337,11 +337,14 @@ return function(GB)
 						local ok, hit = pcall(function()
 							return cur:HasTag(tag)
 						end)
-						if ok and hit and (cur.Name == want or cot == want) then
+						if ok and hit then
 							return true
 						end
 					end
 					if cur.Name == want then
+						return true
+					end
+					if GB.Resolver.nameMatches and GB.Resolver.nameMatches(cur, { want }) then
 						return true
 					end
 					cur = cur.Parent
@@ -579,6 +582,10 @@ return function(GB)
 		if byTag then
 			return byTag
 		end
+		local zone = GB.Resolver.mobZone and GB.Resolver.mobZone(marker)
+		if zone then
+			return zone
+		end
 		local byName = GB.Resolver.byName and GB.Resolver.byName(marker, "marker")
 		return byName
 	end
@@ -608,6 +615,9 @@ return function(GB)
 		end
 		local hrp = GB.World and GB.World.hrp and GB.World.hrp()
 		local pos = GB.Resolver and GB.Resolver.positionOf and GB.Resolver.positionOf(marker)
+		if pos and GB.World and GB.World.posSane and not GB.World.posSane(pos) then
+			return false
+		end
 		if hrp and pos then
 			local dx = hrp.Position.X - pos.X
 			local dz = hrp.Position.Z - pos.Z

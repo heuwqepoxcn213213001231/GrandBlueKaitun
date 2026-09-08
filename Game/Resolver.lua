@@ -42,6 +42,9 @@ return function(GB)
 		},
 		["Corrupt Swordsman Officer"] = { "Corrupt Marine Officer", "Corrupt Sniper Officer" },
 		["Corrupt Sniper Officer"] = { "Corrupt Marine Officer", "Corrupt Swordsman Officer" },
+		["Beast Tamer"] = { "Mohji", "Beast Tamer" },
+		["Mohji"] = { "Beast Tamer" },
+		["Circus Lion"] = { "Circus Lion", "Lion" },
 	}
 
 	-- Quest target "Marine Gate". Live: Model Gate tagged Marine Metal Gate. Not the mob-zone part.
@@ -1487,7 +1490,7 @@ return function(GB)
 		local p = inst
 		while p and p ~= workspace do
 			local n = p.Name
-			if n == "Markers" or n == "NPCAreas" or n == "PointsOfInterest" or n == "Spawn Locations" then
+			if n == "Markers" or n == "NPCAreas" or n == "PointsOfInterest" or n == "Spawn Locations" or n == "MobZones" then
 				return true
 			end
 			p = p.Parent
@@ -2217,6 +2220,28 @@ return function(GB)
 			end
 		end
 		return M.byName(name, "shop")
+	end
+
+	function M.mobZone(name)
+		if type(name) ~= "string" or name == "" then
+			return nil
+		end
+		local aa = workspace:FindFirstChild("AA IMPORTANT")
+		local mz = aa and aa:FindFirstChild("MobZones")
+		local inner = mz and (mz:FindFirstChild("MobZones") or mz)
+		if not inner then
+			return nil
+		end
+		local hit = inner:FindFirstChild(name)
+		if hit and hit.Parent then
+			return hit
+		end
+		for _, ch in ipairs(inner:GetChildren()) do
+			if ch.Name == name or M.baseName(ch.Name) == name then
+				return ch
+			end
+		end
+		return nil
 	end
 
 	function M.island(name)

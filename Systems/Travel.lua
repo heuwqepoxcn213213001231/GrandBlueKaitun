@@ -9,9 +9,12 @@ return function(GB)
 			return true
 		end
 		local dest = GB.World.islandSpawn(name)
-		if dest and GB.World.destOk(dest) then
+		if dest and GB.World.posSane and GB.World.posSane(dest) then
 			GB.Log.log("TRAVEL", "walk/hop " .. name)
-			return GB.World.moveTo(dest, 20)
+			if GB.World.destOk(dest) then
+				return GB.World.moveTo(dest, 20)
+			end
+			return GB.World.setPos(dest, { AllowFar = true })
 		end
 		if name == "Clown Town" and not GB.PlayerData.finished("Setting Sail", true) then
 			return false

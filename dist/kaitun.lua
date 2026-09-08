@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
--- Version: 1.1.37
--- Commit: 6947314
--- BuiltAt: 2026-09-08T14:51:43+07:00
+-- Version: 1.1.38
+-- Commit: 8ca15ba
+-- BuiltAt: 2026-09-08T15:47:53+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -35,9 +35,9 @@ return function(meta)
 
 	stopPreviousInstance()
 
-	local BUILD_VERSION = "1.1.37"
-	local BUILD_COMMIT = "6947314"
-	local BUILD_AT = "2026-09-08T14:51:43+07:00"
+	local BUILD_VERSION = "1.1.38"
+	local BUILD_COMMIT = "8ca15ba"
+	local BUILD_AT = "2026-09-08T15:47:53+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -127,7 +127,8 @@ return function(GB)
 	def("QuestMaxRetries", 5)
 	def("ResolveDeepAfter", 3)
 	def("DestYMin", 0)
-	def("DestYMax", 180)
+	def("DestYMax", 260)
+	def("MaxTravelHop", 800)
 	def("MoveHop", 45)
 	def("TweenSpeed", 95)
 	def("TweenMaxDur", 1.8)
@@ -4188,15 +4189,15 @@ return function(GB)
 	M.STAGES["Journey to Maple Village|3|Reach Maple Village|"] = { quest = "Journey to Maple Village", stage = 3, island = "Clown Town", objective = "Reach Maple Village", goal = "Travel", target = "", amount = 1, acquire = nil, source = "Maple Village", location = "Clown Town", marker = "Maple Village Marker", handler = "Travel.goIsland", status = "IMPLEMENTED" }
 	M.STAGES["Lion's Victim|1|Required|Level"] = { quest = "Lion's Victim", stage = 1, island = "Clown Town", objective = "Required", goal = "LevelGate", target = "Level", amount = 1, acquire = nil, source = nil, location = "Clown Town", marker = nil, handler = "DecisionEngine.levelFarm", status = "IMPLEMENTED" }
 	M.STAGES["Lion's Victim|2|Talk|Stephon"] = { quest = "Lion's Victim", stage = 2, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Stephon", amount = 1, acquire = nil, source = "Stephon", location = "Clown Town", marker = "Stephon", handler = "Quest.talk", status = "IMPLEMENTED" }
-	M.STAGES["Lion's Victim|3|Kill|Circus Lion"] = { quest = "Lion's Victim", stage = 3, island = "Clown Town", objective = "Kill", goal = "Kill", target = "Circus Lion", amount = 1, acquire = nil, source = "Circus Lion", location = "Clown Town", marker = "Beast Tamer Marker", handler = "Combat.attack", status = "IMPLEMENTED" }
-	M.STAGES["Lion's Victim|3|Kill|Beast Tamer"] = { quest = "Lion's Victim", stage = 3, island = "Clown Town", objective = "Kill", goal = "Kill", target = "Beast Tamer", amount = 1, acquire = nil, source = "Beast Tamer", location = "Clown Town", marker = "Beast Tamer Marker", handler = "Combat.attack", status = "IMPLEMENTED" }
+	M.STAGES["Lion's Victim|3|Kill|Circus Lion"] = { quest = "Lion's Victim", stage = 3, island = "Clown Town", objective = "Kill", goal = "Kill", target = "Circus Lion", amount = 1, acquire = nil, source = "Circus Lion", location = "Clown Town", marker = "Mohji", handler = "Combat.attack", status = "IMPLEMENTED" }
+	M.STAGES["Lion's Victim|3|Kill|Beast Tamer"] = { quest = "Lion's Victim", stage = 3, island = "Clown Town", objective = "Kill", goal = "Kill", target = "Beast Tamer", amount = 1, acquire = nil, source = "Beast Tamer", location = "Clown Town", marker = "Mohji", handler = "Combat.attack", status = "IMPLEMENTED" }
 	M.STAGES["Lion's Victim|4|Talk|Stephon"] = { quest = "Lion's Victim", stage = 4, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Stephon", amount = 1, acquire = nil, source = "Stephon", location = "Clown Town", marker = "Stephon", handler = "Quest.talk", status = "IMPLEMENTED" }
 	M.STAGES["Mayor's Stache|1|Talk|Mayor Kiyoshi [2]"] = { quest = "Mayor's Stache", stage = 1, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Mayor Kiyoshi [2]", amount = 1, acquire = nil, source = "Mayor Kiyoshi [2]", location = "Clown Town", marker = "Mayor Kiyoshi [2]", handler = "Quest.talk", status = "IMPLEMENTED" }
 	M.STAGES["Mayor's Stache|2|CollectLocalItem|Mayor's Mustache"] = { quest = "Mayor's Stache", stage = 2, island = "Clown Town", objective = "CollectLocalItem", goal = "AcquireItem", target = "Mayor's Mustache", amount = 1, acquire = "WorldPickup", source = "Mayor's Mustache", location = "Clown Town", marker = "Mayor's Mustache", handler = "Acquire.WorldPickup", status = "IMPLEMENTED" }
 	M.STAGES["Mayor's Stache|3|Talk|Mayor Kiyoshi [2]"] = { quest = "Mayor's Stache", stage = 3, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Mayor Kiyoshi [2]", amount = 1, acquire = nil, source = "Mayor Kiyoshi [2]", location = "Clown Town", marker = "Mayor Kiyoshi [2]", handler = "Quest.talk", status = "IMPLEMENTED" }
 	M.STAGES["Revenge of the Nibblebottom|1|Talk|Johnny Nibblebottom"] = { quest = "Revenge of the Nibblebottom", stage = 1, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Johnny Nibblebottom", amount = 1, acquire = nil, source = "Johnny Nibblebottom", location = "Clown Town", marker = "Johnny Nibblebottom", handler = "Quest.talk", status = "IMPLEMENTED" }
 	M.STAGES["Revenge of the Nibblebottom|2|Kill|Clown Officer"] = { quest = "Revenge of the Nibblebottom", stage = 2, island = "Clown Town", objective = "Kill", goal = "Kill", target = "Clown Officer", amount = 5, acquire = nil, source = "Clown Officer", location = "Clown Town", marker = nil, handler = "Combat.attack", status = "IMPLEMENTED" }
-	M.STAGES["Revenge of the Nibblebottom|2|Destroy|Air Balloon"] = { quest = "Revenge of the Nibblebottom", stage = 2, island = "Clown Town", objective = "Destroy", goal = "Kill", target = "Air Balloon", amount = 1, acquire = nil, source = "Air Balloon", location = "Clown Town", marker = nil, handler = "Combat.attack", status = "IMPLEMENTED" }
+	M.STAGES["Revenge of the Nibblebottom|2|Destroy|Air Balloon"] = { quest = "Revenge of the Nibblebottom", stage = 2, island = "Clown Town", objective = "Destroy", goal = "Kill", target = "Air Balloon", amount = 1, acquire = nil, source = "Air Balloon", location = "Clown Town", marker = "Air Balloon", handler = "Combat.attack", status = "IMPLEMENTED" }
 	M.STAGES["Revenge of the Nibblebottom|3|Talk|Johnny Nibblebottom"] = { quest = "Revenge of the Nibblebottom", stage = 3, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Johnny Nibblebottom", amount = 1, acquire = nil, source = "Johnny Nibblebottom", location = "Clown Town", marker = "Johnny Nibblebottom", handler = "Quest.talk", status = "IMPLEMENTED" }
 	M.STAGES["Sabotage The Cannon|1|Required|Level"] = { quest = "Sabotage The Cannon", stage = 1, island = "Clown Town", objective = "Required", goal = "LevelGate", target = "Level", amount = 1, acquire = nil, source = nil, location = "Clown Town", marker = nil, handler = "DecisionEngine.levelFarm", status = "IMPLEMENTED" }
 	M.STAGES["Sabotage The Cannon|2|Talk|Clowny D. Clown"] = { quest = "Sabotage The Cannon", stage = 2, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Clowny D. Clown", amount = 1, acquire = nil, source = "Clowny D. Clown", location = "Clown Town", marker = "Clowny D. Clown", handler = "Quest.talk", status = "IMPLEMENTED" }
@@ -4443,8 +4444,8 @@ return function(GB)
 	M.STAGES["Tyrannical Captain|1|Kill|Axe-Hand Logan"] = { quest = "Tyrannical Captain", stage = 1, island = "Anchor Town", objective = "Kill", goal = "Kill", target = "Axe-Hand Logan", amount = 1, acquire = nil, source = "Axe-Hand Logan", location = "Anchor Town", marker = "Axe-Hand Logan Marker", handler = "Combat.attack", status = "IMPLEMENTED" }
 	M.STAGES["Billy's Business|1|Kill|Killer Clown"] = { quest = "Billy's Business", stage = 1, island = "Clown Town", objective = "Kill", goal = "Kill", target = "Killer Clown", amount = 7, acquire = nil, source = "Killer Clown", location = "Clown Town", marker = "Killer Clown Marker", handler = "Combat.attack", status = "IMPLEMENTED" }
 	M.STAGES["Billy's Business|2|Talk|Billy B."] = { quest = "Billy's Business", stage = 2, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Billy B.", amount = 1, acquire = nil, source = "Billy B.", location = "Clown Town", marker = "Billy B.", handler = "Quest.talk", status = "IMPLEMENTED" }
-	M.STAGES["Cat Problem|1|Kill|Circus Lion"] = { quest = "Cat Problem", stage = 1, island = "Clown Town", objective = "Kill", goal = "Kill", target = "Circus Lion", amount = 1, acquire = nil, source = "Circus Lion", location = "Clown Town", marker = "Beast Tamer Marker", handler = "Combat.attack", status = "IMPLEMENTED" }
-	M.STAGES["Cat Problem|1|Kill|Beast Tamer"] = { quest = "Cat Problem", stage = 1, island = "Clown Town", objective = "Kill", goal = "Kill", target = "Beast Tamer", amount = 1, acquire = nil, source = "Beast Tamer", location = "Clown Town", marker = "Beast Tamer Marker", handler = "Combat.attack", status = "IMPLEMENTED" }
+	M.STAGES["Cat Problem|1|Kill|Circus Lion"] = { quest = "Cat Problem", stage = 1, island = "Clown Town", objective = "Kill", goal = "Kill", target = "Circus Lion", amount = 1, acquire = nil, source = "Circus Lion", location = "Clown Town", marker = "Mohji", handler = "Combat.attack", status = "IMPLEMENTED" }
+	M.STAGES["Cat Problem|1|Kill|Beast Tamer"] = { quest = "Cat Problem", stage = 1, island = "Clown Town", objective = "Kill", goal = "Kill", target = "Beast Tamer", amount = 1, acquire = nil, source = "Beast Tamer", location = "Clown Town", marker = "Mohji", handler = "Combat.attack", status = "IMPLEMENTED" }
 	M.STAGES["Cat Problem|2|Talk|Stephon"] = { quest = "Cat Problem", stage = 2, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Stephon", amount = 1, acquire = nil, source = "Stephon", location = "Clown Town", marker = "Stephon", handler = "Quest.talk", status = "IMPLEMENTED" }
 	M.STAGES["Choppy The Clown|1|Kill|Choppy The Clown"] = { quest = "Choppy The Clown", stage = 1, island = "Clown Town", objective = "Kill", goal = "Kill", target = "Choppy The Clown", amount = 1, acquire = nil, source = "Choppy The Clown", location = "Clown Town", marker = "Choppy The Clown Marker", handler = "Combat.attack", status = "IMPLEMENTED" }
 	M.STAGES["Choppy The Clown|2|Talk|Mayor Kiyoshi [2]"] = { quest = "Choppy The Clown", stage = 2, island = "Clown Town", objective = "Talk", goal = "Talk", target = "Mayor Kiyoshi [2]", amount = 1, acquire = nil, source = "Mayor Kiyoshi [2]", location = "Clown Town", marker = "Mayor Kiyoshi [2]", handler = "Quest.talk", status = "IMPLEMENTED" }
@@ -4938,6 +4939,9 @@ return function(GB)
 		},
 		["Corrupt Swordsman Officer"] = { "Corrupt Marine Officer", "Corrupt Sniper Officer" },
 		["Corrupt Sniper Officer"] = { "Corrupt Marine Officer", "Corrupt Swordsman Officer" },
+		["Beast Tamer"] = { "Mohji", "Beast Tamer" },
+		["Mohji"] = { "Beast Tamer" },
+		["Circus Lion"] = { "Circus Lion", "Lion" },
 	}
 
 	-- Quest target "Marine Gate". Live: Model Gate tagged Marine Metal Gate. Not the mob-zone part.
@@ -6383,7 +6387,7 @@ return function(GB)
 		local p = inst
 		while p and p ~= workspace do
 			local n = p.Name
-			if n == "Markers" or n == "NPCAreas" or n == "PointsOfInterest" or n == "Spawn Locations" then
+			if n == "Markers" or n == "NPCAreas" or n == "PointsOfInterest" or n == "Spawn Locations" or n == "MobZones" then
 				return true
 			end
 			p = p.Parent
@@ -7115,6 +7119,28 @@ return function(GB)
 		return M.byName(name, "shop")
 	end
 
+	function M.mobZone(name)
+		if type(name) ~= "string" or name == "" then
+			return nil
+		end
+		local aa = workspace:FindFirstChild("AA IMPORTANT")
+		local mz = aa and aa:FindFirstChild("MobZones")
+		local inner = mz and (mz:FindFirstChild("MobZones") or mz)
+		if not inner then
+			return nil
+		end
+		local hit = inner:FindFirstChild(name)
+		if hit and hit.Parent then
+			return hit
+		end
+		for _, ch in ipairs(inner:GetChildren()) do
+			if ch.Name == name or M.baseName(ch.Name) == name then
+				return ch
+			end
+		end
+		return nil
+	end
+
 	function M.island(name)
 		local isles = workspace:FindFirstChild("Islands")
 		return isles and isles:FindFirstChild(name)
@@ -7434,16 +7460,43 @@ return function(GB)
 		return workspace.FallenPartsDestroyHeight and math.max(workspace.FallenPartsDestroyHeight + 20, 0) or 0
 	end
 
-	function M.destOk(pos)
+	function M.posSane(pos)
 		if typeof(pos) ~= "Vector3" then
 			return false
 		end
-		local y = pos.Y
+		if pos.X ~= pos.X or pos.Y ~= pos.Y or pos.Z ~= pos.Z then
+			return false
+		end
+		if math.abs(pos.X) > 12000 or math.abs(pos.Z) > 12000 then
+			return false
+		end
 		local yMin = math.max(GB.Config.DestYMin or 0, M.waterY() + 2)
-		if y < yMin or y > (GB.Config.DestYMax or 180) then
+		if pos.Y < yMin or pos.Y > (GB.Config.DestYMax or 260) then
 			return false
 		end
 		return true
+	end
+
+	function M.destOk(pos, opts)
+		if not M.posSane(pos) then
+			return false
+		end
+		opts = opts or {}
+		if opts.AllowFar == true then
+			return true
+		end
+		local root = M.hrp()
+		local from = root and root.Position
+		if typeof(from) ~= "Vector3" and M.lastSafe then
+			from = M.lastSafe.Position
+		end
+		if typeof(from) ~= "Vector3" or not M.posSane(from) then
+			return true
+		end
+		local maxHop = tonumber(opts.MaxHop) or tonumber(GB.Config.MaxTravelHop) or 800
+		local dx = pos.X - from.X
+		local dz = pos.Z - from.Z
+		return (dx * dx + dz * dz) <= maxHop * maxHop
 	end
 
 	function M.groundAt(pos)
@@ -7596,21 +7649,33 @@ return function(GB)
 		if not root then
 			return
 		end
-		local y = root.Position.Y
-		if y > M.waterY() + 10 and y < 250 and M.destOk(root.Position) then
+		if M.posSane(root.Position) and root.Position.Y > M.waterY() + 10 then
 			M.lastSafe = root.CFrame
 		end
 	end
 
 	function M.ensureAnchorSafe()
-		if M.anchorSafe then
+		if M.anchorSafe and M.posSane(M.anchorSafe.Position) then
 			return
 		end
+		M.anchorSafe = nil
 		local g = GB.Resolver.npc("Officer Graves") or GB.Resolver.npc("Officer Graves [2]")
 		local pos = g and GB.Resolver.positionOf(g)
-		if pos then
+		if pos and M.posSane(pos) then
 			M.anchorSafe = CFrame.new(pos + Vector3.new(0, 0, 6))
 		end
+	end
+
+	local function applySafeCf(root, dest)
+		if not (root and dest) then
+			return false
+		end
+		local pos = typeof(dest) == "CFrame" and dest.Position or dest
+		if not M.posSane(pos) then
+			return false
+		end
+		root.CFrame = typeof(dest) == "CFrame" and dest or CFrame.new(pos)
+		return true
 	end
 
 	function M.rescue()
@@ -7619,33 +7684,36 @@ return function(GB)
 			return
 		end
 		local y = root.Position.Y
-		local wet = y < M.waterY() + 4 or y > 240
+		local wet = (not M.posSane(root.Position)) or y < M.waterY() + 4 or y > 240
 		if not wet then
 			M.rememberSafe()
 			return
 		end
 		M.ensureAnchorSafe()
-		local dest = M.lastSafe or M.anchorSafe
-		if not dest then
-			return
-		end
 		if GB.Combat then
 			pcall(GB.Combat.stopLock)
 		end
 		M.cancelTween()
 		root.AssemblyLinearVelocity = Vector3.zero
-		root.CFrame = dest
-		GB.Log.warn("TRAVEL", "rescue swim/void")
+		local island = M.GetIslandFromPosition(M.lastSafe and M.lastSafe.Position) or "Clown Town"
+		local spawn = M.islandSpawn(island)
+		if applySafeCf(root, M.lastSafe) or applySafeCf(root, M.anchorSafe) or applySafeCf(root, spawn) then
+			GB.Log.warn("TRAVEL", "rescue swim/void")
+		end
 	end
 
 	function M.goSafe()
 		M.ensureAnchorSafe()
 		local root = M.hrp()
-		local dest = M.lastSafe or M.anchorSafe
-		if root and dest then
-			M.cancelTween()
-			root.CFrame = dest
+		if not root then
+			return
 		end
+		M.cancelTween()
+		if applySafeCf(root, M.lastSafe) or applySafeCf(root, M.anchorSafe) then
+			return
+		end
+		local spawn = M.islandSpawn("Clown Town") or M.islandSpawn("Anchor Town")
+		applySafeCf(root, spawn)
 	end
 
 	function M.waitUnpause()
@@ -7686,7 +7754,7 @@ return function(GB)
 			return false
 		end
 		local pos = typeof(cf) == "CFrame" and cf.Position or cf
-		if not M.destOk(pos) then
+		if not M.destOk(pos, opts) then
 			return false
 		end
 		-- NPC/talk dests already floor-snapped. groundAt(+40) hits tree canopy first.
@@ -7935,18 +8003,22 @@ return function(GB)
 		if typeof(pos) ~= "Vector3" then
 			return nil
 		end
-		if M.destOk(pos) then
+		if M.posSane(pos) then
 			return pos
 		end
 		local ymin = (GB.Config and GB.Config.DestYMin) or 8
-		local ymax = (GB.Config and GB.Config.DestYMax) or 180
+		local ymax = (GB.Config and GB.Config.DestYMax) or 260
 		local y = pos.Y
 		if y < ymin then
 			y = ymin + 4
 		elseif y > ymax then
 			y = ymax
 		end
-		return Vector3.new(pos.X, y, pos.Z)
+		local clamped = Vector3.new(pos.X, y, pos.Z)
+		if M.posSane(clamped) then
+			return clamped
+		end
+		return nil
 	end
 
 	local function computeGeo(island)
@@ -8624,35 +8696,27 @@ return function(GB)
 				end
 			end
 		end
-		local dlg = aa and aa:FindFirstChild("DialogueNPCs")
-		local folder = dlg and dlg:FindFirstChild(island)
-		if folder then
-			for _, c in ipairs(folder:GetChildren()) do
-				addPos(GB.Resolver.positionOf(c))
-			end
-		end
 		if #dests == 0 then
 			return false
 		end
 		local root = M.hrp()
 		local start = root and root.Position
 		local pick = dests[1]
-		if start then
+		if start and M.posSane(start) then
 			local bestD = (pick - start).Magnitude
 			for i = 2, #dests do
 				local d = (dests[i] - start).Magnitude
-				if d > 40 and d < bestD then
+				if d < bestD then
 					pick, bestD = dests[i], d
 				end
 			end
-			if bestD < 18 then
-				for i = 1, #dests do
-					if (dests[i] - start).Magnitude > 80 then
-						pick = dests[i]
-						break
-					end
-				end
+		end
+		if not M.destOk(pick) then
+			if not M.posSane(pick) then
+				return false
 			end
+			GB.Log.log("TRAVEL", "stream pull " .. island)
+			return M.setPos(pick, { AllowFar = true })
 		end
 		GB.Log.log("TRAVEL", "stream pull " .. island)
 		return M.setPos(pick)
@@ -11176,11 +11240,14 @@ return function(GB)
 						local ok, hit = pcall(function()
 							return cur:HasTag(tag)
 						end)
-						if ok and hit and (cur.Name == want or cot == want) then
+						if ok and hit then
 							return true
 						end
 					end
 					if cur.Name == want then
+						return true
+					end
+					if GB.Resolver.nameMatches and GB.Resolver.nameMatches(cur, { want }) then
 						return true
 					end
 					cur = cur.Parent
@@ -11418,6 +11485,10 @@ return function(GB)
 		if byTag then
 			return byTag
 		end
+		local zone = GB.Resolver.mobZone and GB.Resolver.mobZone(marker)
+		if zone then
+			return zone
+		end
 		local byName = GB.Resolver.byName and GB.Resolver.byName(marker, "marker")
 		return byName
 	end
@@ -11447,6 +11518,9 @@ return function(GB)
 		end
 		local hrp = GB.World and GB.World.hrp and GB.World.hrp()
 		local pos = GB.Resolver and GB.Resolver.positionOf and GB.Resolver.positionOf(marker)
+		if pos and GB.World and GB.World.posSane and not GB.World.posSane(pos) then
+			return false
+		end
 		if hrp and pos then
 			local dx = hrp.Position.X - pos.X
 			local dz = hrp.Position.Z - pos.Z
@@ -17061,9 +17135,12 @@ return function(GB)
 			return true
 		end
 		local dest = GB.World.islandSpawn(name)
-		if dest and GB.World.destOk(dest) then
+		if dest and GB.World.posSane and GB.World.posSane(dest) then
 			GB.Log.log("TRAVEL", "walk/hop " .. name)
-			return GB.World.moveTo(dest, 20)
+			if GB.World.destOk(dest) then
+				return GB.World.moveTo(dest, 20)
+			end
+			return GB.World.setPos(dest, { AllowFar = true })
 		end
 		if name == "Clown Town" and not GB.PlayerData.finished("Setting Sail", true) then
 			return false
