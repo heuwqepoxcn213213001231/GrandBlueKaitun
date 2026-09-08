@@ -16,6 +16,8 @@ Rule: args only from Studio call sites / data.rules / StatSystem. FireServer ≠
 | Dialogue open | `DialogueBindable` | `Fire(Configuration)` | rules + Dialogue prompt | DialogueUI | VERIFIED |
 | Dialogue close | `DialogueClosed` RE | `(InteractablePart)` | Dialogue ClientPromptHidden | — | VERIFIED |
 | Combat dash weave | `Events.Input` RE | `{Input="Dash", ID="Dash", State=bool, Character=char}` | DashTypes.Normal via DashUtils.inputRemote | optional TTK; no DashNormal velocity | VERIFIED packet; weave IMPLEMENTED_UNVERIFIED |
+| Combat M1 notify | `Events.SwingEvent` RE | `(char, style, combo, attackType, LastSwingDirection, LastSwingVariant)` | AttackModule.Swing client | paired with AttackPlayer | VERIFIED |
+| Combat hit | `Events.AttackPlayer` RE | `{startTime, currentTime, targets, style, combo, stateTimers, id, attackType, flourishTimes, TerrainDamage}` | AttackModule.Swing after spherecast | HP / quest credit | VERIFIED shape; pulse IMPLEMENTED_UNVERIFIED |
 | Quest dash | `Events.PressKey` BE | `Fire(Enum.KeyCode.Q)` | Controls.Dash / InputManager Q | Introduction 0/2→2/2 | VERIFIED |
 | BeginQuest | `Events.BeginQuest` | — | rules.never_fire_beginquest | **do not fire** | BANNED |
 | Stat invest | `Events.StatPoints` RE | `("Invest", child.Name, n)` | MenuHandler | GetStats unused drop | VERIFIED |

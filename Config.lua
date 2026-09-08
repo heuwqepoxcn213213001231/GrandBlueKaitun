@@ -91,6 +91,8 @@ return function(GB)
 	def("CombatMode", "SAFE_FAST") -- NORMAL | SAFE_FAST
 	def("CombatDashWeave", true) -- farm-style Input Dash pulse while locked
 	def("CombatDashWeaveGap", 0.12)
+	def("CombatAttackPulse", true) -- SwingEvent + AttackPlayer while locked
+	def("CombatAttackPulseGap", 0.06)
 	def("CombatDebug", false)
 	def("ActionTimeout", 25)
 	def("MaxRetries", 3)

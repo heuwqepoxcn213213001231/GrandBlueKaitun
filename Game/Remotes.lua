@@ -317,6 +317,38 @@ return function(GB)
 		return M.invoke("GetEquip")
 	end
 
+	function M.swingEvent(char, style, combo, attackType, dir, variant)
+		local r = ev("SwingEvent")
+		if not (r and char) then
+			return false, "missing"
+		end
+		local ok, err = pcall(function()
+			r:FireServer(char, style, combo, attackType, dir, variant)
+		end)
+		if not ok then
+			GB.Log.err("ERROR", "SwingEvent " .. tostring(err))
+			return false, err
+		end
+		perfCount("SwingEvent", 1)
+		return true
+	end
+
+	function M.attackPlayer(payload)
+		local r = ev("AttackPlayer")
+		if not (r and type(payload) == "table") then
+			return false, "missing"
+		end
+		local ok, err = pcall(function()
+			r:FireServer(payload)
+		end)
+		if not ok then
+			GB.Log.err("ERROR", "AttackPlayer " .. tostring(err))
+			return false, err
+		end
+		perfCount("AttackPlayer", 1)
+		return true
+	end
+
 	function M.dashInput(state)
 		local r = ev("Input")
 		local char = GB.World and GB.World.char and GB.World.char()

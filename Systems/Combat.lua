@@ -48,6 +48,7 @@ return function(GB)
 	local APPROACH_SWING_GAP = 0.95
 	local DASH_WEAVE_GAP = 0.12
 	local DASH_HOLD = 0.25
+	local ATTACK_PULSE_GAP = 0.06
 	local QUEST_CHECK_MIN_GAP = 0.32
 	local QUEST_CHECK_SAFETY = 2.8
 	M._tel = { attempt = 0, accepted = 0, reject = 0, damage = 0, at = 0 }
@@ -81,6 +82,46 @@ return function(GB)
 			M.State = require(RS.Modules.StateService)
 		end
 		return M.State
+	end
+
+	local function loadStyles()
+		if not M.Styles then
+			M.Styles = require(RS.Modules.AttackStyles)
+		end
+		return M.Styles
+	end
+
+	local function loadUtil()
+		if not M.Util then
+			M.Util = require(RS.Modules.Utilities)
+		end
+		return M.Util
+	end
+
+	local function serverTick()
+		local util = loadUtil()
+		if util and util.GetInterpolatedServerTick then
+			local ok, t = pcall(util.GetInterpolatedServerTick)
+			if ok and type(t) == "number" then
+				return t
+			end
+		end
+		return workspace:GetServerTimeNow()
+	end
+
+	local function attackStyle(char)
+		local last = char and char:GetAttribute("LastM1Style")
+		if type(last) == "string" and last ~= "" then
+			return last
+		end
+		local styles = loadStyles()
+		if styles and styles.GetAttackStyle then
+			local ok, s = pcall(styles.GetAttackStyle, char)
+			if ok and type(s) == "string" and s ~= "" then
+				return s
+			end
+		end
+		return "Basic"
 	end
 
 	local function pressKey()
@@ -437,6 +478,7 @@ return function(GB)
 
 	function M.stopLock()
 		M.clearDeathWatch()
+		M._pulseStart = nil
 		M.lockMob = nil
 		M.lastTargetPos = nil
 		M.lockQuest = nil
@@ -1006,6 +1048,91 @@ return function(GB)
 		return true
 	end
 
+	-- Farm hit remotes. Packet shape from AttackModule.Swing (Studio).
+	function M.attackPulse(mob)
+		if not (GB.Config and GB.Config.CombatAttackPulse == true) then
+			return false
+		end
+		mob = mob or M.lockMob
+		if not (mob and M.IsEnemyAlive(mob)) then
+			return false
+		end
+		if M.preferredAction(M.lockQuest) == "GUN" then
+			return false
+		end
+		if GB.QuestData and GB.QuestData.isObjectTarget and GB.QuestData.isObjectTarget(mob.Name) then
+			return false
+		end
+		if GB.Respawn and GB.Respawn.isBusy and GB.Respawn.isBusy() then
+			return false
+		end
+		local gap = tonumber(GB.Config.CombatAttackPulseGap) or ATTACK_PULSE_GAP
+		if os.clock() - (M.lastAttackPulse or 0) < gap then
+			return false
+		end
+		local char = GB.World.char()
+		if not char then
+			return false
+		end
+		local root = GB.World.hrp and GB.World.hrp()
+		local part = GB.Resolver and GB.Resolver.part and GB.Resolver.part(mob)
+		if root and part and part:IsA("BasePart") then
+			local maxRange = (GB.Config.CombatRange or 5.5) + SWING_RANGE_PAD
+			if (root.Position - part.Position).Magnitude > maxRange then
+				return false
+			end
+		end
+		M.lastAttackPulse = os.clock()
+		local style = attackStyle(char)
+		local combo = tonumber(char:GetAttribute("Combo")) or 1
+		local now = serverTick()
+		if not M._pulseStart then
+			M._pulseStart = now
+		end
+		local st = loadState()
+		local timers
+		if st and st.GetPermissionUpdateTimes then
+			local ok, t = pcall(st.GetPermissionUpdateTimes, char, "CanSwing")
+			if ok then
+				timers = t
+			end
+		end
+		if st and st.FlushReplication then
+			pcall(st.FlushReplication, char)
+		end
+		local flourish = {}
+		flourish[mob.Name] = mob:GetAttribute("LastFlourishedTime")
+		if GB.Remotes and GB.Remotes.swingEvent then
+			GB.Remotes.swingEvent(
+				char,
+				style,
+				combo,
+				"LightAttack",
+				char:GetAttribute("LastSwingDirection"),
+				char:GetAttribute("LastSwingVariant")
+			)
+		end
+		if GB.Remotes and GB.Remotes.attackPlayer then
+			GB.Remotes.attackPlayer({
+				startTime = M._pulseStart,
+				currentTime = now,
+				targets = { mob },
+				style = style,
+				combo = combo,
+				stateTimers = timers,
+				id = tostring(tick()) .. "/Client/" .. char.Name,
+				attackType = "LightAttack",
+				flourishTimes = flourish,
+				TerrainDamage = true,
+			})
+		end
+		if not M._attackPulseLog or os.clock() - M._attackPulseLog > 8 then
+			M._attackPulseLog = os.clock()
+			GB.Log.log("COMBAT", "attack pulse " .. tostring(style) .. " combo=" .. tostring(combo))
+		end
+		return true
+	end
+
 	function M.startLock(mob, questName)
 		if not mob or M.isPet(mob) then
 			return
@@ -1064,6 +1191,7 @@ return function(GB)
 				end
 				M._hpBefore = hp
 				M.swing()
+				M.attackPulse(mob2)
 				M.dashPulse()
 			else
 				M.onTargetDead(mob2, "post-swing")

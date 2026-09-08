@@ -78,6 +78,8 @@ REMOTES = {
     "Upgrade": {"Remote": "Events.Upgrade", "Args": '("Upgrade", key)', "Status": "VERIFIED", "Banned": False},
     "GetData": {"Remote": "Events.GetData", "Args": '("Quests", "Completed Quests")', "Status": "VERIFIED", "Banned": False},
     "DashInput": {"Remote": "Events.Input", "Args": '{Input="Dash", ID="Dash", State=bool, Character}', "Status": "VERIFIED", "Banned": False},
+    "SwingEvent": {"Remote": "Events.SwingEvent", "Args": "(char, style, combo, LightAttack, dir, variant)", "Status": "VERIFIED", "Banned": False},
+    "AttackPlayer": {"Remote": "Events.AttackPlayer", "Args": "{startTime,currentTime,targets,style,combo,stateTimers,id,attackType}", "Status": "VERIFIED", "Banned": False},
 }
 
 DIALOGUE = {

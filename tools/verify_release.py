@@ -110,6 +110,10 @@ def main() -> None:
         fail("Combat missing minSwingInterval")
     if "function M.dashPulse" not in combat_src:
         fail("Combat missing dashPulse")
+    if "function M.attackPulse" not in combat_src:
+        fail("Combat missing attackPulse")
+    if 'def("CombatAttackPulse"' not in (root / "Config.lua").read_text(encoding="utf-8"):
+        fail("Config missing CombatAttackPulse")
     if 'def("CombatDashWeave"' not in (root / "Config.lua").read_text(encoding="utf-8"):
         fail("Config missing CombatDashWeave")
     if 'def("CombatMode"' not in (root / "Config.lua").read_text(encoding="utf-8"):
