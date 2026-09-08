@@ -549,7 +549,9 @@ return function(GB)
 			Quest = questName,
 		}
 		M.lockQuest = questName
-		M.lastQuestDone = nil
+		if M.lastQuestDone ~= questName then
+			M.lastQuestDone = nil
+		end
 		M.lastQuestCheck = 0
 		M.lastQuestRefresh = 0
 		M._released = nil
@@ -633,6 +635,46 @@ return function(GB)
 			return true
 		end
 		return false
+	end
+
+	-- Cache-only. No refreshLive. Heartbeat uses this so multi-kill stops the lock.
+	function M.objectiveFilled(questName)
+		if not questName then
+			return false
+		end
+		if M.lastQuestDone == questName then
+			return true
+		end
+		local live = GB.PlayerData and GB.PlayerData.peekLive and GB.PlayerData.peekLive(questName)
+		if not live then
+			if GB.PlayerData and GB.PlayerData.cycleFinished then
+				return GB.PlayerData.cycleFinished(questName, true) == true
+			end
+			return false
+		end
+		if not (GB.QuestData and GB.QuestData.currentStage) then
+			return false
+		end
+		local _, st = GB.QuestData.currentStage(live)
+		if not st then
+			return true
+		end
+		if GB.QuestData.stageComplete and GB.QuestData.stageComplete(st) then
+			return true
+		end
+		local hasKill = false
+		for _, cond in ipairs(st.Conditions or st.conditions or {}) do
+			if type(cond) == "table" then
+				local typ = cond.Type or cond.type
+				if M.KillTypes[typ] then
+					hasKill = true
+					if not GB.QuestData.conditionComplete(cond) then
+						return false
+					end
+				end
+			end
+		end
+		return hasKill
 	end
 
 	function M.logKillCredit(questName, before)
@@ -939,6 +981,15 @@ return function(GB)
 	function M.huntNearestOf(names, timeout, questOf, planOf)
 		if type(names) ~= "table" or #names == 0 then
 			return false, "no_names"
+		end
+		if type(questOf) == "table" then
+			for _, qn in pairs(questOf) do
+				if type(qn) == "string" and M.objectiveFilled(qn) then
+					M.lastQuestDone = qn
+					M.stopLock()
+					return true, "quest_done"
+				end
+			end
 		end
 		local lockedName = M.lockMatchesNames(names)
 		local mob, name, dist
@@ -1302,6 +1353,12 @@ return function(GB)
 		noteSwing(fired > 0)
 		if fired > 0 then
 			M._noCredit = 0
+			if not M._pulseDirtyAt or os.clock() - M._pulseDirtyAt > 0.35 then
+				M._pulseDirtyAt = os.clock()
+				if GB.PlayerData and GB.PlayerData.invalidateLive then
+					GB.PlayerData.invalidateLive("attack_hit")
+				end
+			end
 		end
 		if not M._attackPulseLog or os.clock() - M._attackPulseLog > 8 then
 			M._attackPulseLog = os.clock()
@@ -1357,6 +1414,11 @@ return function(GB)
 				M.onTargetDead(mob2, "poll")
 				return
 			end
+			if M.lockQuest and M.objectiveFilled(M.lockQuest) then
+				M.lastQuestDone = M.lockQuest
+				M.stopLock()
+				return
+			end
 			if hoverEnabled(mob2) then
 				M.pinHover(mob2)
 			elseif M.needReposition(mob2) then
@@ -1381,6 +1443,11 @@ return function(GB)
 	end
 
 	function M.hunt(name, questName, targetPlan)
+		if questName and M.objectiveFilled(questName) then
+			M.lastQuestDone = questName
+			M.stopLock()
+			return true
+		end
 		if GB.Quest and ((GB.Quest.dialogueOpen and GB.Quest.dialogueOpen()) or (GB.Quest.liveTalkName and GB.Quest.liveTalkName())) then
 			return false
 		end
@@ -1431,6 +1498,11 @@ return function(GB)
 
 	function M.huntUntilDead(name, timeout, questName, targetPlan)
 		timeout = timeout or 14
+		if questName and M.objectiveFilled(questName) then
+			M.lastQuestDone = questName
+			M.stopLock()
+			return true, "quest_done"
+		end
 		if questName and GB.Quest then
 			local qs = GB.Quest.questState(questName)
 			M.lastKillBefore = qs and qs.Objective and {
@@ -1468,6 +1540,11 @@ return function(GB)
 		if not M.IsEnemyAlive(mob) then
 			return false, "no_enemy"
 		end
+		if questName and M.objectiveFilled(questName) then
+			M.lastQuestDone = questName
+			M.stopLock()
+			return true, "quest_done"
+		end
 		if not M.hunt(name, questName, targetPlan) then
 			return false, "travel"
 		end
@@ -1478,7 +1555,8 @@ return function(GB)
 				M.stopLock()
 				return false, "respawn"
 			end
-			if questName and M.lastQuestDone == questName then
+			if questName and (M.lastQuestDone == questName or M.objectiveFilled(questName)) then
+				M.lastQuestDone = questName
 				M.stopLock()
 				return true, "quest_done"
 			end

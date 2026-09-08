@@ -257,6 +257,14 @@ return function(GB)
 			if requireReady and GB.Quest and GB.Quest.retryOpen and GB.Quest.retryOpen(job.Name) then
 				return
 			end
+			local qs = job.qs
+			if qs and (qs.CanTurnIn or qs.IsComplete) then
+				return
+			end
+			local o = qs and qs.Objective
+			if o and type(o.Current) == "number" and type(o.Amount) == "number" and o.Current >= o.Amount then
+				return
+			end
 			if GB.Quest and GB.Quest.killTargetsFor then
 				for _, target in ipairs(GB.Quest.killTargetsFor(job.Name)) do
 					add(job, target)
@@ -313,7 +321,47 @@ return function(GB)
 		GB.Log.warn("QUEST", "defer " .. tostring(name) .. " " .. tostring(why))
 	end
 
-	local function pickReadyActive(skipName)
+		local function questReadyTurnIn(name)
+			if not name or GB.Config.SkipQuests[name] then
+				return false
+			end
+			local qs = GB.Quest and GB.Quest.questState and GB.Quest.questState(name)
+			if not (qs and qs.IsAccepted) then
+				return false
+			end
+			if qs.CanTurnIn or qs.IsComplete then
+				return true
+			end
+			local o = qs.Objective
+			if not o then
+				return true
+			end
+			if o.Type == "Talk" or o.Type == "Automatic Talk" then
+				return true
+			end
+			if o.Complete == true then
+				return true
+			end
+			if type(o.Current) == "number" and type(o.Amount) == "number" and o.Current >= o.Amount then
+				return true
+			end
+			return false
+		end
+
+		local function pickTurnInActive(skipName)
+			for _, name in ipairs(activeQuestNames()) do
+				if name ~= skipName and questReadyTurnIn(name) then
+					return name
+				end
+			end
+			return nil
+		end
+
+		local function pickReadyActive(skipName)
+		local turnIn = pickTurnInActive(skipName)
+		if turnIn then
+			return turnIn
+		end
 		local chosen
 		for _, name in ipairs(activeQuestNames()) do
 			if name ~= skipName and not GB.Config.SkipQuests[name] then
@@ -441,18 +489,48 @@ return function(GB)
 		end
 		M.goal = { Type = "FARM", Quest = poolLabel, Note = note, Mode = "pool", At = os.clock() }
 
+		local function jobReadyTurnIn(job)
+			local qs = job and job.qs
+			if not (job and job.Live and qs) then
+				return false
+			end
+			if qs.CanTurnIn or qs.IsComplete then
+				return true
+			end
+			local o = qs.Objective
+			if not o then
+				return true
+			end
+			if o.Type == "Talk" or o.Type == "Automatic Talk" then
+				return true
+			end
+			if o.Complete == true then
+				return true
+			end
+			if type(o.Current) == "number" and type(o.Amount) == "number" and o.Current >= o.Amount then
+				return true
+			end
+			return false
+		end
+
 		local talkJob, acceptJob, directJob
 		for _, job in ipairs(jobs) do
 			if job.Mode == "direct" and job.StartSpec and job.StartSpec.DirectCombatVerified then
 				directJob = directJob or job
+			elseif job.Live and jobReadyTurnIn(job) then
+				talkJob = talkJob or job
 			elseif job.Live then
-				local o = job.qs and job.qs.Objective
-				if job.qs and (job.qs.CanTurnIn or (o and (o.Type == "Talk" or o.Type == "Automatic Talk"))) then
-					talkJob = talkJob or job
-				end
+				-- kill / other live work stays in the pool
 			elseif job.StartSpec and type(job.StartSpec.AcceptNPC) == "string" and job.StartSpec.AcceptNPC ~= "" then
 				acceptJob = acceptJob or job
 			end
+		end
+
+		if talkJob then
+			return runSingleFarm(talkJob, "turnin")
+		end
+		if acceptJob then
+			return runSingleFarm(acceptJob, "accept")
 		end
 
 		local names, questOf, planOf = collectKillPool(jobs)
@@ -462,12 +540,17 @@ return function(GB)
 			logDoing("farm_pool", table.concat(names, "+"))
 			setOwner("COMBAT", names[1] or locked)
 			if locked and GB.Combat.lockMob and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(GB.Combat.lockMob) then
-				return {
-					attempted = true,
-					progressed = true,
-					reason = "lock_active",
-					quest = poolLabel,
-				}
+				local lockQuest = questOf and questOf[locked]
+				if lockQuest and GB.Combat.objectiveFilled and GB.Combat.objectiveFilled(lockQuest) then
+					GB.Combat.stopLock()
+				else
+					return {
+						attempted = true,
+						progressed = true,
+						reason = "lock_active",
+						quest = poolLabel,
+					}
+				end
 			end
 			local ok, whyHunt
 			if GB.Combat.engageNearestOf then
@@ -488,15 +571,9 @@ return function(GB)
 					quest = poolLabel,
 				}
 			end
-			-- Miss this pack: turn-in / accept instead of idling wait_level.
+			-- Miss this pack: direct / fallback instead of idling wait_level.
 		end
 
-		if talkJob then
-			return runSingleFarm(talkJob, "turnin")
-		end
-		if acceptJob then
-			return runSingleFarm(acceptJob, "accept")
-		end
 		if directJob then
 			local target = directJob.StartSpec and directJob.StartSpec.DirectTarget
 			if type(target) == "string" and target ~= "" and GB.Combat then
@@ -794,6 +871,18 @@ return function(GB)
 
 		-- Mandatory live story
 		if GB.Config.AutoTutorial or GB.Config.AutoQuest then
+			local turnIn = pickTurnInActive(nil)
+			if turnIn then
+				if M._planQuest ~= turnIn then
+					M._planQuest = turnIn
+					GB.Log.log("PLANNER", "turnin " .. tostring(turnIn))
+				end
+				setTask("quest:" .. turnIn)
+				logQuestDoing(turnIn)
+				GB.Quest.doLive(turnIn)
+				afterQuest(turnIn)
+				return
+			end
 			local cur = GB.PlayerData.current()
 			if cur and not GB.Config.SkipQuests[cur] then
 				local status, why = questStatus(cur)

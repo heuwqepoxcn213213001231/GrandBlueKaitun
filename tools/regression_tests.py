@@ -68,6 +68,12 @@ def main() -> int:
     if 'M = "EnemyDrop"' not in gen or 'Src = "Corrupt Marine"' not in gen:
         fail("Pirate Fan Letter acquire not EnemyDrop/Corrupt Marine")
 
+    if "function M.objectiveFilled" not in combat:
+        fail("objectiveFilled missing")
+    if "pickTurnInActive" not in engine:
+        fail("planner missing pickTurnInActive")
+    if "not GB.QuestData.conditionComplete(cond)" not in quest:
+        fail("questState/unfinished still uses raw Complete flag")
     if "function M.IsEnemyAlive" not in combat:
         fail("IsEnemyAlive missing")
     if "function M.onTargetDead" not in combat:

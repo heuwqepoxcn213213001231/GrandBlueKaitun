@@ -457,7 +457,7 @@ return function(GB)
 		end
 		local out = {}
 		for _, cond in ipairs(st.Conditions or st.conditions or {}) do
-			if type(cond) == "table" and not cond.Complete then
+			if type(cond) == "table" and not GB.QuestData.conditionComplete(cond) then
 				out[#out + 1] = cond
 			end
 		end
@@ -1233,7 +1233,7 @@ return function(GB)
 		if st then
 			local conds = st.Conditions or st.conditions or {}
 			for _, cond in ipairs(conds) do
-				if type(cond) == "table" and not cond.Complete then
+				if type(cond) == "table" and not GB.QuestData.conditionComplete(cond) then
 					local typ = cond.Type or cond.type
 					local target = GB.QuestData.conditionTarget(cond)
 					if typ == "Kill" or typ == "Defeat" then
@@ -1888,7 +1888,6 @@ return function(GB)
 	local function unfinishedKillTargets(questName, stage, preferred)
 		local out = {}
 		local seen = {}
-		pushTarget(out, seen, preferred)
 		local conds = stage and (stage.Conditions or stage.conditions) or {}
 		for _, row in ipairs(conds) do
 			if type(row) == "table" and not GB.QuestData.conditionComplete(row) then
@@ -1901,6 +1900,15 @@ return function(GB)
 					pushTarget(out, seen, name)
 				end
 			end
+		end
+		if preferred and seen[preferred] then
+			local ordered = { preferred }
+			for _, name in ipairs(out) do
+				if name ~= preferred then
+					ordered[#ordered + 1] = name
+				end
+			end
+			return ordered
 		end
 		return out
 	end
@@ -1924,7 +1932,17 @@ return function(GB)
 		if not (qs and qs.IsAccepted) then
 			return {}
 		end
-		local preferred = qs.Objective and qs.Objective.TargetName
+		if qs.CanTurnIn or qs.IsComplete then
+			return {}
+		end
+		local o = qs.Objective
+		if o and type(o.Current) == "number" and type(o.Amount) == "number" and o.Current >= o.Amount then
+			return {}
+		end
+		if o and o.Complete == true then
+			return {}
+		end
+		local preferred = o and o.TargetName
 		return unfinishedKillTargets(name, qs.Stage, preferred)
 	end
 

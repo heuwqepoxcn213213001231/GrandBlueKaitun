@@ -309,11 +309,29 @@ return function(GB)
 		end
 		local conds = st.Conditions or st.conditions or {}
 		for _, cond in ipairs(conds) do
-			if type(cond) == "table" and not cond.Complete then
+			if type(cond) == "table" and not GB.QuestData.conditionComplete(cond) then
 				return cond.Type or cond.type
 			end
 		end
 		return nil
+	end
+
+	local function liveNeedsTurnIn(q)
+		if type(q) ~= "table" then
+			return false
+		end
+		if not (GB.QuestData and GB.QuestData.currentStage) then
+			return false
+		end
+		local _, st = GB.QuestData.currentStage(q)
+		if not st then
+			return true
+		end
+		if GB.QuestData.stageComplete and GB.QuestData.stageComplete(st) then
+			return true
+		end
+		local typ = liveObjectiveType(q)
+		return typ == "Talk" or typ == "Automatic Talk" or typ == "GiveItemTo"
 	end
 
 	function M.peekLive(name)
@@ -325,6 +343,11 @@ return function(GB)
 	end
 
 	local function pickCurrent()
+		for _, name in ipairs(M._order) do
+			if M._live[name] and liveNeedsTurnIn(M._live[name]) then
+				return name
+			end
+		end
 		if GB.QuestData and GB.QuestData.CHAINS then
 			for _, ch in ipairs(GB.QuestData.CHAINS) do
 				for _, name in ipairs(ch.order) do
