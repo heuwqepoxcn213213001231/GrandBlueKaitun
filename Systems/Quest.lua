@@ -501,7 +501,7 @@ return function(GB)
 	end
 
 	function M.atFreeStand()
-		return M._freeStandAt and (os.clock() - M._freeStandAt) < 8
+		return M._freeStandAt and (os.clock() - M._freeStandAt) < 24
 	end
 
 	local function captiveKind(target)
@@ -519,8 +519,9 @@ return function(GB)
 		local kind = captiveKind(target)
 		local lock = GB.Combat and GB.Combat.lockMob
 		if lock and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(lock) then
-			local n = string.lower(tostring(lock.Name or ""))
-			if n == "cage container" or string.find(n, "cage", 1, true) then
+			local ot = lock:GetAttribute("ObjectType")
+			local n = string.lower(tostring(lock.Name or "") .. " " .. tostring(ot or ""))
+			if n == "cage container" or n == "cage" or string.find(n, "cage", 1, true) then
 				M._freeStandAt = os.clock()
 				return true
 			end
@@ -528,32 +529,74 @@ return function(GB)
 		if GB.Combat and GB.Combat.stopLock then
 			GB.Combat.stopLock()
 		end
-		local container = GB.Resolver.findCageContainer and GB.Resolver.findCageContainer(kind) or nil
-		if not container and GB.Resolver.findDestroyable then
-			container = GB.Resolver.findDestroyable("Cage Container", { Island = "Clown Town" })
+		local inst, phase, site
+		if GB.Resolver.findJailBreakTarget then
+			inst, phase, site = GB.Resolver.findJailBreakTarget(kind)
 		end
-		if not container then
+		if not inst then
+			local sites = GB.Resolver.findJailSites and GB.Resolver.findJailSites(kind) or {}
+			if #sites == 0 and GB.Resolver.findJailSites then
+				sites = GB.Resolver.findJailSites("any")
+			end
+			local park = sites[1] and (sites[1].Jail or sites[1].Hostage)
+			if park and GB.World then
+				if GB.World.ToEnemy then
+					GB.World.ToEnemy(park, 6)
+				elseif GB.World.moveTo then
+					GB.World.moveTo(park, 8)
+				end
+				if GB.Resolver.findJailBreakTarget then
+					inst, phase, site = GB.Resolver.findJailBreakTarget(kind)
+				end
+			end
+		end
+		if not inst then
+			if not M._jailMissAt or os.clock() - M._jailMissAt > 4 then
+				M._jailMissAt = os.clock()
+				if GB.Resolver.dumpJailMiss then
+					GB.Resolver.dumpJailMiss(kind)
+				end
+			end
 			M.noteFail(questName, "resolve miss Cage Container")
 			return false
 		end
 		M._freeStandAt = os.clock()
-		M._freeStandInst = container
-		local hp = GB.Combat and GB.Combat.readHealth and GB.Combat.readHealth(container)
-		GB.Log.log("QUEST", string.format("break Cage Container hp=%s", tostring(hp or "?")))
+		M._freeStandInst = inst
+		local hp = GB.Combat and GB.Combat.readHealth and GB.Combat.readHealth(inst)
+		local tagged = 0
+		pcall(function()
+			tagged = #game:GetService("CollectionService"):GetTagged("Jail")
+		end)
+		GB.Log.log(
+			"QUEST",
+			string.format("Jail tagged=%d break %s hp=%s kind=%s", tagged, tostring(phase), tostring(hp or "?"), tostring(kind))
+		)
 		local qs = M.questState(questName)
 		local before = M.signature(qs)
 		local beforeCur = qs and qs.Objective and qs.Objective.Current or 0
 		local plan = {
 			Quest = questName,
-			Target = "Cage Container",
+			Target = phase,
 			Island = "Clown Town",
-			Instance = container,
-			Marker = container,
+			Instance = inst,
+			Marker = inst,
 			ObjectiveType = "Destroy",
 			SkipStream = true,
 			Object = true,
 		}
-		local ok = GB.Combat and GB.Combat.hunt and GB.Combat.hunt("Cage Container", questName, plan)
+		local ok = GB.Combat and GB.Combat.hunt and GB.Combat.hunt(phase, questName, plan)
+		if phase == "Cage" and site and site.Cage then
+			local pr = GB.Resolver.prompt
+				and (
+					GB.Resolver.prompt(site.Cage, "Cage")
+					or GB.Resolver.prompt(site.Cage, "Open Cage")
+					or GB.Resolver.prompt(site.Cage)
+				)
+			if pr and pr.Enabled and GB.World and GB.World.firePrompt then
+				GB.Log.log("QUEST", "Open Cage prompt")
+				GB.World.firePrompt(pr, pr.HoldDuration or 0, site.Cage)
+			end
+		end
 		if GB.PlayerData and GB.PlayerData.forceQuestRefresh then
 			GB.PlayerData.forceQuestRefresh("cage_credit")
 		end
@@ -2147,10 +2190,10 @@ return function(GB)
 		if typ == "Open" and target == "Logbook" then
 			return openLogbook()
 		end
-		if typ == "Free" then
+		if typ == "Free" and (questName == "Clown Captives" or target == "Child Captive" or target == "Adult Captive") then
 			return stayAndFree(questName, target)
 		end
-		if typ == "Open" or typ == "Interact" or typ == "Investigate" or typ == "Wake" or typ == "Check On" then
+		if typ == "Open" or typ == "Interact" or typ == "Free" or typ == "Investigate" or typ == "Wake" or typ == "Check On" then
 			if target == "Marine Gate" or questName == "Gate of Authority" then
 				local blocked, _, blocker = gateBlocker()
 				if blocked and blocker then

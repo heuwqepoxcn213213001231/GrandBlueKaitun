@@ -436,7 +436,11 @@ return function(GB)
 		},
 		["Cage Container"] = {
 			Island = "Clown Town",
-			Tags = { "Cage Container" },
+			Tags = { "Jail" },
+		},
+		["Cage"] = {
+			Island = "Clown Town",
+			Tags = { "Jail" },
 		},
 	}
 

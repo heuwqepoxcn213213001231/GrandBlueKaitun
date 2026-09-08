@@ -1,7 +1,7 @@
 -- Grand Blue Kaitun bundle (generated).
--- Version: 1.1.35
--- Commit: 7ac3fcd
--- BuiltAt: 2026-09-08T14:34:34+07:00
+-- Version: 1.1.36
+-- Commit: e532647
+-- BuiltAt: 2026-09-08T14:45:20+07:00
 -- Source: heuwqepoxcn213213001231/GrandBlueKaitun@main
 
 return function(meta)
@@ -35,9 +35,9 @@ return function(meta)
 
 	stopPreviousInstance()
 
-	local BUILD_VERSION = "1.1.35"
-	local BUILD_COMMIT = "7ac3fcd"
-	local BUILD_AT = "2026-09-08T14:34:34+07:00"
+	local BUILD_VERSION = "1.1.36"
+	local BUILD_COMMIT = "e532647"
+	local BUILD_AT = "2026-09-08T14:45:20+07:00"
 	local GEN = (tonumber(getgenv()._GBKaitunGen) or 0) + 1
 	getgenv()._GBKaitunGen = GEN
 
@@ -3774,7 +3774,11 @@ return function(GB)
 		},
 		["Cage Container"] = {
 			Island = "Clown Town",
-			Tags = { "Cage Container" },
+			Tags = { "Jail" },
+		},
+		["Cage"] = {
+			Island = "Clown Town",
+			Tags = { "Jail" },
 		},
 	}
 
@@ -4944,9 +4948,10 @@ return function(GB)
 		["Child Captive"] = { "Captured Child", "Tired Child", "Hostage" },
 		["Captured Child"] = { "Child Captive", "Tired Child", "Hostage" },
 		["Tired Child"] = { "Child Captive", "Captured Child", "Hostage" },
-		["Adult Captive"] = { "Captured Adult", "Hostage" },
-		["Hostage"] = { "Child Captive", "Adult Captive", "Captured Child" },
-		["Cage Container"] = { "CageContainer", "Cage" },
+		["Adult Captive"] = { "Captured Adult", "Captured Civilian", "Hostage" },
+		["Captured Civilian"] = { "Adult Captive", "Hostage" },
+		["Hostage"] = { "Child Captive", "Adult Captive", "Captured Child", "Captured Civilian" },
+		["Cage Container"] = { "CageContainer" },
 		["CageContainer"] = { "Cage Container" },
 	}
 
@@ -6403,8 +6408,17 @@ return function(GB)
 			if not x then
 				return false
 			end
-			if type(name) == "string" and name ~= "" and x.Name == name then
-				return true
+			if type(name) == "string" and name ~= "" then
+				if x.Name == name then
+					return true
+				end
+				local ot = x:GetAttribute("ObjectType")
+				if type(ot) == "string" and ot == name then
+					return true
+				end
+			end
+			if x.Name == "Jail" or x:GetAttribute("ObjectType") == "ClownCage" then
+				return name == "Jail"
 			end
 			return hasAnyTag(x, tags)
 		end
@@ -6503,113 +6517,275 @@ return function(GB)
 		return out
 	end
 
-	function M.findCageContainer(kind)
-		kind = string.lower(tostring(kind or "any"))
-		local seen = {}
-		local boxes = {}
-		local function consider(inst)
-			if not inst or seen[inst] or not inst.Parent or inRS(inst) or M.isPet(inst) then
-				return
+	function M.jailKind(jail)
+		if not jail then
+			return "any"
+		end
+		local function kindOf(inst)
+			if not inst then
+				return nil
 			end
-			local root = M.objectCombatRoot(inst, "Cage Container") or inst
-			if seen[root] then
-				return
-			end
-			local n = string.lower(tostring(root.Name or "") .. " " .. tostring(M.displayName(root) or ""))
-			local named = root.Name == "Cage Container" or string.find(n, "cage container", 1, true)
-			local tagged = false
+			local child = false
+			local adult = false
 			pcall(function()
-				tagged = root:HasTag("Cage Container") or inst:HasTag("Cage Container")
+				child = inst:HasTag("Child Captive") or inst:GetAttribute("IsChild") == true
+				adult = inst:HasTag("Adult Captive")
 			end)
-			if not (named or tagged) then
-				return
+			if child then
+				return "child"
 			end
-			if GB.Combat and GB.Combat.readHealth then
-				local hp = GB.Combat.readHealth(root)
-				if type(hp) == "number" and hp <= 0 then
-					return
-				end
+			if adult then
+				return "adult"
 			end
-			if GB.Combat and GB.Combat.hasDeadFlag and GB.Combat.hasDeadFlag(root) then
-				return
+			local n = string.lower(tostring(M.displayName(inst) or "") .. " " .. tostring(inst.Name or ""))
+			if string.find(n, "child", 1, true) or string.find(n, "tired", 1, true) then
+				return "child"
 			end
-			if not (M.part(root) or M.positionOf(root)) then
-				return
+			if string.find(n, "civilian", 1, true) or string.find(n, "adult", 1, true) then
+				return "adult"
 			end
-			seen[root] = true
-			boxes[#boxes + 1] = root
-		end
-		local ok, tagged = pcall(CS.GetTagged, CS, "Cage Container")
-		if ok and type(tagged) == "table" then
-			for _, inst in ipairs(tagged) do
-				consider(inst)
-			end
-		end
-		local ent = workspace:FindFirstChild("Entities")
-		if ent then
-			for _, ch in ipairs(ent:GetChildren()) do
-				if ch.Name == "Cage Container" then
-					consider(ch)
-				end
-			end
-		end
-		local islands = workspace:FindFirstChild("Islands")
-		local town = islands and islands:FindFirstChild("Clown Town")
-		local island = town and town:FindFirstChild("Island")
-		local jail = island and island:FindFirstChild("Jail")
-		if jail then
-			consider(jail:FindFirstChild("Cage Container", true))
-			local hostage = jail:FindFirstChild("Hostage")
-			if hostage then
-				consider(hostage:FindFirstChild("Cage Container", true))
-			end
-		end
-		local byName = M.byName and M.byName("Cage Container")
-		consider(byName)
-		if #boxes == 0 then
 			return nil
 		end
-		local captives = M.findCaptiveCages(kind)
-		local here = GB.World and GB.World.hrp and GB.World.hrp()
-		local herePos = here and here.Position
-		local function nearCaptive(box)
-			local bp = M.positionOf(box)
-			if not bp then
-				return 1e9
+		local k = kindOf(jail:FindFirstChild("Hostage"))
+		if k then
+			return k
+		end
+		for _, ch in ipairs(jail:GetChildren()) do
+			k = kindOf(ch)
+			if k then
+				return k
 			end
-			local best = 1e9
-			for _, cap in ipairs(captives) do
-				local cp = M.positionOf(cap)
-				if cp then
-					local d = (bp - cp).Magnitude
-					if d < best then
-						best = d
+		end
+		return "any"
+	end
+
+	function M.jailParts(jail)
+		local container, cage, hostage
+		if not jail then
+			return nil, nil, nil
+		end
+		local function classify(ch)
+			if not ch then
+				return
+			end
+			local ot = ch:GetAttribute("ObjectType")
+			if ch.Name == "Cage Container" or ot == "Cage Container" then
+				container = container or ch
+				return
+			end
+			if ch.Name == "Cage" or ot == "Cage" then
+				cage = cage or ch
+				return
+			end
+			local tagged = false
+			pcall(function()
+				tagged = ch:HasTag("Captive") or ch:HasTag("Child Captive") or ch:HasTag("Adult Captive")
+			end)
+			if ch.Name == "Hostage" or tagged then
+				hostage = hostage or ch
+			end
+		end
+		for _, ch in ipairs(jail:GetChildren()) do
+			classify(ch)
+		end
+		if not container then
+			container = jail:FindFirstChild("Cage Container", true)
+		end
+		if not cage then
+			cage = jail:FindFirstChild("Cage", true)
+		end
+		if not hostage then
+			hostage = jail:FindFirstChild("Hostage", true)
+		end
+		return container, cage, hostage
+	end
+
+	local function nearbyNamed(want, radius)
+		local hits = {}
+		local seen = {}
+		local hrp = GB.World and GB.World.hrp and GB.World.hrp()
+		if not (hrp and type(want) == "string" and want ~= "") then
+			return hits
+		end
+		local ok, parts = pcall(function()
+			return workspace:GetPartBoundsInRadius(hrp.Position, radius or 64)
+		end)
+		if not ok or type(parts) ~= "table" then
+			return hits
+		end
+		for _, p in ipairs(parts) do
+			local cur = p
+			while cur and cur ~= workspace do
+				if not seen[cur] then
+					seen[cur] = true
+					local ot = cur:GetAttribute("ObjectType")
+					if cur.Name == want or ot == want then
+						hits[#hits + 1] = cur
+						break
+					end
+				end
+				cur = cur.Parent
+			end
+		end
+		return hits
+	end
+
+	function M.findJailSites(kind)
+		kind = string.lower(tostring(kind or "any"))
+		local sites = {}
+		local seen = {}
+		local function isJail(inst)
+			if not inst then
+				return false
+			end
+			local tagged = false
+			pcall(function()
+				tagged = inst:HasTag("Jail")
+			end)
+			return tagged or inst.Name == "Jail" or inst:GetAttribute("ObjectType") == "ClownCage"
+		end
+		local function addJail(jail)
+			if not jail or seen[jail] or not jail.Parent or inRS(jail) then
+				return
+			end
+			if jail:GetAttribute("Freed") == true then
+				return
+			end
+			local jk = M.jailKind(jail)
+			if kind ~= "any" and jk ~= "any" and jk ~= kind then
+				return
+			end
+			seen[jail] = true
+			local container, cage, hostage = M.jailParts(jail)
+			sites[#sites + 1] = {
+				Jail = jail,
+				Container = container,
+				Cage = cage,
+				Hostage = hostage,
+				Kind = jk,
+			}
+		end
+		local ok, jails = pcall(CS.GetTagged, CS, "Jail")
+		if ok and type(jails) == "table" then
+			for _, jail in ipairs(jails) do
+				addJail(jail)
+			end
+		end
+		for _, tag in ipairs({ "Child Captive", "Adult Captive", "Captive" }) do
+			local ok2, list = pcall(CS.GetTagged, CS, tag)
+			if ok2 and type(list) == "table" then
+				for _, cap in ipairs(list) do
+					if cap and cap.Parent and isJail(cap.Parent) then
+						addJail(cap.Parent)
 					end
 				end
 			end
-			return best
 		end
-		table.sort(boxes, function(a, b)
-			local da = nearCaptive(a)
-			local db = nearCaptive(b)
-			if math.abs(da - db) > 4 then
+		local havePart = false
+		for _, site in ipairs(sites) do
+			if site.Container or site.Cage then
+				havePart = true
+				break
+			end
+		end
+		if not havePart then
+			for _, box in ipairs(nearbyNamed("Cage Container", 72)) do
+				if box.Parent and isJail(box.Parent) then
+					addJail(box.Parent)
+				elseif box.Parent and not inRS(box) then
+					addJail(box.Parent)
+				end
+			end
+			for _, cg in ipairs(nearbyNamed("Cage", 72)) do
+				if cg.Parent and isJail(cg.Parent) then
+					addJail(cg.Parent)
+				end
+			end
+		end
+		local here = GB.World and GB.World.hrp and GB.World.hrp()
+		local herePos = here and here.Position
+		if herePos then
+			table.sort(sites, function(a, b)
+				local pa = M.positionOf(a.Container or a.Cage or a.Hostage or a.Jail)
+				local pb = M.positionOf(b.Container or b.Cage or b.Hostage or b.Jail)
+				local da = pa and (pa - herePos).Magnitude or 1e9
+				local db = pb and (pb - herePos).Magnitude or 1e9
 				return da < db
-			end
-			if herePos then
-				local pa = M.positionOf(a)
-				local pb = M.positionOf(b)
-				local ha = pa and (pa - herePos).Magnitude or 1e9
-				local hb = pb and (pb - herePos).Magnitude or 1e9
-				return ha < hb
-			end
-			return da < db
+			end)
+		end
+		return sites
+	end
+
+	function M.dumpJailMiss(kind)
+		local sites = M.findJailSites(kind)
+		local n = 0
+		pcall(function()
+			n = #CS:GetTagged("Jail")
 		end)
-		return boxes[1], boxes
+		local kids = {}
+		local jail = sites[1] and sites[1].Jail
+		if jail then
+			for _, ch in ipairs(jail:GetChildren()) do
+				kids[#kids + 1] = tostring(ch.Name) .. ":" .. tostring(ch:GetAttribute("ObjectType") or "-")
+			end
+		end
+		GB.Log.warn(
+			"QUEST",
+			string.format("Jail tagged=%d sites=%d kids=%s", n, #sites, #kids > 0 and table.concat(kids, ",") or "-")
+		)
+		return sites
+	end
+
+	function M.findCageContainer(kind)
+		local sites = M.findJailSites(kind)
+		for _, site in ipairs(sites) do
+			if site.Container then
+				return site.Container, sites
+			end
+		end
+		return nil, sites
+	end
+
+	function M.findJailBreakTarget(kind)
+		local sites = M.findJailSites(kind)
+		for _, site in ipairs(sites) do
+			if site.Container and site.Container.Parent then
+				local hp = GB.Combat and GB.Combat.readHealth and select(1, GB.Combat.readHealth(site.Container))
+				if type(hp) ~= "number" or hp > 0 then
+					if not (GB.Combat and GB.Combat.hasDeadFlag and GB.Combat.hasDeadFlag(site.Container)) then
+						return site.Container, "Cage Container", site
+					end
+				end
+			end
+			if site.Cage and site.Cage.Parent then
+				if site.Cage:GetAttribute("Crashed") == true or not site.Container then
+					return site.Cage, "Cage", site
+				end
+			end
+		end
+		return nil, nil, sites[1]
 	end
 
 	function M.findDestroyable(name, opts)
 		opts = opts or {}
 		if type(name) ~= "string" or name == "" then
+			return nil
+		end
+		if name == "Cage Container" or name == "Cage" then
+			local sites = M.findJailSites("any")
+			if name == "Cage Container" then
+				for _, site in ipairs(sites) do
+					if site.Container then
+						return site.Container
+					end
+				end
+				return nil
+			end
+			for _, site in ipairs(sites) do
+				if site.Cage then
+					return site.Cage
+				end
+			end
 			return nil
 		end
 		local spec = GB.QuestData and GB.QuestData.objectSpec and GB.QuestData.objectSpec(name)
@@ -10909,6 +11085,10 @@ return function(GB)
 				end
 			end
 			if context.Object and GB.Resolver then
+				local ot = target:GetAttribute("ObjectType")
+				if type(ot) == "string" and (ot == want or string.lower(ot) == string.lower(want)) then
+					return true
+				end
 				local spec = GB.QuestData and GB.QuestData.objectSpec and GB.QuestData.objectSpec(want)
 				local tags = { want }
 				if spec and type(spec.Tags) == "table" then
@@ -10918,11 +11098,15 @@ return function(GB)
 				end
 				local cur = target
 				while cur and cur ~= workspace do
+					local cot = cur:GetAttribute("ObjectType")
+					if type(cot) == "string" and (cot == want or string.lower(cot) == string.lower(want)) then
+						return true
+					end
 					for _, tag in ipairs(tags) do
 						local ok, hit = pcall(function()
 							return cur:HasTag(tag)
 						end)
-						if ok and hit then
+						if ok and hit and (cur.Name == want or cot == want) then
 							return true
 						end
 					end
@@ -10931,6 +11115,7 @@ return function(GB)
 					end
 					cur = cur.Parent
 				end
+				return false
 			end
 			local names = GB.Resolver and GB.Resolver.namesFor and GB.Resolver.namesFor(want, {})
 			if GB.Resolver and GB.Resolver.nameMatches then
@@ -13054,7 +13239,7 @@ return function(GB)
 	end
 
 	function M.atFreeStand()
-		return M._freeStandAt and (os.clock() - M._freeStandAt) < 8
+		return M._freeStandAt and (os.clock() - M._freeStandAt) < 24
 	end
 
 	local function captiveKind(target)
@@ -13072,8 +13257,9 @@ return function(GB)
 		local kind = captiveKind(target)
 		local lock = GB.Combat and GB.Combat.lockMob
 		if lock and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(lock) then
-			local n = string.lower(tostring(lock.Name or ""))
-			if n == "cage container" or string.find(n, "cage", 1, true) then
+			local ot = lock:GetAttribute("ObjectType")
+			local n = string.lower(tostring(lock.Name or "") .. " " .. tostring(ot or ""))
+			if n == "cage container" or n == "cage" or string.find(n, "cage", 1, true) then
 				M._freeStandAt = os.clock()
 				return true
 			end
@@ -13081,32 +13267,74 @@ return function(GB)
 		if GB.Combat and GB.Combat.stopLock then
 			GB.Combat.stopLock()
 		end
-		local container = GB.Resolver.findCageContainer and GB.Resolver.findCageContainer(kind) or nil
-		if not container and GB.Resolver.findDestroyable then
-			container = GB.Resolver.findDestroyable("Cage Container", { Island = "Clown Town" })
+		local inst, phase, site
+		if GB.Resolver.findJailBreakTarget then
+			inst, phase, site = GB.Resolver.findJailBreakTarget(kind)
 		end
-		if not container then
+		if not inst then
+			local sites = GB.Resolver.findJailSites and GB.Resolver.findJailSites(kind) or {}
+			if #sites == 0 and GB.Resolver.findJailSites then
+				sites = GB.Resolver.findJailSites("any")
+			end
+			local park = sites[1] and (sites[1].Jail or sites[1].Hostage)
+			if park and GB.World then
+				if GB.World.ToEnemy then
+					GB.World.ToEnemy(park, 6)
+				elseif GB.World.moveTo then
+					GB.World.moveTo(park, 8)
+				end
+				if GB.Resolver.findJailBreakTarget then
+					inst, phase, site = GB.Resolver.findJailBreakTarget(kind)
+				end
+			end
+		end
+		if not inst then
+			if not M._jailMissAt or os.clock() - M._jailMissAt > 4 then
+				M._jailMissAt = os.clock()
+				if GB.Resolver.dumpJailMiss then
+					GB.Resolver.dumpJailMiss(kind)
+				end
+			end
 			M.noteFail(questName, "resolve miss Cage Container")
 			return false
 		end
 		M._freeStandAt = os.clock()
-		M._freeStandInst = container
-		local hp = GB.Combat and GB.Combat.readHealth and GB.Combat.readHealth(container)
-		GB.Log.log("QUEST", string.format("break Cage Container hp=%s", tostring(hp or "?")))
+		M._freeStandInst = inst
+		local hp = GB.Combat and GB.Combat.readHealth and GB.Combat.readHealth(inst)
+		local tagged = 0
+		pcall(function()
+			tagged = #game:GetService("CollectionService"):GetTagged("Jail")
+		end)
+		GB.Log.log(
+			"QUEST",
+			string.format("Jail tagged=%d break %s hp=%s kind=%s", tagged, tostring(phase), tostring(hp or "?"), tostring(kind))
+		)
 		local qs = M.questState(questName)
 		local before = M.signature(qs)
 		local beforeCur = qs and qs.Objective and qs.Objective.Current or 0
 		local plan = {
 			Quest = questName,
-			Target = "Cage Container",
+			Target = phase,
 			Island = "Clown Town",
-			Instance = container,
-			Marker = container,
+			Instance = inst,
+			Marker = inst,
 			ObjectiveType = "Destroy",
 			SkipStream = true,
 			Object = true,
 		}
-		local ok = GB.Combat and GB.Combat.hunt and GB.Combat.hunt("Cage Container", questName, plan)
+		local ok = GB.Combat and GB.Combat.hunt and GB.Combat.hunt(phase, questName, plan)
+		if phase == "Cage" and site and site.Cage then
+			local pr = GB.Resolver.prompt
+				and (
+					GB.Resolver.prompt(site.Cage, "Cage")
+					or GB.Resolver.prompt(site.Cage, "Open Cage")
+					or GB.Resolver.prompt(site.Cage)
+				)
+			if pr and pr.Enabled and GB.World and GB.World.firePrompt then
+				GB.Log.log("QUEST", "Open Cage prompt")
+				GB.World.firePrompt(pr, pr.HoldDuration or 0, site.Cage)
+			end
+		end
 		if GB.PlayerData and GB.PlayerData.forceQuestRefresh then
 			GB.PlayerData.forceQuestRefresh("cage_credit")
 		end
@@ -14700,10 +14928,10 @@ return function(GB)
 		if typ == "Open" and target == "Logbook" then
 			return openLogbook()
 		end
-		if typ == "Free" then
+		if typ == "Free" and (questName == "Clown Captives" or target == "Child Captive" or target == "Adult Captive") then
 			return stayAndFree(questName, target)
 		end
-		if typ == "Open" or typ == "Interact" or typ == "Investigate" or typ == "Wake" or typ == "Check On" then
+		if typ == "Open" or typ == "Interact" or typ == "Free" or typ == "Investigate" or typ == "Wake" or typ == "Check On" then
 			if target == "Marine Gate" or questName == "Gate of Authority" then
 				local blocked, _, blocker = gateBlocker()
 				if blocked and blocker then

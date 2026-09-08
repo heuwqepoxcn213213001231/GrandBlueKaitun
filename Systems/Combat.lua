@@ -311,6 +311,10 @@ return function(GB)
 				end
 			end
 			if context.Object and GB.Resolver then
+				local ot = target:GetAttribute("ObjectType")
+				if type(ot) == "string" and (ot == want or string.lower(ot) == string.lower(want)) then
+					return true
+				end
 				local spec = GB.QuestData and GB.QuestData.objectSpec and GB.QuestData.objectSpec(want)
 				local tags = { want }
 				if spec and type(spec.Tags) == "table" then
@@ -320,11 +324,15 @@ return function(GB)
 				end
 				local cur = target
 				while cur and cur ~= workspace do
+					local cot = cur:GetAttribute("ObjectType")
+					if type(cot) == "string" and (cot == want or string.lower(cot) == string.lower(want)) then
+						return true
+					end
 					for _, tag in ipairs(tags) do
 						local ok, hit = pcall(function()
 							return cur:HasTag(tag)
 						end)
-						if ok and hit then
+						if ok and hit and (cur.Name == want or cot == want) then
 							return true
 						end
 					end
@@ -333,6 +341,7 @@ return function(GB)
 					end
 					cur = cur.Parent
 				end
+				return false
 			end
 			local names = GB.Resolver and GB.Resolver.namesFor and GB.Resolver.namesFor(want, {})
 			if GB.Resolver and GB.Resolver.nameMatches then
