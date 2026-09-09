@@ -33,6 +33,10 @@ return function(GB)
 			Destroy = true,
 			Shoot = true,
 		},
+		DropHuntTypes = {
+			Collect = true,
+			Loot = true,
+		},
 	}
 
 	-- Verified AttackModule basic: swingStateDuration = 0.35 * 1.05 ≈ 0.3675. CanSwing is authoritative.
@@ -653,6 +657,12 @@ return function(GB)
 			return true
 		end
 		if not M.KillTypes[o.Type] then
+			if M.DropHuntTypes[o.Type] then
+				if type(o.Current) == "number" and type(o.Amount) == "number" and o.Current >= o.Amount then
+					return true
+				end
+				return o.Complete == true
+			end
 			return true
 		end
 		if type(o.Current) == "number" and type(o.Amount) == "number" and o.Current >= o.Amount then

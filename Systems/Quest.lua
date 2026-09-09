@@ -1348,6 +1348,14 @@ return function(GB)
 		if o and o.TargetName and GB.QuestData and GB.QuestData.isObjectTarget and GB.QuestData.isObjectTarget(o.TargetName) then
 			return true
 		end
+		if o and (o.Type == "Collect" or o.Type == "Loot") then
+			local spec = GB.QuestSpecs
+				and GB.QuestSpecs.lookup
+				and GB.QuestSpecs.lookup(name, qs and qs.StageIndex, o.Type, o.TargetName)
+			if spec and (spec.acquire == "EnemyDrop" or spec.acquire == "BossDrop") then
+				return true
+			end
+		end
 		local miss = string.find(tostring(err or ""), "resolve miss", 1, true)
 		if miss and GB.PlayerData and GB.PlayerData.live and GB.PlayerData.live(name) then
 			return true
@@ -1758,7 +1766,14 @@ return function(GB)
 				M.detailByFingerprint[fp] = now
 				capMap(M.detailByFingerprint, 192)
 				if target then
-					GB.Resolver.dumpNearby(target, { Island = qs and qs.Island, DisplayName = target })
+					local dumpName = target
+					local spec = GB.QuestSpecs
+						and GB.QuestSpecs.lookup
+						and GB.QuestSpecs.lookup(name, qs and qs.StageIndex, action, target)
+					if spec and (spec.acquire == "EnemyDrop" or spec.acquire == "BossDrop") then
+						dumpName = spec.source or spec.marker or target
+					end
+					GB.Resolver.dumpNearby(dumpName, { Island = qs and qs.Island, DisplayName = dumpName })
 					t.LastDump = now
 				end
 				if qs and qs.Island and GB.World.pullStream then

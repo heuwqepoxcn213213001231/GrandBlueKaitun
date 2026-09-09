@@ -858,8 +858,14 @@ return function(GB)
 		local o = qs and qs.Objective
 		if o then
 			local typ = tostring(o.Type or "quest")
-			if typ == "Collect" or typ == "Kill" or typ == "Defeat" or typ == "Hit" or typ == "Shoot" then
-				logDoing("combat", o.TargetName or (GB.Acquire and GB.Acquire.lastSource) or "-")
+			if typ == "Collect" or typ == "CollectLocal" or typ == "Loot" or typ == "Kill" or typ == "Defeat" or typ == "Hit" or typ == "Shoot" then
+				local src = (GB.Planner and GB.Planner.last and GB.Planner.last.Source)
+					or (GB.Acquire and GB.Acquire.lastSource)
+				if (typ == "Collect" or typ == "CollectLocal" or typ == "Loot") and src then
+					logDoing("combat", src)
+				else
+					logDoing("combat", o.TargetName or src or "-")
+				end
 			elseif typ == "Talk" or typ == "Automatic Talk" then
 				logDoing("talk", o.TargetName)
 			else

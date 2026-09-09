@@ -137,8 +137,6 @@ return function(GB)
 			if qs.Name == "First Upgrade" and plan.Type == "Collect" and plan.Target == "Rusty Pickaxe" then
 				return GB.Shop.buy(plan.Target, plan.Amount or 1)
 			end
-			local beforeCur = plan.Current or 0
-			local beforeSig = GB.Quest.signature(qs)
 			local ok, err = GB.Acquire.AcquireItem(plan.Target, plan.Amount or 1, {
 				Quest = qs.Name,
 				Stage = qs.StageIndex,
@@ -146,27 +144,16 @@ return function(GB)
 				Method = plan.Method,
 				Source = plan.Source,
 				Marker = plan.Marker,
+				Location = plan.Location,
 			})
-			if ok and GB.Quest.waitProgress then
-				local progressed = GB.Quest.waitProgress(qs.Name, beforeSig, 2.4)
-				if progressed then
-					local after = GB.Quest.questState(qs.Name)
-					local nextCur = plan.Amount
-					if after.StageIndex == qs.StageIndex and after.Objective then
-						nextCur = after.Objective.Current
-					end
-					GB.Log.log(
-						"QUEST",
-						string.format("%s/%s -> %s/%s", tostring(beforeCur), tostring(plan.Amount), tostring(nextCur), tostring(plan.Amount))
-					)
-					GB.Quest.noteOk(qs.Name)
-					if GB.Acquire.clearCycles then
-						GB.Acquire.clearCycles(qs.Name)
-					end
-					return true
-				end
-			end
 			if ok then
+				if GB.PlayerData and GB.PlayerData.requestLive then
+					GB.PlayerData.requestLive("acquire_ok")
+				end
+				GB.Quest.noteOk(qs.Name)
+				if GB.Acquire.clearCycles then
+					GB.Acquire.clearCycles(qs.Name)
+				end
 				return true
 			end
 			if err == "hunting" then

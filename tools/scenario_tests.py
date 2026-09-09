@@ -247,6 +247,24 @@ def main() -> int:
     if "hold the line" not in quest:
         fail("Esopo turn-in choice scoring missing")
 
+    acquire = read("Systems/Acquire.lua")
+    planner = read("Progression/Planner.lua")
+    if "budget = 16" in acquire or "while os.clock() - t0 < budget" in acquire:
+        fail("AcquireFromEnemyDrop still blocks the engine thread")
+    if "streamHunt" not in acquire:
+        fail("EnemyDrop must streamHunt the source camp")
+    if 'return false, "hunting"' not in acquire:
+        fail("EnemyDrop must yield hunting instead of noteFail")
+    if "waitProgress(qs.Name, beforeSig, 2.4)" in planner:
+        fail("Planner still blocks 2.4s after acquire")
+    if 'err == "hunting"' not in planner:
+        fail("Planner must not noteFail while hunting")
+    qc = combat.split("function M.questCombatDone", 1)[-1].split("function M.objectiveFilled", 1)[0]
+    if "DropHuntTypes" not in qc:
+        fail("questCombatDone must keep Collect EnemyDrop lock")
+    if "Black Noir Officer" not in resolver:
+        fail("Resolver missing Black Noir Officer aliases")
+
     if FAILS:
         print("FAIL scenario_tests")
         for row in FAILS:

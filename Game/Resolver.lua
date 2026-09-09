@@ -45,6 +45,15 @@ return function(GB)
 		["Beast Tamer"] = { "Mohji", "Beast Tamer" },
 		["Mohji"] = { "Beast Tamer" },
 		["Circus Lion"] = { "Circus Lion", "Lion" },
+		-- Quest/mob-zone name. Live models: Black Noir Officer N. Prefix match covers numbered copies.
+		["Black Noir Officer"] = {
+			"BlackNoirOfficer",
+			"Black Noir Officer 1",
+			"Black Noir Officer 2",
+			"Black Noir Officer 3",
+			"Black Noir Officer 4",
+			"Black Noir Officer 5",
+		},
 	}
 
 	-- Quest target "Marine Gate". Live: Model Gate tagged Marine Metal Gate. Not the mob-zone part.

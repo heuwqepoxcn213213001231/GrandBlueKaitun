@@ -328,6 +328,24 @@ return function(GB)
 		return done or n >= amount
 	end
 
+	local function dropHuntPlan(item, ctx, source)
+		local stage = ctx and GB.QuestSpecs and GB.QuestSpecs.lookup(ctx.Quest, ctx.Stage, ctx.Type, item)
+		local spec = GB.QuestSpecs and GB.QuestSpecs.itemOf(item)
+		return {
+			Marker = ctx.Marker or (stage and stage.marker),
+			Island = ctx.Location or (stage and (stage.location or stage.island)) or (spec and spec.location),
+			Quest = ctx and ctx.Quest,
+			Source = source,
+			ObjectiveType = ctx and ctx.Type,
+		}
+	end
+
+	local function askLive(why)
+		if GB.PlayerData and GB.PlayerData.requestLive then
+			GB.PlayerData.requestLive(why)
+		end
+	end
+
 	function M.AcquireFromEnemyDrop(item, amount, ctx)
 		ctx = ctx or {}
 		amount = amount or 1
@@ -346,93 +364,46 @@ return function(GB)
 		GB.Log.log("ACQUIRE", "source=" .. tostring(source))
 
 		if credited(item, amount, ctx) then
+			if GB.Combat then
+				GB.Combat.stopLock()
+			end
 			return true
 		end
-		if M.WorldPickup(item) then
-			task.wait(0.35)
-			if GB.PlayerData and GB.PlayerData.forceQuestRefresh then
-				GB.PlayerData.forceQuestRefresh("acquire_pickup")
+
+		local drop = M.findDrop(item)
+		if drop then
+			if GB.Combat then
+				GB.Combat.stopLock()
 			end
+			GB.Log.log("DROP", tostring(item))
+			M.pickupInst(drop, item)
+			askLive("acquire_pickup")
 			if credited(item, amount, ctx) then
 				return true
 			end
-		end
-
-		local t0 = os.clock()
-		local budget = 16
-		local sawEnemy = false
-		local sawDrop = false
-		local noEnemy = 0
-
-		while os.clock() - t0 < budget do
-			if credited(item, amount, ctx) then
-				if GB.Combat then
-					GB.Combat.stopLock()
-				end
-				return true
-			end
-
-			local drop = M.findDrop(item)
-			if drop then
-				sawDrop = true
-				if GB.Combat then
-					GB.Combat.stopLock()
-				end
-				GB.Log.log("DROP", tostring(item))
-				M.pickupInst(drop, item)
-				task.wait(0.3)
-				if credited(item, amount, ctx) then
-					return true
-				end
-			end
-
-			local mob = GB.Combat and GB.Combat.findTarget and GB.Combat.findTarget(source)
-			if mob then
-				sawEnemy = true
-				noEnemy = 0
-				GB.Log.log("STATE", string.format("doing=combat target=%s", mob.Name))
-				local ok, why = false, nil
-				if GB.Combat.lockMob and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(GB.Combat.lockMob) then
-					ok, why = true, "lock_active"
-				elseif GB.Combat.hunt then
-					ok = GB.Combat.hunt(source, ctx.Quest)
-					why = ok and "engaged" or "no_enemy"
-				end
-				if not ok then
-					task.wait(0.35)
-				end
-				if GB.Combat and GB.Combat.stopLock then
-					if why == "dead" or why == "quest_done" or (GB.Combat.lockMob and GB.Combat.IsEnemyAlive and not GB.Combat.IsEnemyAlive(GB.Combat.lockMob)) then
-						GB.Combat.stopLock()
-					end
-				end
-				if GB.PlayerData and GB.PlayerData.forceQuestRefresh then
-					GB.PlayerData.forceQuestRefresh("acquire_kill")
-				end
-				task.wait(0.15)
-				if credited(item, amount, ctx) then
-					if GB.Combat then
-						GB.Combat.stopLock()
-					end
-					GB.Log.log("ACQUIRE", "kill-credit " .. item)
-					return true
-				end
-			else
-				noEnemy = noEnemy + 1
-				if ctx.Location and GB.World and GB.World.pullStream then
-					GB.World.pullStream(ctx.Location)
-				end
-				task.wait(0.4)
-			end
-		end
-
-		if credited(item, amount, ctx) then
-			return true
-		end
-		if sawEnemy or sawDrop then
 			return false, "hunting"
 		end
-		return false, "stuck"
+
+		if GB.Combat and GB.Combat.lockMob and GB.Combat.IsEnemyAlive and GB.Combat.IsEnemyAlive(GB.Combat.lockMob) then
+			return false, "hunting"
+		end
+
+		local plan = dropHuntPlan(item, ctx, source)
+		if GB.Combat and GB.Combat.hunt and GB.Combat.hunt(source, ctx.Quest, plan) then
+			askLive("acquire_hunt")
+			return false, "hunting"
+		end
+		if GB.Combat and GB.Combat.streamHunt then
+			GB.Combat.streamHunt(plan, source)
+		elseif plan.Marker and GB.World and GB.World.goPlace and GB.Resolver and GB.Resolver.findPlace then
+			local place = GB.Resolver.findPlace(plan.Marker, plan.Island)
+			if place then
+				GB.Log.log("TRAVEL", "Acquire camp " .. tostring(place.Name))
+				GB.World.goPlace(place)
+			end
+		end
+		askLive("acquire_stream")
+		return false, "hunting"
 	end
 
 	function M.BossDrop(item, amount, ctx)
@@ -459,6 +430,7 @@ return function(GB)
 		local source = ctx.Source or (spec and spec.source) or (itemSpec and itemSpec.source)
 		ctx.Source = source
 		ctx.Marker = ctx.Marker or (spec and spec.marker)
+		ctx.Location = ctx.Location or (spec and (spec.location or spec.island)) or (itemSpec and itemSpec.location)
 
 		local order = ctx.Plan
 		if type(order) ~= "table" or #order == 0 then
@@ -492,10 +464,11 @@ return function(GB)
 				end
 			elseif step == "WorldPickup" then
 				if M.WorldPickup(item) then
-					task.wait(0.3)
-					if M.AlreadyOwned(item, amount) then
+					askLive("world_pickup")
+					if M.AlreadyOwned(item, amount) or credited(item, amount, ctx) then
 						return true
 					end
+					return false, "hunting"
 				end
 			elseif step == "EnemyDrop" or step == "BossDrop" then
 				local ok, err = M.AcquireFromEnemyDrop(item, amount, ctx)

@@ -129,6 +129,17 @@ return function(GB)
 			GB.Cache.invalidatePrefix("res:npc:")
 			return
 		end
+		if typ == "Collect" or typ == "CollectLocal" or typ == "Loot" then
+			local spec = o
+				and GB.QuestSpecs
+				and GB.QuestSpecs.lookup
+				and GB.QuestSpecs.lookup(qs.Name, qs.StageIndex, typ, o.TargetName)
+			if spec and (spec.acquire == "EnemyDrop" or spec.acquire == "BossDrop") then
+				GB.Cache.invalidatePrefix("res:enemy:")
+				GB.Cache.invalidatePrefix("res:marker:")
+				return
+			end
+		end
 		if isInteractLike(typ) or typ == "Collect" or typ == "CollectLocal" then
 			GB.Cache.invalidatePrefix("res:object:")
 			GB.Cache.invalidatePrefix("res:marker:")
