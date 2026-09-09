@@ -2,8 +2,8 @@
   "name": "GrandBlueKaitun",
   "version": "1.3.2",
   "build": {
-    "commit": "d5aab4d",
-    "built_at": "2026-09-09T19:38:18+07:00",
+    "commit": "514cf25",
+    "built_at": "2026-09-09T19:38:40+07:00",
     "generated": "1.3.2",
     "bundle": "kaitun.lua",
     "source_hash": "5822934b574f572b"
