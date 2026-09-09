@@ -3,10 +3,10 @@ return function(GB)
 		error("[GrandBlue UI] runtime table missing")
 	end
 
-	local Nia = GB.Nia
+	local UILib = GB.UIAdapter
 	local Controller = GB.UIController
-	if type(Nia) ~= "table" or type(Nia.CreateWindow) ~= "function" then
-		error("[GrandBlue UI] GB.Nia is unavailable")
+	if type(UILib) ~= "table" or type(UILib.CreateWindow) ~= "function" then
+		error("[GrandBlue UI] GB.UIAdapter is unavailable")
 	end
 	if type(Controller) ~= "table" or type(Controller.enqueue) ~= "function" then
 		error("[GrandBlue UI] GB.UIController is unavailable")
@@ -239,7 +239,7 @@ return function(GB)
 			return nil
 		end
 		M._notifyAt[key] = now
-		local ok, toast = pcall(Nia.Notify, Nia, options)
+		local ok, toast = pcall(UILib.Notify, UILib, options)
 		return ok and toast or nil
 	end
 
@@ -647,6 +647,9 @@ return function(GB)
 		sortStrings(entry.drops)
 	end
 	sortStrings(bossNames)
+	print(string.format("[GBUI] %d quests", #allQuests))
+	print(string.format("[GBUI] %d mobs", #mobNames))
+	print(string.format("[GBUI] %d items", #baseItemNames))
 
 	local function verifiedQuestItemSpec(name)
 		if not name then return nil end
@@ -1105,6 +1108,7 @@ return function(GB)
 		setControl("Stats", "AutoStats", false)
 		setControl("Home", "AntiAFK", false)
 		setControl("Auto", "Master", false)
+		setControl("Home", "FullAuto", false)
 		M._quiescing = false
 		return true
 	end
@@ -1119,7 +1123,7 @@ return function(GB)
 	local updateCodeStatus, updateAutoStatus, updateDebugStatus, refreshDynamicOptions, syncControls
 
 	pcall(Controller.stop, Controller, "ui_boot_idle")
-	M.Window = Nia:CreateWindow({
+	M.Window = UILib:CreateWindow({
 		Title = "Grand Blue Kaitun",
 		Subtitle = "IDLE | v" .. tostring(GB.Version or Generated.Version or "unknown"),
 		Size = Vector2.new(860, 610),
@@ -1130,20 +1134,54 @@ return function(GB)
 	})
 
 	local homeTab = addTab("Home", "home")
+	local autoTab = addTab("Auto Progress", "star")
+	local questsTab = addTab("Quests", "quest")
+	local mobsTab = addTab("Mobs", "target")
+	local bossesTab = addTab("Bosses", "sword")
+	local teleportTab = addTab("Teleport", "teleport")
+	local chestTab = addTab("Chest / Treasure", "box")
+	local itemsTab = addTab("Items", "package")
+	local equipmentTab = addTab("Equipment", "box")
+	local statsTab = addTab("Stats", "star")
+	local skillsTab = addTab("Skills", "zap")
+	local lifeTab = addTab("Life Skills", "pickaxe")
+	local fruitTab = addTab("Fruit", "apple")
+	local shopTab = addTab("Shop", "store")
+	local codesTab = addTab("Codes / Rewards", "code")
+	local hakiTab = addTab("Misc", "user")
+	local settingsTab = addTab("Settings", "settings")
+	local debugTab = addTab("Debug", "debug")
 	homeTab:AddSection("Runtime")
 	register("Home", "Status", homeTab:AddParagraph({
 		Title = "Live Status",
 		Text = "Initializing cached runtime status...",
 	}))
-	register("Home", "Start", homeTab:AddButton({
-		Text = "Start / Resume",
-		Description = "Resume the current owner or start FULL_AUTO from IDLE.",
-		Callback = guard("Start / Resume", function()
+	register("Home", "FullAuto", homeTab:AddToggle({
+		Text = "Full Auto",
+		Description = "Assign or release exclusive FULL_AUTO. Same DecisionEngine as Auto Progress.",
+		Default = false,
+		Callback = guard("Full Auto", function(value)
+			local ok
+			if value == true then
+				ok = startOwner(OWNER.FULL_AUTO, "ui_home_full_auto")
+			elseif controllerOwner() == OWNER.FULL_AUTO then
+				ok = stopOwner("ui_home_full_auto_off")
+			else
+				ok = true
+			end
+			setControl("Auto", "Master", value == true)
+			return ok
+		end),
+	}))
+	register("Home", "Resume", homeTab:AddButton({
+		Text = "Resume",
+		Description = "Resume a paused owner. Does not invent a new farm mode.",
+		Callback = guard("Resume", function()
 			Config.Enabled = true
 			if GB.Scheduler and type(GB.Scheduler.start) == "function" then pcall(GB.Scheduler.start) end
 			local snap = controllerSnapshot()
 			if snap.paused and snap.owner ~= OWNER.IDLE then return controllerCall("resume", "ui_home_resume") end
-			return startOwner(OWNER.FULL_AUTO, "ui_home_start")
+			return false, "Nothing paused"
 		end),
 	}))
 	register("Home", "Pause", homeTab:AddButton({
@@ -1167,7 +1205,7 @@ return function(GB)
 		Callback = guard("Stop All", function()
 			quiesce("ui_home_stop_all")
 			updateStoppedStatus()
-			M.Notify("Runtime stopped", "Use Start / Resume to restart.", "warning")
+			M.Notify("Runtime stopped", "Use Full Auto or Resume to restart.", "warning")
 			return true
 		end),
 	}))
@@ -1273,7 +1311,6 @@ return function(GB)
 		end),
 	}))
 
-	local questsTab = addTab("Quests", "quest")
 	questsTab:AddSection("Story and All Quests")
 	register("Quests", "Story", questsTab:AddDropdown({
 		Text = "Story Quest",
@@ -1517,7 +1554,6 @@ return function(GB)
 		Text = "Refresh State to populate completed quests.",
 	}))
 
-	local mobsTab = addTab("Mobs", "target")
 	mobsTab:AddSection("Target Pool")
 	register("Mobs", "Targets", mobsTab:AddDropdown({
 		Text = "Mob Targets",
@@ -1639,7 +1675,6 @@ return function(GB)
 		end),
 	}))
 
-	local bossesTab = addTab("Bosses", "sword")
 	bossesTab:AddSection("Generated Boss Evidence")
 	register("Bosses", "Targets", bossesTab:AddDropdown({
 		Text = "Boss Multi-Select",
@@ -1771,7 +1806,6 @@ return function(GB)
 		end),
 	}))
 
-	local teleportTab = addTab("Teleport", "teleport")
 	teleportTab:AddSection("Physical Islands")
 	register("Teleport", "Island", teleportTab:AddDropdown({
 		Text = "Physical Map",
@@ -1874,7 +1908,6 @@ return function(GB)
 		end),
 	}))
 
-	local itemsTab = addTab("Items", "package")
 	itemsTab:AddSection("Generated and Live Inventory")
 	register("Items", "Item", itemsTab:AddDropdown({
 		Text = "Item",
@@ -1911,7 +1944,6 @@ return function(GB)
 		Text = "Pets and bank deposit/withdraw remain UNRESOLVED. No actions are exposed.",
 	})
 
-	local equipmentTab = addTab("Equipment", "box")
 	equipmentTab:AddSection("Owned Equipment")
 	register("Equipment", "Owned", equipmentTab:AddDropdown({
 		Text = "Owned Item",
@@ -1979,7 +2011,6 @@ return function(GB)
 		end),
 	}))
 
-	local skillsTab = addTab("Skills", "zap")
 	skillsTab:AddSection("Generated Skills")
 	register("Skills", "Skill", skillsTab:AddDropdown({
 		Text = "Skill",
@@ -2035,7 +2066,6 @@ return function(GB)
 		Text = "Purchase/unlock stages without a verified runtime method remain status-only.",
 	})
 
-	local statsTab = addTab("Stats", "star")
 	statsTab:AddSection("Live Stat State")
 	register("Stats", "Status", statsTab:AddParagraph({ Title = "Six Stats", Text = "Waiting for the cached stat snapshot." }))
 	register("Stats", "Preset", statsTab:AddDropdown({
@@ -2175,7 +2205,6 @@ return function(GB)
 		}))
 	end
 
-	local lifeTab = addTab("Life Skills", "pickaxe")
 	lifeTab:AddSection("Mining")
 	register("LifeSkills", "Mining", lifeTab:AddDropdown({
 		Text = "Verified Mining Targets",
@@ -2292,7 +2321,6 @@ return function(GB)
 		Text = "UNRESOLVED. No general craft or dig action is exposed.",
 	})
 
-	local fruitTab = addTab("Fruit", "apple")
 	fruitTab:AddSection("Fruit State")
 	register("Fruit", "Status", fruitTab:AddParagraph({ Title = "Current / Stored / Desired", Text = "Waiting for cached fruit state." }))
 	register("Fruit", "Catalog", fruitTab:AddDropdown({
@@ -2361,7 +2389,6 @@ return function(GB)
 		end),
 	}))
 
-	local hakiTab = addTab("Haki-Race-Trait", "user")
 	hakiTab:AddSection("Runtime Evidence")
 	register("Haki", "Status", hakiTab:AddParagraph({ Title = "Haki / Race / Trait", Text = "Refreshing cached state." }))
 	hakiTab:AddParagraph({
@@ -2444,7 +2471,6 @@ return function(GB)
 		})
 	end
 
-	local shopTab = addTab("Shop", "store")
 	shopTab:AddSection("Generated Catalog")
 	register("Shop", "Item", shopTab:AddDropdown({
 		Text = "Shop Item",
@@ -2544,7 +2570,6 @@ return function(GB)
 		end),
 	}))
 
-	local chestTab = addTab("Chest-Treasure", "box")
 	chestTab:AddSection("Indexed Chest Route")
 	register("Chest", "Map", chestTab:AddDropdown({
 		Text = "Chest Map",
@@ -2610,7 +2635,6 @@ return function(GB)
 		Text = "Only Afuaru's Anchor Town chest set is verified. Clown Town and Maple Village have no supported chest index. Dig remains UNRESOLVED.",
 	})
 
-	local codesTab = addTab("Codes-Rewards", "code")
 	codesTab:AddSection("Codes")
 	local knownCodes = copyArray(type(Config.Codes) == "table" and Config.Codes or {}, 100)
 	register("Codes", "Known", codesTab:AddParagraph({
@@ -2724,16 +2748,22 @@ return function(GB)
 		Text = "UNRESOLVED claim arguments. Status-only; no claim action is exposed.",
 	})
 
-	local autoTab = addTab("Auto Progress", "star")
 	autoTab:AddSection("Exclusive Progression Owner")
 	register("Auto", "Master", autoTab:AddToggle({
 		Text = "FULL_AUTO Master",
 		Description = "Assign or release the exclusive FULL_AUTO owner.",
 		Default = false,
 		Callback = guard("Auto Progress", function(value)
-			if value == true then return startOwner(OWNER.FULL_AUTO, "ui_auto_master") end
-			if controllerOwner() == OWNER.FULL_AUTO then return stopOwner("ui_auto_master_off") end
-			return true
+			local ok
+			if value == true then
+				ok = startOwner(OWNER.FULL_AUTO, "ui_auto_master")
+			elseif controllerOwner() == OWNER.FULL_AUTO then
+				ok = stopOwner("ui_auto_master_off")
+			else
+				ok = true
+			end
+			setControl("Home", "FullAuto", value == true)
+			return ok
 		end),
 	}))
 	register("Auto", "Mode", autoTab:AddDropdown({
@@ -2832,7 +2862,6 @@ return function(GB)
 		end),
 	}))
 
-	local settingsTab = addTab("Settings", "settings")
 	settingsTab:AddSection("UI Configuration")
 	register("Settings", "Status", settingsTab:AddParagraph({
 		Title = "GBKaitun/UIConfig.json",
@@ -2909,7 +2938,6 @@ return function(GB)
 		Text = "Selections, modes, target level, ranges, stat ratios, and bounded toggles only. Owner restoration requires Resume Actions on Load.",
 	})
 
-	local debugTab = addTab("Debug", "debug")
 	debugTab:AddSection("Low-Rate Runtime Diagnostics")
 	register("Debug", "Status", debugTab:AddParagraph({ Title = "Runtime", Text = "Waiting for the low-rate diagnostic refresh." }))
 	register("Debug", "SelfCheck", debugTab:AddButton({
@@ -3083,7 +3111,7 @@ return function(GB)
 			"Scheduler: STOPPED",
 			"Owner: IDLE",
 			"UI autos and queues are quiesced.",
-			"Use Start / Resume to restart. Refresh remains available on demand.",
+			"Use Full Auto or Resume to restart. Refresh remains available on demand.",
 		}, "\n"))
 		setControl("Auto", "Status", table.concat({
 			"Owner: IDLE | STOPPED",
@@ -3621,6 +3649,7 @@ return function(GB)
 	syncControls = function()
 		local owner = controllerOwner()
 		setControl("Auto", "Master", owner == OWNER.FULL_AUTO)
+		setControl("Home", "FullAuto", owner == OWNER.FULL_AUTO)
 		setControl("Mobs", "Continuous", owner == OWNER.MANUAL_MOB and UI.mobContinuous)
 		setControl("Bosses", "AutoFarm", owner == OWNER.MANUAL_BOSS and UI.bossAuto)
 		setControl("Chest", "Auto", owner == OWNER.MANUAL_CHEST and UI.autoChest)
@@ -4341,7 +4370,7 @@ return function(GB)
 			if GB.Tasks[index] == statusTask then table.remove(GB.Tasks, index) end
 		end
 		M.Tasks = {}
-		if type(Nia.Unload) == "function" then pcall(Nia.Unload, Nia) end
+		if type(UILib.Unload) == "function" then pcall(UILib.Unload, UILib) end
 		M._destroying = false
 		return true
 	end
@@ -4374,11 +4403,12 @@ return function(GB)
 	end
 	M.LoadConfig(true)
 	if UI.autoCodesOnJoin then triggerAutoCodesOnce() end
+	print("[GBUI] ready")
 	local loadedOwner = controllerOwner()
 	M.Notify({
 		Title = "Grand Blue UI",
 		Text = loadedOwner == OWNER.IDLE
-			and "Loaded in IDLE. Select Start / Resume to run."
+			and "Loaded in IDLE. Select Full Auto or a farm mode to run."
 			or ("Restored explicit saved owner " .. tostring(loadedOwner) .. "."),
 		Type = "success",
 		Gap = 0,

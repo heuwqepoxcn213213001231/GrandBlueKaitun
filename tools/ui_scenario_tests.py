@@ -19,7 +19,7 @@ from typing import Callable, Iterable, Optional
 ROOT = Path(__file__).resolve().parents[1]
 CONTROLLER_PATH = ROOT / "UI" / "ManualController.lua"
 HUB_PATH = ROOT / "UI" / "Hub.lua"
-NIA_PATH = ROOT / "UI" / "NiaInline.lua"
+ADAPTER_PATH = ROOT / "UI" / "NiaAdapter.lua"
 CATALOG_PATH = ROOT / "UI" / "Catalog.lua"
 EXTENSIONS_PATH = ROOT / "UI" / "RuntimeExtensions.lua"
 RESOLVER_PATH = ROOT / "UI" / "Resolver.lua"
@@ -484,14 +484,14 @@ def static_checks(
     suite: Suite,
     controller: str,
     hub: str,
-    nia: str,
+    adapter: str,
     generated: str,
 ) -> None:
     catalog = CATALOG_PATH.read_text(encoding="utf-8") if CATALOG_PATH.is_file() else ""
     extensions = EXTENSIONS_PATH.read_text(encoding="utf-8") if EXTENSIONS_PATH.is_file() else ""
     resolver = RESOLVER_PATH.read_text(encoding="utf-8") if RESOLVER_PATH.is_file() else ""
     matrix = MATRIX_PATH.read_text(encoding="utf-8") if MATRIX_PATH.is_file() else ""
-    ui_source = "\n".join((nia, controller, catalog, extensions, hub))
+    ui_source = "\n".join((adapter, controller, catalog, extensions, hub))
     forbidden_patterns = {
         "Chest.lootUntil": r"\b(?:GB\.)?Chest\.lootUntil\b",
         "Workspace:GetDescendants": r"\b(?:Workspace|workspace):GetDescendants\s*\(",
@@ -626,7 +626,7 @@ def static_checks(
     )
     suite.check(
         "static.hub.redeem_all_manual",
-        has_all(hub, ("Codes-Rewards", "enqueue"))
+        has_all(hub, ("Codes / Rewards", "enqueue"))
         and has_any(hub, ("Redeem All", "Redeem all", "redeemAll"))
         and has_any(hub, ("Manual Code", "Manual code", "manualCode", "codeTextbox"))
         and has_any(hub, ("GB.Codes.redeem", "GB.Remotes.code", "Codes.redeem")),
@@ -655,6 +655,24 @@ def static_checks(
         and has_any(hub, ("setSelectedMobs", "setMobs"))
         and has_any(hub, ("setSelectedQuest", "setQuest")),
         "refreshable dropdowns update controller selections",
+    )
+    suite.check(
+        "static.hub.niaui_tabs_and_full_auto",
+        has_all(
+            hub,
+            (
+                'addTab("Home"',
+                'addTab("Auto Progress"',
+                'addTab("Chest / Treasure"',
+                'addTab("Codes / Rewards"',
+                'addTab("Misc"',
+                'Text = "Full Auto"',
+                "GB.UIAdapter",
+            ),
+        )
+        and "Haki-Race-Trait" not in hub
+        and "NiaInline" not in hub,
+        "Hub uses NiaUI adapter tabs without the old renderer",
     )
     suite.check(
         "static.hub.status_0_33_seconds",
@@ -806,7 +824,8 @@ def static_checks(
         and has_all(
             generated,
             (
-                "-- BEGIN SOURCE: UI/NiaInline.lua",
+                "-- NiaUI external load (once)",
+                "-- BEGIN SOURCE: UI/NiaAdapter.lua",
                 "-- BEGIN SOURCE: UI/ManualController.lua",
                 "-- BEGIN SOURCE: UI/Catalog.lua",
                 "-- BEGIN SOURCE: UI/Resolver.lua",
@@ -827,6 +846,8 @@ def static_checks(
                 "stopPreviousInstances",
                 "GB._uiLifecycleWrapped = true",
                 "destroyComponent(GB.UIHub",
+                "destroyComponent(GB.UIAdapter",
+                "destroyComponent(GB.NiaLibrary",
                 "destroyComponent(GB.Nia",
                 "destroyComponent(GB.UIController",
                 "destroyComponent(GB.UIExtensions",
@@ -851,7 +872,7 @@ def main() -> int:
     suite = Suite()
     controller = read_source(CONTROLLER_PATH, suite, "ManualController")
     hub = read_source(HUB_PATH, suite, "Hub")
-    nia = read_source(NIA_PATH, suite, "NiaInline")
+    adapter = read_source(ADAPTER_PATH, suite, "NiaAdapter")
     generated = read_source(GENERATED_PATH, suite, "kaitun_ui")
 
     suite.case("model.toggle_mob_farm_on_off", assert_mob_toggle)
@@ -880,7 +901,12 @@ def main() -> int:
         detail = result.stdout.strip() or f"exit={result.returncode}"
         suite.check("luau.controller_spec", result.returncode == 0, detail)
 
-    static_checks(suite, controller, hub, nia, generated)
+    suite.check(
+        "static.adapter.no_renderer",
+        "Instance.new" not in adapter and "ScreenGui" not in adapter and "function Adapter:CreateWindow" in adapter,
+        "adapter wraps NiaUI only",
+    )
+    static_checks(suite, controller, hub, adapter, generated)
     return suite.finish()
 
 

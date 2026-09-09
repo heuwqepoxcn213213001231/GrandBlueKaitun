@@ -26,10 +26,13 @@ UI_VERSION_FILE = "UI_VERSION"
 HEADLESS_PRODUCTION = "kaitun.lua"
 RAW_UI_URL = (
     "https://raw.githubusercontent.com/heuwqepoxcn213213001231/"
-    "GrandBlueKaitun/main/kaitun_ui.lua"
+    "GrandBlueKaitun/refs/heads/main/kaitun_ui.lua"
+)
+NIAUI_URL = (
+    "https://raw.githubusercontent.com/heuwqepoxcn213213001231/niauto/refs/heads/main/NiaUI"
 )
 
-UI_NIA = "UI/NiaInline.lua"
+UI_ADAPTER = "UI/NiaAdapter.lua"
 UI_CONTROLLER = "UI/ManualController.lua"
 UI_CATALOG = "UI/Catalog.lua"
 UI_RESOLVER = "UI/Resolver.lua"
@@ -191,7 +194,7 @@ def expected_source_relpaths(manifest: dict[str, Any]) -> list[str]:
     rows = manifest_rows(manifest)
     boot_rel = str(manifest.get("entry") or "src/boot.lua")
     ordered = [UI_RESOLVER if row["path"] == "Game/Resolver.lua" else row["path"] for row in rows]
-    ordered.extend([UI_NIA, UI_CONTROLLER, UI_CATALOG, UI_EXTENSIONS, boot_rel, UI_HUB, UI_VERSION_FILE])
+    ordered.extend([UI_CONTROLLER, UI_CATALOG, UI_EXTENSIONS, boot_rel, UI_ADAPTER, UI_HUB, UI_VERSION_FILE])
     if len(ordered) != len(set(ordered)):
         fail("UI source order contains a duplicate path")
     forbidden = [rel for rel in ordered if rel in GENERATED_ARTIFACTS]
@@ -208,6 +211,7 @@ def expected_hash_relpaths(manifest: dict[str, Any]) -> list[str]:
             "tools/build_ui.py",
             UI_RESOLVER_BASE,
             "research/UI_FEATURE_MATRIX.md",
+            "research/UI_CURRENT_FEATURES.md",
         ]
     )
     if len(inputs) != len(set(inputs)):
@@ -663,6 +667,41 @@ end, 0.25, { critical = true, first = true })
 """
 
 
+def niaui_loader() -> str:
+    return f"""--==================================================
+-- NiaUI external load (once)
+--==================================================
+do
+	local NIAUI_URL = {lua_quote(NIAUI_URL)}
+	local okGet, source = pcall(function()
+		return game:HttpGet(NIAUI_URL)
+	end)
+	if not okGet or type(source) ~= "string" or #source < 32 then
+		print("[NiaUI] failed to load")
+		print("[GBUI] abort: NiaUI unavailable")
+		if type(GB.Stop) == "function" then
+			pcall(GB.Stop)
+		end
+		error("[NiaUI] failed to load", 0)
+	end
+	local okLoad, library = pcall(function()
+		return loadstring(source)()
+	end)
+	if not okLoad or type(library) ~= "table" or type(library.CreateWindow) ~= "function" then
+		print("[NiaUI] failed to load")
+		print("[GBUI] abort: NiaUI init failed: " .. tostring(library))
+		if type(GB.Stop) == "function" then
+			pcall(GB.Stop)
+		end
+		error("[NiaUI] failed to load", 0)
+	end
+	GB.NiaLibrary = library
+	print("[GBUI] NiaUI loaded")
+end
+
+"""
+
+
 def epilogue() -> str:
     return """--==================================================
 -- UI lifecycle and public API
@@ -705,6 +744,8 @@ local function cleanupUI()
 	end
 	uiCleaned = true
 	destroyComponent(GB.UIHub, { "Destroy", "destroy", "Unload", "unload" })
+	destroyComponent(GB.UIAdapter, { "Unload", "Destroy", "destroy" })
+	destroyComponent(GB.NiaLibrary, { "Unload", "Destroy", "destroy" })
 	destroyComponent(GB.Nia, { "Unload", "Destroy", "destroy" })
 	destroyComponent(GB.UIController, { "destroy", "Destroy", "Stop", "stop" })
 	destroyComponent(GB.UIExtensions, { "destroy", "Destroy" })
@@ -749,12 +790,16 @@ def validate_generated(source: str, source_order: Sequence[str]) -> None:
         fail("generated output contains a project-owned require")
     if PROJECT_READ.search(source):
         fail("generated output contains direct project file loading")
-    if source.count("HttpGet") != 1 or source.count("loadstring") != 1:
-        fail("generated output must contain one queued request/compile token pair")
+    if source.count("HttpGet") != 2 or source.count("loadstring") != 2:
+        fail("generated output must contain exactly two request/compile token pairs")
     if "/kaitun_ui.lua?cb=" not in source:
         fail("teleport requeue does not target kaitun_ui.lua")
-    if re.search(r"""https?://[^\s"'[\]]*(?:NiaInline|/Nia(?:\.lua)?)[^\s"'[\]]*""", source, re.I):
-        fail("generated output contains a runtime Nia source URL")
+    if source.count(NIAUI_URL) != 1:
+        fail("generated output must load NiaUI from the official URL exactly once")
+    if re.search(r"""https?://[^\s"'[\]]*(?:NiaInline|/Nia\.lua)[^\s"'[\]]*""", source, re.I):
+        fail("generated output contains a copied Nia source URL")
+    if "function Nia:CreateWindow" in source or "Instance.new(\"ScreenGui\")" in source:
+        fail("generated output still contains an inlined hub renderer")
     positions: list[int] = []
     for rel in source_order:
         if rel == UI_VERSION_FILE:
@@ -900,16 +945,6 @@ def main() -> int:
 
     parts.append(
         emit_source(
-            UI_NIA,
-            safe_path(root, UI_NIA).read_text(encoding="utf-8"),
-            "Nia",
-            "core",
-            True,
-            aliases=("UI.Nia",),
-        )
-    )
-    parts.append(
-        emit_source(
             UI_CONTROLLER,
             safe_path(root, UI_CONTROLLER).read_text(encoding="utf-8"),
             "UIController",
@@ -948,6 +983,17 @@ def main() -> int:
         )
     )
     parts.append(scheduler_handoff())
+    parts.append(niaui_loader())
+    parts.append(
+        emit_source(
+            UI_ADAPTER,
+            safe_path(root, UI_ADAPTER).read_text(encoding="utf-8"),
+            "UIAdapter",
+            "core",
+            True,
+            aliases=("UI.Adapter",)
+        )
+    )
     parts.append(
         emit_source(
             UI_HUB,

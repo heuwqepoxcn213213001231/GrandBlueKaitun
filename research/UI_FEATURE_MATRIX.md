@@ -13,7 +13,7 @@ Status:
 | Feature | Game system | Research source | Runtime status | UI control | Tab | Implementation status | Validation method |
 |---|---|---|---|---|---|---|---|
 | Live player status | State / PlayerData | `A_system_map.md`, runtime `State.lua` | RUNTIME_VERIFIED | Live paragraph | Home | IMPLEMENTED | State snapshot and async quest/stat caches |
-| Start / pause / stop all | Scheduler | `RUNTIME_ARCHITECTURE.md`, `FULL_SYSTEM_AUDIT.md` | RUNTIME_VERIFIED | Buttons | Home | IMPLEMENTED | Scheduler enabled state, owner and intent reset |
+| Full Auto / pause / resume / stop all | Scheduler | `RUNTIME_ARCHITECTURE.md`, `FULL_SYSTEM_AUDIT.md` | RUNTIME_VERIFIED | Toggle / buttons | Home | IMPLEMENTED | Scheduler enabled state, owner and intent reset |
 | Auto respawn | Respawn | `RUNTIME_FIXES.md`, `REGRESSION_TESTS.md` | RUNTIME_VERIFIED | Toggle | Home | IMPLEMENTED | Respawn phase and restored character |
 | Safe fast attack | Combat | `REMOTE_REGISTRY.md`, `RUNTIME_FIXES.md` | RUNTIME_VERIFIED | Toggle | Home / Mobs | IMPLEMENTED | Accepted attacks and target HP delta |
 | Anti-AFK | Client utility | Current runtime policy | STATIC_VERIFIED | Toggle | Home | IMPLEMENTED | Local idle connection remains active |
@@ -91,10 +91,13 @@ Status:
 | Fruit pickup | Fruit | `REMOTE_REGISTRY.md` | STATIC_VERIFIED | Button / toggle | Fruit | IMPLEMENTED | Inventory fruit appears |
 | Store/equip permanent fruit | Closet / Fruit | `REMOTE_REGISTRY.md` | PARTIAL | Explicit buttons | Fruit | IMPLEMENTED | Storage/equipped fruit state; destructive replace never automatic |
 | Eat/replace fruit | Fruit | `G_missing.md` | UNRESOLVED | Status only | Fruit | DISABLED | No safe replacement policy/payload |
-| Haki state | Haki | `A_system_map.md`, `FULL_SYSTEM_AUDIT.md` | UNRESOLVED | Status only | Haki / Race / Trait | DISABLED | Trainer/unlock route unknown |
-| Aura color reroll | Haki | `REMOTE_REGISTRY.md` | PARTIAL | Confirmed explicit button | Haki / Race / Trait | IMPLEMENTED | Requires one-shot confirmation; resulting color changes |
-| Race state/reroll | Race | `G_missing.md` | UNRESOLVED | Status only | Haki / Race / Trait | DISABLED | Race reroll FireServer unresolved |
-| Trait state/reroll | Trait | `G_missing.md`, `REMOTE_REGISTRY.md` | PARTIAL | Confirmed explicit button | Haki / Race / Trait | IMPLEMENTED | Trait change; never automatic |
+| NiaUI presentation | UI adapter | Live NiaUI 2.7.7 | STATIC_VERIFIED | External library + thin adapter | All | IMPLEMENTED | One HttpGet at UI startup; no inline renderer |
+| Full Auto home toggle | DecisionEngine | Current 1.3.2 runtime | RUNTIME_VERIFIED | Toggle | Home | IMPLEMENTED | Same exclusive FULL_AUTO owner as Auto Progress |
+| Resume paused owner | Manual controller | Current controller pause/resume | RUNTIME_VERIFIED | Button | Home | IMPLEMENTED | Resumes paused owner only |
+| Haki state | Haki | `A_system_map.md`, `FULL_SYSTEM_AUDIT.md` | UNRESOLVED | Status only | Misc | DISABLED | Trainer/unlock route unknown |
+| Aura color reroll | Haki | `REMOTE_REGISTRY.md` | PARTIAL | Confirmed explicit button | Misc | IMPLEMENTED | Requires one-shot confirmation; resulting color changes |
+| Race state/reroll | Race | `G_missing.md` | UNRESOLVED | Status only | Misc | DISABLED | Race reroll FireServer unresolved |
+| Trait state/reroll | Trait | `G_missing.md`, `REMOTE_REGISTRY.md` | PARTIAL | Confirmed explicit button | Misc | IMPLEMENTED | Trait change; never automatic |
 | Full auto progression | DecisionEngine | Current 1.3.2 runtime | RUNTIME_VERIFIED | Master toggle / mode | Auto Progress | IMPLEMENTED | Same Engine; current owner FULL_AUTO |
 | Auto-progress blocker | Knowledge / Quest | `KNOWLEDGE_MODEL.md` | STATIC_VERIFIED | Live paragraph | Auto Progress | IMPLEMENTED | Current blockers and idle reason |
 | Replan / resume story | Planner / Engine | Current runtime | RUNTIME_VERIFIED | Buttons | Auto Progress | IMPLEMENTED | Context dirty and next decision |

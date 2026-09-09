@@ -23,7 +23,8 @@ from build_ui import (
     UI_EXTENSIONS,
     UI_HUB,
     UI_MANIFEST,
-    UI_NIA,
+    NIAUI_URL,
+    UI_ADAPTER,
     UI_RESOLVER,
     UI_RESOLVER_BASE,
     UI_VERSION_FILE,
@@ -48,10 +49,10 @@ REQUIRED_TABS = (
     "Stats",
     "Life Skills",
     "Fruit",
-    "Haki-Race-Trait",
+    "Misc",
     "Shop",
-    "Chest-Treasure",
-    "Codes-Rewards",
+    "Chest / Treasure",
+    "Codes / Rewards",
     "Auto Progress",
     "Settings",
     "Debug",
@@ -66,14 +67,16 @@ CONTROLLER_OWNERS = (
     "MANUAL_CHEST",
 )
 
-NIA_API = (
-    "function Nia:CreateWindow",
-    "function Window:AddTab",
-    "function Tab:AddButton",
-    "function Tab:AddToggle",
-    "function Tab:AddDropdown",
-    "function Nia:Notify",
-    "function Nia:Unload",
+ADAPTER_API = (
+    "function Adapter:CreateWindow",
+    "function wrapped:AddTab",
+    "function wrapped:AddToggle",
+    "function wrapped:AddDropdown",
+    "function wrapped:AddMultiSelect",
+    "function wrapped:AddButton",
+    "function Adapter:Notify",
+    "function Adapter:Unload",
+    "GB.NiaLibrary",
 )
 
 CONTROLLER_API = (
@@ -101,8 +104,8 @@ HUB_API = (
 PROJECT_PATH_STRING = re.compile(
     r"""["'](?:\./|\.\./|Core/|Game/|Systems/|Progression/|UI/|src/)[A-Za-z0-9_./-]+\.lua["']"""
 )
-RUNTIME_NIA_URL = re.compile(
-    r"""https?://[^\s"'[\]]*(?:NiaInline|/Nia(?:\.lua)?)[^\s"'[\]]*""",
+RUNTIME_COPIED_NIA_URL = re.compile(
+    r"""https?://[^\s"'[\]]*(?:NiaInline|/Nia\.lua)[^\s"'[\]]*""",
     re.I,
 )
 QUEUE_STRING = re.compile(r"local\s+cmd\s*=\s*\[\[(.*?)\]\]", re.S)
@@ -305,22 +308,23 @@ def verify_source_sections(
 def verify_network_shape(generated: str, checks: Checks) -> tuple[int, int]:
     http_count = generated.count("HttpGet")
     loadstring_count = generated.count("loadstring")
-    checks.require(http_count == 1, f"expected one HttpGet token, found {http_count}")
-    checks.require(loadstring_count == 1, f"expected one loadstring token, found {loadstring_count}")
+    checks.require(http_count == 2, f"expected two HttpGet tokens, found {http_count}")
+    checks.require(loadstring_count == 2, f"expected two loadstring tokens, found {loadstring_count}")
 
     queue = QUEUE_STRING.search(generated)
     checks.require(queue is not None, "teleport requeue command string is missing")
     if queue:
         body = queue.group(1)
-        checks.require(body.count("HttpGet") == 1, "queued command does not own the only HttpGet token")
-        checks.require(body.count("loadstring") == 1, "queued command does not own the only loadstring token")
+        checks.require(body.count("HttpGet") == 1, "queued command must contain one HttpGet token")
+        checks.require(body.count("loadstring") == 1, "queued command must contain one loadstring token")
         checks.require(
             RAW_UI_URL + '?cb=" .. tostring(os.time())' in body,
             "queued command does not target raw kaitun_ui.lua with cache busting",
         )
         outside = generated[: queue.start(1)] + generated[queue.end(1) :]
-        checks.require("HttpGet" not in outside, "request token exists outside teleport requeue")
-        checks.require("loadstring" not in outside, "compile token exists outside teleport requeue")
+        checks.require(outside.count("HttpGet") == 1, "UI build must have exactly one NiaUI HttpGet")
+        checks.require(outside.count("loadstring") == 1, "UI build must have exactly one NiaUI loadstring")
+        checks.require(NIAUI_URL in outside, "NiaUI URL missing outside teleport requeue")
 
     project_raw_count = generated.count(
         "https://raw.githubusercontent.com/heuwqepoxcn213213001231/GrandBlueKaitun/"
@@ -328,7 +332,10 @@ def verify_network_shape(generated: str, checks: Checks) -> tuple[int, int]:
     checks.require(project_raw_count == 1, f"expected one project raw URL, found {project_raw_count}")
     checks.require("/kaitun_ui.lua?cb=" in generated, "requeue URL is not kaitun_ui.lua")
     checks.require("/kaitun.lua?cb=" not in generated, "requeue points at headless kaitun.lua")
-    checks.require(RUNTIME_NIA_URL.search(generated) is None, "runtime Nia source URL found")
+    checks.require(generated.count(NIAUI_URL) == 1, "NiaUI URL count != 1")
+    checks.require(RUNTIME_COPIED_NIA_URL.search(generated) is None, "copied Nia source URL found")
+    checks.require("function Nia:CreateWindow" not in generated, "inlined Nia renderer still present")
+    checks.require('Instance.new("ScreenGui")' not in generated, "custom ScreenGui renderer still present")
     return http_count, loadstring_count
 
 
@@ -350,13 +357,13 @@ def verify_no_project_loading(generated: str, checks: Checks) -> int:
 
 def verify_contract_markers(
     generated: str,
-    nia: str,
+    adapter: str,
     controller: str,
     hub: str,
     checks: Checks,
 ) -> None:
-    for marker in NIA_API:
-        checks.require(marker in nia and marker in generated, f"missing Nia marker: {marker}")
+    for marker in ADAPTER_API:
+        checks.require(marker in adapter and marker in generated, f"missing adapter marker: {marker}")
     for marker in CONTROLLER_API:
         checks.require(marker in controller and marker in generated, f"missing controller marker: {marker}")
     for owner in CONTROLLER_OWNERS:
@@ -374,7 +381,7 @@ def verify_contract_markers(
         checks.require(literal in generated, f"generated Hub tab missing: {tab}")
 
     markers = (
-        "GB[\"Nia\"] = inst",
+        "GB[\"UIAdapter\"] = inst",
         "GB[\"UIController\"] = inst",
         "GB[\"UICatalog\"] = inst",
         "GB[\"UIExtensions\"] = inst",
@@ -386,6 +393,8 @@ def verify_contract_markers(
         "GB.Config.AutoRespawn ~= false",
         "GB._uiLifecycleWrapped = true",
         "destroyComponent(GB.UIHub",
+        "destroyComponent(GB.UIAdapter",
+        "destroyComponent(GB.NiaLibrary",
         "destroyComponent(GB.Nia",
         "destroyComponent(GB.UIController",
         "destroyComponent(GB.UIExtensions",
@@ -404,21 +413,22 @@ def verify_contract_markers(
 
     disabled = generated.find("getgenv().GBConfig.Enabled = false")
     config = generated.find("-- BEGIN SOURCE: Config.lua")
-    nia_at = generated.find(f"-- BEGIN SOURCE: {UI_NIA}")
     controller_at = generated.find(f"-- BEGIN SOURCE: {UI_CONTROLLER}")
     catalog_at = generated.find(f"-- BEGIN SOURCE: {UI_CATALOG}")
     extensions_at = generated.find(f"-- BEGIN SOURCE: {UI_EXTENSIONS}")
     boot_at = generated.find("-- BEGIN SOURCE: src/boot.lua")
     handoff_at = generated.find("-- UI scheduler ownership")
+    niaui_at = generated.find("-- NiaUI external load (once)")
+    adapter_at = generated.find(f"-- BEGIN SOURCE: {UI_ADAPTER}")
     hub_at = generated.find(f"-- BEGIN SOURCE: {UI_HUB}")
     lifecycle_at = generated.find("-- UI lifecycle and public API")
     checks.require(
-        min(disabled, config, nia_at, controller_at, catalog_at, extensions_at, boot_at, handoff_at, hub_at, lifecycle_at) >= 0,
+        min(disabled, config, controller_at, catalog_at, extensions_at, boot_at, handoff_at, niaui_at, adapter_at, hub_at, lifecycle_at) >= 0,
         "one or more ordered runtime sections are missing",
     )
-    if min(disabled, config, nia_at, controller_at, catalog_at, extensions_at, boot_at, handoff_at, hub_at, lifecycle_at) >= 0:
+    if min(disabled, config, controller_at, catalog_at, extensions_at, boot_at, handoff_at, niaui_at, adapter_at, hub_at, lifecycle_at) >= 0:
         checks.require(
-            disabled < config < nia_at < controller_at < catalog_at < extensions_at < boot_at < handoff_at < hub_at < lifecycle_at,
+            disabled < config < controller_at < catalog_at < extensions_at < boot_at < handoff_at < niaui_at < adapter_at < hub_at < lifecycle_at,
             "runtime construction/handoff order is invalid",
         )
     pre_config = generated[disabled:config] if disabled >= 0 and config >= 0 else ""
@@ -485,15 +495,16 @@ def main() -> int:
     else:
         checks.errors.append(f"missing {PRODUCTION}; run tools/build_ui.py")
 
-    nia_path = root / UI_NIA
+    adapter_path = root / UI_ADAPTER
     controller_path = root / UI_CONTROLLER
     hub_path = root / UI_HUB
-    nia = nia_path.read_text(encoding="utf-8") if nia_path.is_file() else ""
+    adapter = adapter_path.read_text(encoding="utf-8") if adapter_path.is_file() else ""
     controller = controller_path.read_text(encoding="utf-8") if controller_path.is_file() else ""
     hub = hub_path.read_text(encoding="utf-8") if hub_path.is_file() else ""
     matrix_path = root / FEATURE_MATRIX
     matrix = matrix_path.read_text(encoding="utf-8") if matrix_path.is_file() else ""
-    checks.require(bool(nia), f"missing {UI_NIA}")
+    checks.require(bool(adapter), f"missing {UI_ADAPTER}")
+    checks.require("Instance.new" not in adapter, "adapter contains renderer Instance.new")
     checks.require(bool(controller), f"missing {UI_CONTROLLER}")
     checks.require(bool(hub), f"missing {UI_HUB}")
     checks.require(bool(matrix), f"missing {FEATURE_MATRIX}")
@@ -521,8 +532,8 @@ def main() -> int:
             verify_source_sections(root, generated, sources, checks)
         http_count, loadstring_count = verify_network_shape(generated, checks)
         require_count = verify_no_project_loading(generated, checks)
-        if nia and controller and hub:
-            verify_contract_markers(generated, nia, controller, hub, checks)
+        if adapter and controller and hub:
+            verify_contract_markers(generated, adapter, controller, hub, checks)
         actual_lines = len(generated.splitlines())
         actual_bytes = len(generated.encode("utf-8"))
         checks.require(ui_manifest.get("line_count") == actual_lines, "ui_manifest.line_count is stale")
