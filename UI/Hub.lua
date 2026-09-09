@@ -1580,19 +1580,28 @@ return function(GB)
 		Description = "Assign MANUAL_MOB to the selected pool.",
 		Default = false,
 		Callback = guard("Mob Farm", function(value)
+			local startedAt = os.clock()
+			local function finish(...)
+				if GB.Profiler and type(GB.Profiler.done) == "function" then
+					pcall(GB.Profiler.done, "UI.MobFarmToggle", startedAt)
+				end
+				return ...
+			end
 			UI.mobContinuous = value == true
 			if UI.mobContinuous then
 				if #UI.mobs == 0 then
 					UI.mobContinuous = false
 					setControl("Mobs", "Continuous", false)
-					return false, "Select at least one mob"
+					return finish(false, "Select at least one mob")
 				end
 				controllerCall("setSelectedMobs", UI.mobs)
 				controllerCall("setMobMode", UI.mobMode)
-				return startOwner(OWNER.MANUAL_MOB, "ui_mob_continuous")
+				return finish(startOwner(OWNER.MANUAL_MOB, "ui_mob_continuous"))
 			end
-			if controllerOwner() == OWNER.MANUAL_MOB then return stopOwner("ui_mob_stop") end
-			return true
+			if controllerOwner() == OWNER.MANUAL_MOB then
+				return finish(stopOwner("ui_mob_stop"))
+			end
+			return finish(true)
 		end),
 	}))
 	register("Mobs", "Stop", mobsTab:AddButton({
@@ -3177,6 +3186,7 @@ return function(GB)
 	end
 
 	updateMobStatus = function()
+		local startedAt = os.clock()
 		local snapshot = stateSnapshot()
 		local lines = {
 			"Mode: " .. tostring(UI.mobMode),
@@ -3195,8 +3205,16 @@ return function(GB)
 		end
 		if #UI.mobs == 0 then lines[#lines + 1] = "No targets selected." end
 		local control = controllerSnapshot()
+		if control.status == "WAIT_TARGET" then
+			lines[#lines + 1] = "Status: WAITING FOR MOB — waiting for spawn/live instance."
+		elseif control.status == "WAIT_SELECTION" then
+			lines[#lines + 1] = "Status: Select at least one mob."
+		end
 		lines[#lines + 1] = "Controller: " .. tostring(control.owner) .. " / " .. tostring(control.status)
 		setControl("Mobs", "Status", table.concat(lines, "\n"))
+		if GB.Profiler and type(GB.Profiler.done) == "function" then
+			pcall(GB.Profiler.done, "ManualMob.UIRefresh", startedAt)
+		end
 	end
 
 	updateBossDetails = function()
@@ -4299,7 +4317,7 @@ return function(GB)
 
 				if now - lastDynamic >= 3 then
 					lastDynamic = now
-					runStatus("DynamicOptions", refreshDynamicOptions, true)
+					runStatus("DynamicOptions", refreshDynamicOptions, false)
 				end
 				if now - lastDebug >= 1 then
 					lastDebug = now

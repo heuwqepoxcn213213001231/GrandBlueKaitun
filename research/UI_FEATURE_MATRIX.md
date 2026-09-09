@@ -35,7 +35,7 @@ Status:
 | Active quest manager | PlayerData / Quest | Current runtime | RUNTIME_VERIFIED | Dropdown / details / buttons | Quests | IMPLEMENTED | All `activeNames()` entries, not only current quest |
 | Quest blocker reason | Knowledge / Quest | `KNOWLEDGE_MODEL.md`, Quest requirements | STATIC_VERIFIED | Paragraph | Quests | IMPLEMENTED | Level, prerequisite, item, stat, unresolved status |
 | Enemy catalog | Resolver / GeneratedData | `quest_specs.json`, live enemy index | STATIC_VERIFIED | Searchable multi-select | Mobs | IMPLEMENTED | Generated targets merged with indexed live names |
-| Selected mob farm | Combat | `REMOTE_REGISTRY.md`, current Combat | RUNTIME_VERIFIED | Toggle | Mobs | IMPLEMENTED | Lock, HP delta, corpse release and next target |
+| Selected mob farm | Combat | `REMOTE_REGISTRY.md`, current Combat | RUNTIME_VERIFIED | Toggle | Mobs | IMPLEMENTED | Index-only select; alive=0 enters WAIT_TARGET; no Combat.findTarget / deep scan |
 | Mob mode: nearest | Resolver / Combat | Current enemy index | RUNTIME_VERIFIED | Dropdown | Mobs | IMPLEMENTED | Lowest alive distance |
 | Mob mode: round robin | Manual controller | UI requirement | STATIC_VERIFIED | Dropdown | Mobs | IMPLEMENTED | Cursor advances after target release |
 | Mob mode: finish spawn group | Manual controller / Resolver | UI requirement | STATIC_VERIFIED | Dropdown | Mobs | IMPLEMENTED | Keeps current name while alive copies remain |
@@ -46,7 +46,7 @@ Status:
 | Boss catalog | Boss / GeneratedData | Kill/Defeat/BossDrop stages | STATIC_VERIFIED | Searchable multi-select | Bosses | IMPLEMENTED | Derived boss candidates plus verified Boss map |
 | Teleport to boss | Resolver / World | Quest marker data | PARTIAL | Button | Bosses | IMPLEMENTED | Marker or alive instance resolves |
 | Kill / farm boss | Combat / Manual controller | Current Boss and Combat | PARTIAL | Button / toggle | Bosses | IMPLEMENTED | One-kill limit or continuous owner; spawn timer remains UNKNOWN |
-| Wait for boss spawn | Resolver | Current indexed resolver | PARTIAL | Toggle | Bosses | IMPLEMENTED | Polls index at bounded rate; no invented timer |
+| Wait for boss spawn | Resolver | Current indexed resolver | PARTIAL | Toggle | Bosses | IMPLEMENTED | WAIT_TARGET + one marker travel; EnemyIndex events wake the next select |
 | Physical island list | GeneratedData / World | `studio_iteminfo_index.json`, route research | STATIC_VERIFIED | Dropdown / buttons | Teleport | IMPLEMENTED | Anchor Town, Clown Town, Maple Village |
 | Island travel | Travel / World | `C_island_quest_route.md`, current Travel | PARTIAL | Button | Teleport | IMPLEMENTED | Destination island state changes |
 | NPC catalog and travel | GeneratedData / Resolver | `npcs.json` | STATIC_VERIFIED | Searchable dropdown / button | Teleport | IMPLEMENTED | NPC resolve and centralized movement |

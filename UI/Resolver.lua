@@ -78,6 +78,8 @@ return function(GB)
 	local dummyPos = nil
 	local dummyMiss = 0
 	M.lastCandidates = {}
+	M._enemyRevision = 0
+	M._chestRevision = 0
 	local negativeCache = {
 		enemy = {},
 		npc = {},
@@ -957,6 +959,18 @@ return function(GB)
 		end
 	end
 
+	local function bumpEnemyRevision()
+		M._enemyRevision = (tonumber(M._enemyRevision) or 0) + 1
+	end
+
+	local function bumpChestRevision()
+		M._chestRevision = (tonumber(M._chestRevision) or 0) + 1
+	end
+
+	function M.enemyRevision()
+		return tonumber(M._enemyRevision) or 0
+	end
+
 	local function indexBuildEnemy()
 		local t0 = pbegin()
 		clearIndex(indexes.enemy)
@@ -968,6 +982,7 @@ return function(GB)
 			end
 		end
 		indexes.enemy.built = true
+		bumpEnemyRevision()
 		perfCount("EnemyIndexBuild", 1)
 		pdone("Resolver.enemyIndexBuild", t0)
 	end
@@ -3054,10 +3069,41 @@ return function(GB)
 		ix.conns[#ix.conns + 1] = root.ChildAdded:Connect(function(ch)
 			indexAddInstance("enemy", ch)
 			invalidateNegativeForInstance("enemy", ch)
+			bumpEnemyRevision()
 		end)
 		ix.conns[#ix.conns + 1] = root.ChildRemoved:Connect(function(ch)
 			indexRemoveInstance("enemy", ch)
+			bumpEnemyRevision()
 		end)
+	end
+
+	local function hookChestIndex()
+		if M._indexesStopped then
+			return
+		end
+		local folder = workspace:FindFirstChild("Afuaru's Chests")
+		if M._chestRoot == folder and M._chestConns then
+			return
+		end
+		if type(M._chestConns) == "table" then
+			for _, conn in ipairs(M._chestConns) do
+				pcall(function()
+					conn:Disconnect()
+				end)
+			end
+		end
+		M._chestRoot = folder
+		M._chestConns = {}
+		if not folder then
+			return
+		end
+		M._chestConns[#M._chestConns + 1] = folder.ChildAdded:Connect(function()
+			bumpChestRevision()
+		end)
+		M._chestConns[#M._chestConns + 1] = folder.ChildRemoved:Connect(function()
+			bumpChestRevision()
+		end)
+		bumpChestRevision()
 	end
 
 	local function hookNpcIndex()
@@ -3130,12 +3176,15 @@ return function(GB)
 		hookEnemyIndex()
 		hookNpcIndex()
 		hookMarkerIndex()
+		hookChestIndex()
 		GB.conns[#GB.conns + 1] = workspace.ChildAdded:Connect(function(ch)
 			if ch.Name == "Entities" then
 				hookEnemyIndex()
 			elseif ch.Name == "AA IMPORTANT" or ch.Name == "DialogueNPCs" then
 				hookNpcIndex()
 				hookMarkerIndex()
+			elseif ch.Name == "Afuaru's Chests" then
+				hookChestIndex()
 			elseif ch.Name == "Islands" then
 				indexes.object.built = false
 				clearNegativeKind("object")
@@ -3147,6 +3196,8 @@ return function(GB)
 			elseif ch.Name == "AA IMPORTANT" or ch.Name == "DialogueNPCs" then
 				hookNpcIndex()
 				hookMarkerIndex()
+			elseif ch.Name == "Afuaru's Chests" then
+				hookChestIndex()
 			elseif ch.Name == "Islands" then
 				indexes.object.built = false
 				clearNegativeKind("object")
@@ -3219,6 +3270,7 @@ return function(GB)
 		hookEnemyIndex()
 		hookNpcIndex()
 		hookMarkerIndex()
+		hookChestIndex()
 		ensureIndex("object")
 		return true
 	end
@@ -3231,6 +3283,15 @@ return function(GB)
 			ix.built = false
 			ix.root = nil
 		end
+		if type(M._chestConns) == "table" then
+			for _, conn in ipairs(M._chestConns) do
+				pcall(function()
+					conn:Disconnect()
+				end)
+			end
+		end
+		M._chestConns = {}
+		M._chestRoot = nil
 		return true
 	end
 

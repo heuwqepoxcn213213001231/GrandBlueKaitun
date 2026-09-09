@@ -129,6 +129,17 @@ return function(GB)
 	M._pendingMobName = nil
 	M._finishGroupName = nil
 	M._mobLockedAt = nil
+	M._mobFarmState = "DISABLED"
+	M._mobWaitRevision = nil
+	M._mobWaitNotified = false
+	M._mobMarkerKey = nil
+	M._mobDirty = true
+	M._bossFarmState = "DISABLED"
+	M._bossWaitRevision = nil
+	M._bossMarkerKey = nil
+	M._chestFarmState = "DISABLED"
+	M._chestWaitRevision = nil
+	M._chestDirty = true
 	M._bossCursor = 1
 	M._pendingBoss = nil
 	M._pendingBossName = nil
@@ -291,6 +302,13 @@ return function(GB)
 			return second, third
 		end
 		return first, second
+	end
+
+	local function mobLog(message)
+		local logger = GB and GB.Log
+		if type(logger) == "table" and type(logger.log) == "function" then
+			pcall(logger.log, "MOB", tostring(message))
+		end
 	end
 
 	local function rateLog(level, key, message, gap)
@@ -543,6 +561,11 @@ return function(GB)
 		M._pendingMobName = nil
 		M._finishGroupName = nil
 		M._mobLockedAt = nil
+		M._mobFarmState = "DISABLED"
+		M._mobWaitRevision = nil
+		M._mobWaitNotified = false
+		M._mobMarkerKey = nil
+		M._mobDirty = true
 		M._bossCursor = 1
 		M._pendingBoss = nil
 		M._pendingBossName = nil
@@ -553,6 +576,18 @@ return function(GB)
 		M._bossDescriptors = nil
 		M._chestTarget = nil
 		M._lastResetReason = reason
+		if M.owner == OWNER.MANUAL_MOB then
+			M._mobFarmState = "SELECT_TARGET"
+			M._mobDirty = true
+			M._mobWaitNotified = false
+		end
+		if M.owner == OWNER.MANUAL_BOSS then
+			M._bossFarmState = "SELECT_TARGET"
+		end
+		if M.owner == OWNER.MANUAL_CHEST then
+			M._chestFarmState = "SELECT_TARGET"
+			M._chestDirty = true
+		end
 	end
 
 	local function resetSessionCounters()
@@ -768,6 +803,37 @@ return function(GB)
 			restoreAutos()
 		else
 			gateAutos()
+		end
+		if mode == OWNER.MANUAL_MOB then
+			M._mobFarmState = "SELECT_TARGET"
+			M._mobDirty = true
+			M._mobWaitNotified = false
+			M._mobMarkerKey = nil
+			mobLog(string.format(
+				"manual farm enabled selected=%d mode=%s",
+				#M.selectedMobs,
+				tostring(M.mobMode)
+			))
+		elseif previous == OWNER.MANUAL_MOB then
+			M._mobFarmState = "DISABLED"
+			M._mobDirty = false
+			M._mobWaitNotified = false
+			M._mobMarkerKey = nil
+		end
+		if mode == OWNER.MANUAL_BOSS then
+			M._bossFarmState = "SELECT_TARGET"
+			M._bossWaitRevision = nil
+			M._bossMarkerKey = nil
+		elseif previous == OWNER.MANUAL_BOSS then
+			M._bossFarmState = "DISABLED"
+			M._bossMarkerKey = nil
+		end
+		if mode == OWNER.MANUAL_CHEST then
+			M._chestFarmState = "SELECT_TARGET"
+			M._chestDirty = true
+		elseif previous == OWNER.MANUAL_CHEST then
+			M._chestFarmState = "DISABLED"
+			M._chestDirty = false
 		end
 		clearError()
 		setStatus(mode == OWNER.IDLE and "IDLE" or "READY", reason or mode, {
@@ -1529,6 +1595,9 @@ return function(GB)
 	local function enemiesFor(name, allowFindTarget, plan)
 		local out = {}
 		local seen = {}
+		if GB and GB.Profiler and type(GB.Profiler.count) == "function" then
+			pcall(GB.Profiler.count, "ManualMob.LiveLookup", 1)
+		end
 		if GB and GB.Resolver and type(GB.Resolver.enemies) == "function" then
 			local ok, values = pcall(GB.Resolver.enemies, name)
 			if ok and type(values) == "table" then
@@ -1540,15 +1609,83 @@ return function(GB)
 				end
 			end
 		end
-		if #out == 0 and allowFindTarget and GB and GB.Combat and type(GB.Combat.findTarget) == "function" then
-			local targetPlan = type(plan) == "table" and copyTable(plan) or {}
-			targetPlan.SkipStream = true
-			local ok, instance = pcall(GB.Combat.findTarget, name, nil, targetPlan)
-			if ok and instance and enemyAlive(instance) then
-				out[1] = instance
+		-- Index/Entities children only. Never call the combat hunt resolver
+		-- from selection: Binki/disguise hunt ignores SkipStream and freezes
+		-- when alive=0 by rescanning every 0-interval scheduler tick.
+		return out
+	end
+
+	local function enemyRevision()
+		local resolver = GB and GB.Resolver
+		if type(resolver) == "table" then
+			local revision = tonumber(resolver._enemyRevision)
+			if revision then
+				return revision
+			end
+			if type(resolver.enemyRevision) == "function" then
+				local ok, value = pcall(resolver.enemyRevision)
+				if ok then
+					return tonumber(value) or 0
+				end
 			end
 		end
-		return out
+		return 0
+	end
+
+	local function chestRevision()
+		local resolver = GB and GB.Resolver
+		if type(resolver) == "table" then
+			local revision = tonumber(resolver._chestRevision)
+			if revision then
+				return revision
+			end
+		end
+		return 0
+	end
+
+	local function mobNeedsSelect()
+		if M._mobDirty == true then
+			return true
+		end
+		if M._mobActiveInstance and enemyAlive(M._mobActiveInstance) then
+			return true
+		end
+		if M._pendingMob and enemyAlive(M._pendingMob) then
+			return true
+		end
+		if GB and GB.Combat and enemyAlive(GB.Combat.lockMob) then
+			return true
+		end
+		return M._mobWaitRevision ~= enemyRevision()
+	end
+
+	local function bossNeedsSelect()
+		if M._bossActiveInstance and enemyAlive(M._bossActiveInstance) then
+			return true
+		end
+		if M._pendingBoss and enemyAlive(M._pendingBoss) then
+			return true
+		end
+		if GB and GB.Combat and enemyAlive(GB.Combat.lockMob) then
+			return true
+		end
+		return M._bossWaitRevision ~= enemyRevision()
+	end
+
+	local function chestNeedsSelect()
+		if M._chestDirty == true then
+			return true
+		end
+		if M._chestTarget then
+			return true
+		end
+		return M._chestWaitRevision ~= chestRevision()
+	end
+
+	local function notePerf(name, startedAt)
+		if GB and GB.Profiler and type(GB.Profiler.done) == "function" then
+			pcall(GB.Profiler.done, name, startedAt)
+		end
 	end
 
 	local function resolveNpc(name, island)
@@ -2009,7 +2146,7 @@ return function(GB)
 
 		if M.mobMode == "PRIORITY" then
 			for _, name in ipairs(names) do
-				local instance = nearestInstanceFor(name, snapshot, true)
+				local instance = nearestInstanceFor(name, snapshot, false)
 				if instance then
 					return name, instance
 				end
@@ -2024,7 +2161,7 @@ return function(GB)
 			for offset = 0, #names - 1 do
 				local index = ((M._mobCursor - 1 + offset) % #names) + 1
 				local name = names[index]
-				local instance = nearestInstanceFor(name, snapshot, true)
+				local instance = nearestInstanceFor(name, snapshot, false)
 				if instance then
 					M._mobCursor = index
 					return name, instance
@@ -2035,7 +2172,7 @@ return function(GB)
 
 		if M.mobMode == "FINISH_GROUP" then
 			if M._finishGroupName and contains(names, M._finishGroupName) then
-				local instance = nearestInstanceFor(M._finishGroupName, snapshot, true)
+				local instance = nearestInstanceFor(M._finishGroupName, snapshot, false)
 				if instance then
 					return M._finishGroupName, instance
 				end
@@ -2047,7 +2184,7 @@ return function(GB)
 			for offset = 0, #names - 1 do
 				local index = ((M._mobCursor - 1 + offset) % #names) + 1
 				local name = names[index]
-				local instance = nearestInstanceFor(name, snapshot, true)
+				local instance = nearestInstanceFor(name, snapshot, false)
 				if instance then
 					M._mobCursor = index
 					M._finishGroupName = name
@@ -2062,7 +2199,7 @@ return function(GB)
 		local bestDistance
 		local bestIndex
 		for index, name in ipairs(names) do
-			local instance, distance = nearestInstanceFor(name, snapshot, true)
+			local instance, distance = nearestInstanceFor(name, snapshot, false)
 			if instance and (bestDistance == nil
 				or distance < bestDistance
 				or (distance == bestDistance and index < bestIndex))
@@ -2077,12 +2214,20 @@ return function(GB)
 	end
 
 	local function runManualMob(snapshot)
+		local startedAt = os.clock()
+		if GB and GB.Profiler and type(GB.Profiler.count) == "function" then
+			pcall(GB.Profiler.count, "ManualMobTicks", 1)
+		end
 		if #M.selectedMobs == 0 then
 			cancelRuntime()
+			M._mobFarmState = "WAIT_SELECTION"
+			M._mobDirty = false
+			M._mobWaitRevision = enemyRevision()
 			setStatus("WAIT_SELECTION", "Select at least one mob", {
 				kind = "MOB",
 			})
-			return false
+			notePerf("ManualMob.Tick", startedAt)
+			return false, "wait_selection"
 		end
 		local combat = GB and GB.Combat
 		if type(combat) ~= "table" then
@@ -2125,11 +2270,13 @@ return function(GB)
 						releaseMobTarget()
 					else
 						clearError()
+						M._mobFarmState = "ATTACK"
 						setStatus("MOB_FIGHTING", selectedName, {
 							kind = "MOB",
 							target = selectedName,
 							mode = M.mobMode,
 						})
+						notePerf("ManualMob.Tick", startedAt)
 						return true
 					end
 				end
@@ -2142,15 +2289,39 @@ return function(GB)
 			releaseMobTarget()
 		end
 
+		local selectAt = os.clock()
 		local name, instance = chooseMob(snapshot)
+		notePerf("ManualMob.SelectTarget", selectAt)
+		if GB and GB.Profiler and type(GB.Profiler.count) == "function" then
+			pcall(GB.Profiler.count, "TargetSelections", 1)
+			if not (name and instance) then
+				pcall(GB.Profiler.count, "NoTargetSelections", 1)
+			end
+		end
+		M._mobDirty = false
+		M._mobWaitRevision = enemyRevision()
 		if not (name and instance) then
-			setStatus("MOB_WAITING", "No selected mob is alive", {
+			if GB and GB.Combat and type(GB.Combat.stopLock) == "function" and not GB.Combat.lockMob then
+				pcall(GB.Combat.stopLock)
+			end
+			M._mobFarmState = "WAIT_TARGET"
+			setStatus("WAIT_TARGET", "Waiting for selected mob to appear", {
 				kind = "MOB",
 				mode = M.mobMode,
+				target = M.selectedMobs[1],
+				reason = "TARGET_UNAVAILABLE",
 			})
-			rateLog("WARN", "mob_missing:" .. table.concat(M.selectedMobs, "|"), "no selected mob is alive", 8)
-			return false
+			if not M._mobWaitNotified then
+				M._mobWaitNotified = true
+				mobLog("no live selected target; state=WAIT_TARGET")
+				rateLog("INFO", "mob_wait:" .. table.concat(M.selectedMobs, "|"), "no live selected target; state=WAIT_TARGET", 30)
+			end
+			cancelRuntime()
+			notePerf("ManualMob.WaitTarget", startedAt)
+			notePerf("ManualMob.Tick", startedAt)
+			return false, "wait_target"
 		end
+		M._mobWaitNotified = false
 		M._pendingMobName = name
 		M._pendingMob = instance
 		local engaged = engageTarget(name, instance, {
@@ -2164,11 +2335,13 @@ return function(GB)
 			M._pendingMobName = nil
 		end
 		clearError()
+		M._mobFarmState = engaged and "ATTACK" or "TRAVEL"
 		setStatus(engaged and "MOB_FIGHTING" or "MOB_APPROACHING", name, {
 			kind = "MOB",
 			target = name,
 			mode = M.mobMode,
 		})
+		notePerf("ManualMob.Tick", startedAt)
 		return engaged
 	end
 
@@ -2325,7 +2498,7 @@ return function(GB)
 		local bestDistance
 		local bestIndex
 		for index, descriptor in ipairs(descriptors) do
-			local instance, distance = nearestInstanceFor(descriptor.target, snapshot, true, {
+			local instance, distance = nearestInstanceFor(descriptor.target, snapshot, false, {
 				Marker = descriptor.marker,
 				Island = descriptor.island,
 			})
@@ -2386,7 +2559,8 @@ return function(GB)
 			return true
 		end
 		if not descriptor.marker then
-			setStatus("BOSS_WAITING", "No verified marker for " .. descriptor.target, {
+			M._bossFarmState = "WAIT_TARGET"
+			setStatus("WAIT_TARGET", "Waiting for selected boss to appear", {
 				kind = "BOSS",
 				boss = descriptor.target,
 				reason = "marker unavailable",
@@ -2397,7 +2571,8 @@ return function(GB)
 			or resolveNpc(descriptor.marker, descriptor.island)
 		local instance = type(marker) == "table" and marker.Instance or marker
 		if not instance then
-			setStatus("BOSS_WAITING", "Verified marker unavailable: " .. descriptor.marker, {
+			M._bossFarmState = "WAIT_TARGET"
+			setStatus("WAIT_TARGET", "Verified marker unavailable: " .. descriptor.marker, {
 				kind = "BOSS",
 				boss = descriptor.target,
 				target = descriptor.marker,
@@ -2405,8 +2580,21 @@ return function(GB)
 			})
 			return false
 		end
+		local markerKey = descriptor.marker .. ":" .. tostring(descriptor.island)
+		if M._bossMarkerKey == markerKey then
+			M._bossFarmState = "WAIT_TARGET"
+			setStatus("WAIT_TARGET", "Waiting for selected boss to appear", {
+				kind = "BOSS",
+				boss = descriptor.target,
+				target = descriptor.marker,
+				reason = "waiting at verified marker",
+			})
+			return false
+		end
 		if GB and GB.World and type(GB.World.moveTo) == "function" then
 			pcall(GB.World.moveTo, instance, 10)
+			M._bossMarkerKey = markerKey
+			M._bossFarmState = "WAIT_TARGET"
 			setStatus("BOSS_WAITING", descriptor.target, {
 				kind = "BOSS",
 				boss = descriptor.target,
@@ -2560,15 +2748,17 @@ return function(GB)
 			})
 			return engaged
 		end
+		M._bossFarmState = "WAIT_TARGET"
+		M._bossWaitRevision = enemyRevision()
 		if M.waitBoss then
 			return waitAtBossMarker(snapshot, descriptors)
 		end
-		setStatus("BOSS_UNAVAILABLE", "No selected boss is alive", {
+		setStatus("WAIT_TARGET", "Waiting for selected boss to appear", {
 			kind = "BOSS",
-			reason = "no live target",
+			reason = "TARGET_UNAVAILABLE",
 		})
-		rateLog("WARN", "boss_missing:" .. table.concat(M.selectedBosses, "|"), "no selected boss is alive", 10)
-		return false
+		rateLog("WARN", "boss_missing:" .. table.concat(M.selectedBosses, "|"), "no live selected boss; state=WAIT_TARGET", 30)
+		return false, "wait_target"
 	end
 
 	local function chestIsland(chest)
@@ -2683,12 +2873,15 @@ return function(GB)
 		local chest = M._chestTarget or nearestChest(snapshot, map)
 		if not chest then
 			local loop = M.chestAutoLoop == true or M.autoLoop == true
+			M._chestDirty = false
+			M._chestWaitRevision = chestRevision()
 			if loop then
-				setStatus("CHEST_WAITING", "No unopened chest on " .. map, {
+				M._chestFarmState = "WAIT_TARGET"
+				setStatus("WAIT_TARGET", "No unopened chest on " .. map, {
 					kind = "CHEST",
 					target = map,
 					current = M._chestOpened,
-					reason = "auto loop",
+					reason = "TARGET_UNAVAILABLE",
 				})
 			else
 				completeOwnerWork(OWNER.IDLE, "chests_exhausted", "CHESTS_EXHAUSTED", map, {
@@ -2697,8 +2890,9 @@ return function(GB)
 					current = M._chestOpened,
 				})
 			end
-			return false
+			return false, "wait_chest"
 		end
+		M._chestFarmState = "TRAVEL"
 		M._chestTarget = chest
 		local position = resolverPosition(chest)
 		local distance = positionDistance(snapshot.Position, position)
@@ -2865,15 +3059,29 @@ return function(GB)
 		local label
 		local step
 		if owner == OWNER.MANUAL_QUEST then
+			if M.status == "WAIT_SELECTION" and not M.selectedQuest and #M.selectedRepeatables == 0 then
+				return false, "wait_selection"
+			end
 			label = "manual quest"
 			step = runManualQuest
 		elseif owner == OWNER.MANUAL_MOB then
+			if (M._mobFarmState == "WAIT_TARGET" or M._mobFarmState == "WAIT_SELECTION")
+				and not mobNeedsSelect()
+			then
+				return false, "wait_target"
+			end
 			label = "manual mob"
 			step = runManualMob
 		elseif owner == OWNER.MANUAL_BOSS then
+			if M._bossFarmState == "WAIT_TARGET" and not bossNeedsSelect() then
+				return false, "wait_target"
+			end
 			label = "manual boss"
 			step = runManualBoss
 		elseif owner == OWNER.MANUAL_CHEST then
+			if M._chestFarmState == "WAIT_TARGET" and not chestNeedsSelect() then
+				return false, "wait_chest"
+			end
 			label = "manual chest"
 			step = runManualChest
 		end

@@ -283,6 +283,57 @@ class HubModel:
         self.destroyed = True
 
 
+def assert_binki_zero_live_wait() -> None:
+    controller = ControllerModel()
+    controller.set_mobs(['"Barrel Clown" Binki'])
+    controller.set_mob_mode("NEAREST")
+    controller.toggle_mob(True)
+    assert controller.owner == "MANUAL_MOB"
+    assert controller.choose_mob({}) is None
+    assert controller.mob_target is None
+    generation = controller.generation
+    for _ in range(24):
+        assert controller.choose_mob({}) is None
+    assert controller.generation == generation
+    assert controller.owner == "MANUAL_MOB"
+    controller.choose_mob({'"Barrel Clown" Binki': 12.0})
+    assert controller.mob_target == '"Barrel Clown" Binki'
+
+
+def assert_empty_mob_selection_blocks_farm() -> None:
+    controller = ControllerModel()
+    hub = HubModel(controller)
+    try:
+        hub.toggle("mob_farm", True)
+    except AssertionError:
+        assert controller.owner == "IDLE"
+        return
+    raise AssertionError("empty mob selection must not enable MANUAL_MOB")
+
+
+def assert_hundred_mob_toggles() -> None:
+    controller = ControllerModel(selected_mobs=["Bandit"])
+    start_generation = controller.generation
+    start_cancels = controller.cancel_count
+    for _ in range(100):
+        controller.toggle_mob(True)
+        controller.toggle_mob(False)
+    assert controller.owner == "IDLE"
+    assert controller.mob_target is None
+    assert controller.generation == start_generation + 200
+    assert controller.cancel_count == start_cancels + 200
+
+
+def assert_empty_continuous_modes_wait() -> None:
+    mob = ControllerModel(selected_mobs=['"Barrel Clown" Binki'])
+    mob.toggle_mob(True)
+    assert mob.choose_mob({}) is None
+    quest = ControllerModel(owner="MANUAL_QUEST")
+    assert quest.select_repeat(set()) is None or quest.repeat_active is None
+    chest = ControllerModel(owner="MANUAL_CHEST")
+    assert chest.chest_target is None
+
+
 def assert_mob_toggle() -> None:
     controller = ControllerModel()
     controller.set_mobs(["Bandit", "Marine", "Bandit"])
@@ -593,6 +644,36 @@ def static_checks(
         "manual and queued work runs outside the sequential scheduler step",
     )
     suite.check(
+        "static.controller.no_findtarget_selection",
+        "Combat.findTarget" not in controller
+        and "GB.Combat.findTarget" not in controller
+        and has_all(controller, ("WAIT_TARGET", "enemiesFor", "mobNeedsSelect", "ManualMob.LiveLookup")),
+        "Manual Mob selects from EnemyIndex only and waits when alive=0",
+    )
+    suite.check(
+        "static.controller.wait_target_skips_dispatch",
+        has_all(
+            controller,
+            (
+                'M._mobFarmState == "WAIT_TARGET"',
+                "not mobNeedsSelect()",
+                "enemyRevision",
+                "NoTargetSelections",
+            ),
+        ),
+        "WAIT_TARGET returns from the scheduler without a new worker",
+    )
+    suite.check(
+        "static.hub.wait_target_status",
+        has_all(hub, ("WAITING FOR MOB", "refreshDynamicOptions", "Select at least one mob")),
+        "Mobs tab shows waiting state and empty-selection notice",
+    )
+    suite.check(
+        "static.resolver.enemy_revision",
+        has_all(resolver, ("_enemyRevision", "bumpEnemyRevision", "ChildAdded", "hookChestIndex")),
+        "EnemyIndex/chest events bump revision to wake WAIT_TARGET",
+    )
+    suite.check(
         "static.controller.stickiness_consumed",
         has_all(
             controller,
@@ -876,6 +957,10 @@ def main() -> int:
     generated = read_source(GENERATED_PATH, suite, "kaitun_ui")
 
     suite.case("model.toggle_mob_farm_on_off", assert_mob_toggle)
+    suite.case("model.binki_alive0_wait_target", assert_binki_zero_live_wait)
+    suite.case("model.empty_mob_selection_blocks_farm", assert_empty_mob_selection_blocks_farm)
+    suite.case("model.hundred_mob_toggles", assert_hundred_mob_toggles)
+    suite.case("model.empty_continuous_modes_wait", assert_empty_continuous_modes_wait)
     suite.case("model.selected_mobs_invalidate_target", assert_selection_invalidates_target)
     suite.case("model.all_four_mob_modes", assert_all_mob_modes)
     suite.case("model.selected_repeatable_start_and_reaccept", assert_repeat_start_and_cycle)

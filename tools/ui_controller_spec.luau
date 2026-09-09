@@ -48,6 +48,12 @@ local GB = {
 	},
 	Combat = {
 		stopLock = noop,
+		findTarget = function()
+			error("Combat.findTarget must not run from Manual Mob selection")
+		end,
+		IsEnemyAlive = function(inst)
+			return type(inst) == "table" and inst.alive ~= false
+		end,
 	},
 	World = {
 		cancelTween = noop,
@@ -128,6 +134,95 @@ controller:tick()
 assert(GB.Engine.decisions == 1, "FULL_AUTO must call the proven Engine")
 controller:stop("off")
 assert(controller.owner == controller.OWNER.IDLE)
+
+local findTargetCalls = 0
+GB.Combat.findTarget = function()
+	findTargetCalls = findTargetCalls + 1
+	return nil
+end
+GB.Resolver = {
+	_enemyRevision = 1,
+	_chestRevision = 1,
+	enemies = function()
+		return {}
+	end,
+	positionOf = function()
+		return nil
+	end,
+}
+GB.Profiler = {
+	begin = function()
+		return os.clock()
+	end,
+	done = function()
+		return 0
+	end,
+	count = function()
+	end,
+}
+
+local fresh = factory(GB)
+assert(fresh:setSelectedMobs({ '"Barrel Clown" Binki' }))
+assert(fresh:setMobMode("NEAREST"))
+assert(fresh:setOwner(fresh.OWNER.MANUAL_MOB, "binki_zero"))
+fresh:tick()
+assert(fresh.status == "WAIT_TARGET", "alive=0 must enter WAIT_TARGET")
+assert(fresh._mobFarmState == "WAIT_TARGET")
+assert(findTargetCalls == 0, "Manual Mob must not call Combat.findTarget")
+local serialAfterWait = fresh._workSerial
+for _ = 1, 24 do
+	fresh:tick()
+end
+assert(fresh.status == "WAIT_TARGET", "missing target must stay WAIT_TARGET")
+assert(fresh._workSerial == serialAfterWait, "WAIT_TARGET must not spawn extra workers")
+assert(fresh._work == nil)
+assert(findTargetCalls == 0)
+
+GB.Resolver.enemies = function()
+	return { { alive = true, Parent = true, Name = '"Barrel Clown" Binki' } }
+end
+GB.Resolver._enemyRevision = (GB.Resolver._enemyRevision or 1) + 1
+fresh:tick()
+assert(fresh.status ~= "WAIT_TARGET", "spawned live target must leave WAIT_TARGET")
+assert(findTargetCalls == 0, "spawned target must use EnemyIndex only")
+
+fresh:setSelectedMobs({})
+fresh:tick()
+assert(fresh.status == "WAIT_SELECTION", "empty selection must wait, not farm")
+local emptySerial = fresh._workSerial
+for _ = 1, 12 do
+	fresh:tick()
+end
+assert(fresh._workSerial == emptySerial, "WAIT_SELECTION must not respawn workers")
+
+local toggleSpawned = #spawned
+local toggleSerial = fresh._workSerial
+for _ = 1, 100 do
+	fresh:setOwner(fresh.OWNER.MANUAL_MOB, "toggle_on")
+	fresh:stop("toggle_off")
+end
+assert(fresh.owner == fresh.OWNER.IDLE)
+assert(fresh._work == nil)
+assert(#spawned == toggleSpawned, "100 toggles must not leak workers")
+assert(fresh._workSerial == toggleSerial, "toggles must not start farm workers")
+
+GB.Resolver.enemies = function()
+	return {}
+end
+GB.Resolver._enemyRevision = (GB.Resolver._enemyRevision or 1) + 1
+fresh:setSelectedBosses({ "Choppy The Clown" })
+assert(fresh:setOwner(fresh.OWNER.MANUAL_BOSS, "boss_empty"))
+fresh:tick()
+assert(fresh.status == "WAIT_TARGET", "empty boss farm must WAIT_TARGET")
+assert(findTargetCalls == 0)
+local bossSerial = fresh._workSerial
+for _ = 1, 8 do
+	fresh:tick()
+end
+assert(fresh._workSerial == bossSerial)
+
+fresh:destroy()
+assert(fresh._destroyed == true)
 
 controller:destroy()
 assert(controller._destroyed == true)

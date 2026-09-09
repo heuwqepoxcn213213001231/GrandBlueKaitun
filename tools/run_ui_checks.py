@@ -19,6 +19,7 @@ STEPS = (
     ["python3", "tools/verify_single.py"],
     ["python3", "tools/verify_ui.py"],
     ["python3", "tools/ui_scenario_tests.py"],
+    ["python3", "tools/loop_audit.py"],
 )
 
 

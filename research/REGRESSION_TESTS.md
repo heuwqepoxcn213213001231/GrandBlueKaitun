@@ -24,7 +24,8 @@ These are **static** checks. A PASS means the current source still contains the 
 | Loader pin | no DEFAULT_BOOTSTRAP_REF; PinBuild | STATIC |
 | RemoteBroker | PlayerData cache-only refresh | STATIC |
 | SelfCheck | `GB.SelfCheck` | STATIC |
+| Continuous Mob Farm alive=0 | `"Barrel Clown" Binki` with empty EnemyIndex enters `WAIT_TARGET`; no combat hunt fallback | STATIC (`tools/ui_controller_spec.luau`, `tools/ui_scenario_tests.py`) |
 
-Also: `python3 tools/scenario_tests.py`.
+Also: `python3 tools/scenario_tests.py` and `python3 tools/ui_scenario_tests.py`.
 
 Live playthrough of Fresh→Anchor→Clown→Maple is still **RUNTIME required**.

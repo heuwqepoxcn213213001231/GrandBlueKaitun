@@ -1,11 +1,11 @@
 {
   "name": "GrandBlueKaitunUI",
   "schema": 1,
-  "version": "1.1.0",
+  "version": "1.1.1",
   "core_version": "1.3.2",
-  "commit": "0f2d9e7",
-  "built_at": "2026-09-09T16:18:34+00:00",
-  "source_hash": "876dc2ce244d6154",
+  "commit": "4314e21",
+  "built_at": "2026-09-09T23:48:19+07:00",
+  "source_hash": "b3f5f1a0690ccdb3",
   "production": "kaitun_ui.lua",
   "sources": [
     "Config.lua",
@@ -61,14 +61,14 @@
     "UI_VERSION"
   ],
   "headless_sha256": "1dd3b1b8a88c3648b571288fd70f1d4e98f937c1c598dadcb20fc0a140a78929",
-  "line_count": 44945,
-  "byte_count": 1357973,
+  "line_count": 45232,
+  "byte_count": 1366238,
   "build": {
-    "version": "1.1.0",
+    "version": "1.1.1",
     "core_version": "1.3.2",
-    "commit": "0f2d9e7",
-    "built_at": "2026-09-09T16:18:34+00:00",
-    "source_hash": "876dc2ce244d6154",
+    "commit": "4314e21",
+    "built_at": "2026-09-09T23:48:19+07:00",
+    "source_hash": "b3f5f1a0690ccdb3",
     "production": "kaitun_ui.lua",
     "sources": [
       "Config.lua",
@@ -182,9 +182,9 @@
       "research/UI_CURRENT_FEATURES.md"
     ],
     "headless_sha256": "1dd3b1b8a88c3648b571288fd70f1d4e98f937c1c598dadcb20fc0a140a78929",
-    "artifact_sha256": "a7822934526cb2fe88be3378b1013192cbe8cedcd0dbb163c31f78dbd3270a3b",
-    "line_count": 44945,
-    "byte_count": 1357973
+    "artifact_sha256": "48164f9eeb68221131890b7f4b68881bcb3e99cb1fabcd55789d839ba279e4c4",
+    "line_count": 45232,
+    "byte_count": 1366238
   },
   "hash_inputs": [
     "Config.lua",
@@ -244,5 +244,5 @@
     "research/UI_FEATURE_MATRIX.md",
     "research/UI_CURRENT_FEATURES.md"
   ],
-  "artifact_sha256": "a7822934526cb2fe88be3378b1013192cbe8cedcd0dbb163c31f78dbd3270a3b"
+  "artifact_sha256": "48164f9eeb68221131890b7f4b68881bcb3e99cb1fabcd55789d839ba279e4c4"
 }
