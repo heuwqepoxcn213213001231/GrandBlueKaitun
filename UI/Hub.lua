@@ -3205,10 +3205,14 @@ return function(GB)
 		end
 		if #UI.mobs == 0 then lines[#lines + 1] = "No targets selected." end
 		local control = controllerSnapshot()
-		if control.status == "WAIT_TARGET" then
-			lines[#lines + 1] = "Status: WAITING FOR MOB — waiting for spawn/live instance."
+		if control.status == "MOB_STREAM" then
+			lines[#lines + 1] = "Status: TRAVELING TO MOB ZONE — stream then attack."
+		elseif control.status == "WAIT_TARGET" then
+			lines[#lines + 1] = "Status: WAITING FOR MOB — no live instance here. Travel/stream if a zone is known, then attack when it appears."
 		elseif control.status == "WAIT_SELECTION" then
 			lines[#lines + 1] = "Status: Select at least one mob."
+		elseif control.status == "MOB_FIGHTING" or control.status == "MOB_APPROACHING" then
+			lines[#lines + 1] = "Status: " .. tostring(control.status) .. " " .. tostring(control.statusReason or "")
 		end
 		lines[#lines + 1] = "Controller: " .. tostring(control.owner) .. " / " .. tostring(control.status)
 		setControl("Mobs", "Status", table.concat(lines, "\n"))

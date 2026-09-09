@@ -133,6 +133,7 @@ return function(GB)
 	M._mobWaitRevision = nil
 	M._mobWaitNotified = false
 	M._mobMarkerKey = nil
+	M._mobWaitIsland = nil
 	M._mobDirty = true
 	M._bossFarmState = "DISABLED"
 	M._bossWaitRevision = nil
@@ -565,6 +566,7 @@ return function(GB)
 		M._mobWaitRevision = nil
 		M._mobWaitNotified = false
 		M._mobMarkerKey = nil
+		M._mobWaitIsland = nil
 		M._mobDirty = true
 		M._bossCursor = 1
 		M._pendingBoss = nil
@@ -2213,6 +2215,126 @@ return function(GB)
 		return bestName, bestInstance
 	end
 
+	local function knowledgeForMob(name)
+		if type(name) ~= "string" or name == "" then
+			return nil
+		end
+		local best
+		local function consider(raw)
+			if type(raw) ~= "table" then
+				return
+			end
+			local objective = raw.T or raw.objective
+			local target = raw.A or raw.target
+			local source = raw.Src or raw.source
+			local method = raw.M or raw.acquire
+			local combat = objective == "Kill"
+				or objective == "Defeat"
+				or objective == "Hit"
+				or objective == "Shoot"
+				or method == "EnemyDrop"
+				or method == "BossDrop"
+			if not combat then
+				return
+			end
+			if target ~= name and source ~= name then
+				return
+			end
+			local marker = raw.Mk or raw.marker
+			if type(marker) ~= "string" or marker == "" or marker == "\\" then
+				marker = nil
+			end
+			local quest = raw.Q or raw.quest
+			local stage = tonumber(raw.S or raw.stage) or 0
+			if not marker and GB and GB.QuestData and type(GB.QuestData.combatMarker) == "function" then
+				local ok, value = pcall(GB.QuestData.combatMarker, quest, stage, objective or "Kill", name)
+				if ok and type(value) == "string" and value ~= "" and value ~= "\\" then
+					marker = value
+				end
+			end
+			best = {
+				island = raw.Loc or raw.location or raw.island,
+				marker = marker,
+				quest = quest,
+			}
+		end
+		local specs = GB and GB.QuestSpecs and GB.QuestSpecs.STAGES
+		if type(specs) == "table" then
+			for _, raw in pairs(specs) do
+				consider(raw)
+			end
+		end
+		local generated = GB and GB.GeneratedData and GB.GeneratedData.Stages
+		if type(generated) == "table" then
+			for _, raw in pairs(generated) do
+				consider(raw)
+			end
+		end
+		return best
+	end
+
+	local function streamSelectedMob(snapshot)
+		local focus = M._finishGroupName
+		if not (focus and contains(M.selectedMobs, focus)) then
+			focus = M.selectedMobs[M._mobCursor] or M.selectedMobs[1]
+		end
+		local info = knowledgeForMob(focus)
+		if not info then
+			return false
+		end
+		if info.island
+			and snapshot.PhysicalIsland
+			and snapshot.PhysicalIsland ~= info.island
+			and GB
+			and GB.Travel
+			and type(GB.Travel.goIsland) == "function"
+		then
+			local key = "island:" .. tostring(info.island)
+			if M._mobMarkerKey == key then
+				return false
+			end
+			pcall(GB.Travel.goIsland, info.island)
+			M._mobMarkerKey = key
+			M._mobFarmState = "TRAVEL_MARKER"
+			setStatus("MOB_STREAM", "Travel to " .. tostring(info.island) .. " for " .. tostring(focus), {
+				kind = "MOB",
+				target = focus,
+				reason = "stream island",
+			})
+			mobLog("stream island=" .. tostring(info.island) .. " mob=" .. tostring(focus))
+			return true
+		end
+		if type(info.marker) == "string" then
+			local key = "marker:" .. info.marker .. ":" .. tostring(info.island)
+			if M._mobMarkerKey == key then
+				return false
+			end
+			local resolved = resolveMarker(info.marker, info.island) or resolveNpc(info.marker, info.island)
+			local inst = type(resolved) == "table" and resolved.Instance or resolved
+			if inst and GB and GB.World then
+				if type(GB.World.goPlace) == "function" then
+					pcall(GB.World.goPlace, inst)
+				elseif type(GB.World.moveTo) == "function" then
+					pcall(GB.World.moveTo, inst, 10)
+				else
+					M._mobMarkerKey = key
+					return false
+				end
+				M._mobMarkerKey = key
+				M._mobFarmState = "TRAVEL_MARKER"
+				setStatus("MOB_STREAM", tostring(focus), {
+					kind = "MOB",
+					target = focus,
+					reason = "stream marker",
+				})
+				mobLog("stream marker=" .. info.marker .. " mob=" .. tostring(focus))
+				return true
+			end
+			M._mobMarkerKey = key
+		end
+		return false
+	end
+
 	local function runManualMob(snapshot)
 		local startedAt = os.clock()
 		if GB and GB.Profiler and type(GB.Profiler.count) == "function" then
@@ -2304,11 +2426,23 @@ return function(GB)
 			if GB and GB.Combat and type(GB.Combat.stopLock) == "function" and not GB.Combat.lockMob then
 				pcall(GB.Combat.stopLock)
 			end
+			if streamSelectedMob(snapshot) then
+				M._mobWaitIsland = snapshot.PhysicalIsland
+				notePerf("ManualMob.Tick", startedAt)
+				return true, "stream"
+			end
 			M._mobFarmState = "WAIT_TARGET"
-			setStatus("WAIT_TARGET", "Waiting for selected mob to appear", {
+			M._mobWaitIsland = snapshot.PhysicalIsland
+			local focus = M.selectedMobs[1]
+			local info = knowledgeForMob(focus)
+			local reason = "Waiting for selected mob to appear"
+			if info and info.island then
+				reason = "Waiting for " .. tostring(focus) .. " on " .. tostring(info.island)
+			end
+			setStatus("WAIT_TARGET", reason, {
 				kind = "MOB",
 				mode = M.mobMode,
-				target = M.selectedMobs[1],
+				target = focus,
 				reason = "TARGET_UNAVAILABLE",
 			})
 			if not M._mobWaitNotified then
@@ -2316,7 +2450,9 @@ return function(GB)
 				mobLog("no live selected target; state=WAIT_TARGET")
 				rateLog("INFO", "mob_wait:" .. table.concat(M.selectedMobs, "|"), "no live selected target; state=WAIT_TARGET", 30)
 			end
-			cancelRuntime()
+			if not M._mobMarkerKey then
+				cancelRuntime()
+			end
 			notePerf("ManualMob.WaitTarget", startedAt)
 			notePerf("ManualMob.Tick", startedAt)
 			return false, "wait_target"
@@ -3068,7 +3204,13 @@ return function(GB)
 			if (M._mobFarmState == "WAIT_TARGET" or M._mobFarmState == "WAIT_SELECTION")
 				and not mobNeedsSelect()
 			then
-				return false, "wait_target"
+				local snap = safeState(false)
+				if snap.PhysicalIsland and snap.PhysicalIsland ~= M._mobWaitIsland then
+					M._mobDirty = true
+					M._mobWaitIsland = snap.PhysicalIsland
+				else
+					return false, "wait_target"
+				end
 			end
 			label = "manual mob"
 			step = runManualMob

@@ -647,7 +647,7 @@ def static_checks(
         "static.controller.no_findtarget_selection",
         "Combat.findTarget" not in controller
         and "GB.Combat.findTarget" not in controller
-        and has_all(controller, ("WAIT_TARGET", "enemiesFor", "mobNeedsSelect", "ManualMob.LiveLookup")),
+        and has_all(controller, ("WAIT_TARGET", "enemiesFor", "mobNeedsSelect", "ManualMob.LiveLookup", "MOB_STREAM", "streamSelectedMob", "knowledgeForMob")),
         "Manual Mob selects from EnemyIndex only and waits when alive=0",
     )
     suite.check(
@@ -665,7 +665,7 @@ def static_checks(
     )
     suite.check(
         "static.hub.wait_target_status",
-        has_all(hub, ("WAITING FOR MOB", "refreshDynamicOptions", "Select at least one mob")),
+        has_all(hub, ("WAITING FOR MOB", "TRAVELING TO MOB ZONE", "refreshDynamicOptions", "Select at least one mob")),
         "Mobs tab shows waiting state and empty-selection notice",
     )
     suite.check(

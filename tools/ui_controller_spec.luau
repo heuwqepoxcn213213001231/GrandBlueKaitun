@@ -209,6 +209,41 @@ assert(fresh._workSerial == toggleSerial, "toggles must not start farm workers")
 GB.Resolver.enemies = function()
 	return {}
 end
+GB.QuestSpecs = {
+	STAGES = {
+		{ T = "Kill", A = "Bazaji", Loc = "Clown Town", Q = "Undermine The Circus 2", S = 1 },
+	},
+}
+GB.QuestData = {
+	combatMarker = function()
+		return "Bazaji"
+	end,
+}
+local islandCalls = 0
+GB.Travel = {
+	goIsland = function()
+		islandCalls = islandCalls + 1
+		return true
+	end,
+}
+local function mapleState()
+	return { Alive = true, Level = 1, PhysicalIsland = "Maple Village" }
+end
+GB.State.get = mapleState
+GB.State.refresh = mapleState
+assert(fresh:setSelectedMobs({ "Bazaji" }))
+assert(fresh:setOwner(fresh.OWNER.MANUAL_MOB, "bazaji_stream"))
+fresh:tick()
+assert(islandCalls == 1, "alive=0 Bazaji must issue one Clown Town stream travel")
+assert(fresh.status == "MOB_STREAM", "stream travel must be visible")
+assert(findTargetCalls == 0)
+local islandsAfter = islandCalls
+for _ = 1, 10 do
+	fresh:tick()
+end
+assert(islandCalls == islandsAfter, "stream travel must be one-shot")
+assert(findTargetCalls == 0)
+
 GB.Resolver._enemyRevision = (GB.Resolver._enemyRevision or 1) + 1
 fresh:setSelectedBosses({ "Choppy The Clown" })
 assert(fresh:setOwner(fresh.OWNER.MANUAL_BOSS, "boss_empty"))
