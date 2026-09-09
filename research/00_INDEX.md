@@ -1,6 +1,6 @@
 # Grand Blue (Eternal Pose) — Research Pack
 
-**Turn scope:** 1.2.0 continuous progression + stable loader. Entry `main/loader.lua` → VERSION/manifest → immutable `build.commit` bundle. Reports: `CONTINUOUS_EXECUTION_AUDIT.md`, `RUNTIME_ARCHITECTURE.md`, `REMOTE_LATENCY_AUDIT.md`, `SCENARIO_TESTS.md`, plus existing knowledge pack.
+**Turn scope:** 1.3.0 one-file production. Entry `main/kaitun.lua` (single compile). Developer modules stay under `Core/` `Game/` `Systems/` `Progression/` `src/boot.lua`. Reports: `RUNTIME_ARCHITECTURE.md`, `CONTINUOUS_EXECUTION_AUDIT.md`, `SCENARIO_TESTS.md`, plus existing knowledge pack.
 
 **Place (Studio):** `place 118635363908336 Game.rbxl` — connected. `Workspace.Islands` chỉ có 3 đảo.
 

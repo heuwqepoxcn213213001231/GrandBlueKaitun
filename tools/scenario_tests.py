@@ -27,6 +27,7 @@ def main() -> int:
     scheduler = read("Core/Scheduler.lua")
     combat = read("Systems/Combat.lua")
     loader = read("loader.lua")
+    boot = read("src/boot.lua")
     kaitun = read("kaitun.lua")
     world = read("Game/World.lua")
     config = read("Config.lua")
@@ -78,19 +79,21 @@ def main() -> int:
     if "task.wait(0.35)" in quest.split("function waitQuestAccepted", 1)[0][-200:] and False:
         pass
 
-    if "function GB.SelfCheck" not in kaitun:
+    if "function GB.SelfCheck" not in boot or "function GB.SelfCheck" not in kaitun:
         fail("SelfCheck missing")
-    if "IdleReason" not in kaitun:
+    if "IdleReason" not in boot:
         fail("SelfCheck IdleReason missing")
 
-    if "DEFAULT_BOOTSTRAP_REF" in loader:
-        fail("loader still pins DEFAULT_BOOTSTRAP_REF")
-    if "PinBuild" not in loader:
-        fail("loader does not pin content to build.commit")
-    if "GB_DEV_MODULAR" not in loader:
-        fail("loader missing modular-dev gate")
-    if "Stale GB_BASE_URL" not in loader:
-        fail("loader must ignore production GB_BASE_URL pins")
+    if "loader.lua retired" not in loader:
+        fail("loader.lua must retire")
+    if "LoadModule" in loader:
+        fail("loader.lua still has LoadModule")
+    if "function LoadModule" in kaitun or "local function LoadModule" in kaitun:
+        fail("generated kaitun.lua still has LoadModule")
+    if "GB_USE_BUNDLE" in kaitun or "GB_BASE_URL" in kaitun:
+        fail("generated kaitun.lua still requires GB_USE_BUNDLE/GB_BASE_URL")
+    if "queue_on_teleport" not in kaitun:
+        fail("generated kaitun.lua missing teleport requeue")
 
     if "pos.Y > 120" not in world:
         fail("travel sky clamp missing")
@@ -153,10 +156,10 @@ def main() -> int:
         fail("Investigate still blocks decide on waitTaggedLeaf")
     if "isInteractLike(o.Type)" not in recovery:
         fail("Recovery still fingerprint-defers Investigate")
-    if "function startSessionLog" not in loader:
-        fail("loader missing session writefile log")
-    if 'GBKaitun/logs/latest.txt' not in loader:
-        fail("loader missing latest.txt log path")
+    if "function startSessionLog" not in kaitun:
+        fail("generated kaitun.lua missing session writefile log")
+    if "GBKaitun/logs/latest.txt" not in kaitun:
+        fail("generated kaitun.lua missing latest.txt log path")
     if "_GBKaitunLogWrite" not in read("Core/Logger.lua"):
         fail("Logger must tee suppressed lines to writefile")
     if "camp-near-pirate" not in quest:

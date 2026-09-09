@@ -8,13 +8,17 @@ From repo root:
 python3 tools/run_hardening.py
 ```
 
-That compiles `Game/GeneratedData.lua` from research JSON, then runs:
+That compiles `Game/GeneratedData.lua` from research JSON, emits root `kaitun.lua`, then runs:
 
+- `tools/build_single.py`
 - `tools/validate_game_data.py`
 - `tools/quest_route_validator.py`
 - `tools/perf_static_audit.py`
 - `tools/regression_tests.py`
+- `tools/scenario_tests.py`
 - `tools/diff_game_data.py`
+- `tools/verify_single.py`
+- `tools/verify_release.py`
 
 Do **not** run `gen_quest_artifacts.py` unless you re-apply escort marker overrides (`Mayor Kiyoshi Escort`). Runtime overlays live in `tools/build_game_data.py`.
 

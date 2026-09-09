@@ -1,17 +1,15 @@
-# Runtime Architecture — 1.2.0
+# Runtime Architecture — 1.3.0
 
 ```
-main/loader.lua?cb=os.time()
-  → VERSION + manifest.json (branch tip, cache-bust)
-  → validate version match
-  → build.commit (immutable)
-  → ONE HttpGet dist/kaitun.lua from that SHA
-  → execute bundle
+main/kaitun.lua?cb=os.time()
+  → one HttpGet
+  → one compile
+  → session log + singleton replace
+  → inline Core / Data / Game / Systems / Progression
+  → Ready
 ```
 
-Production does **not** download Systems/*.lua individually.
-
-DEV modular: `getgenv().GB_DEV = true` and `GB_DEV_MODULAR = true`. Optional `GB_PIN_COMMIT`. Stale `GB_BASE_URL` is ignored unless `GB_DEV`.
+No VERSION fetch. No manifest. No `dist/` module-string bundle. No `GB.Load` / `LoadModule`. `loader.lua` is retired.
 
 ```
 Events (BeginQuest/ClearQuest/QuestProgress/…)
@@ -32,3 +30,5 @@ RemoteBroker
 Owner priority: RESPAWN → TUTORIAL → DIALOGUE → QUEST_TURNIN → QUEST_ACCEPT → QUEST_OBJECTIVE → COMBAT → TRAVEL → SUBGOAL → FARM.
 
 `GBKaitun:SelfCheck()` reports Enabled, Alive, Version, Build, Intent, Owner, Quest, FarmSession, IdleReason, RemotePending, LastProgress, ProfilerWorst.
+
+Teleport: `queue_on_teleport` queues the same `main/kaitun.lua` one-liner.

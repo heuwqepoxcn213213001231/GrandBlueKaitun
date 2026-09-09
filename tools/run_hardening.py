@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the static hardening suite. Does not build the production bundle."""
+"""Run the static hardening suite and regenerate production kaitun.lua."""
 
 from __future__ import annotations
 
@@ -10,12 +10,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 STEPS = (
     ["python3", "tools/build_game_data.py"],
+    ["python3", "tools/build_single.py"],
     ["python3", "tools/validate_game_data.py"],
     ["python3", "tools/quest_route_validator.py"],
     ["python3", "tools/perf_static_audit.py"],
     ["python3", "tools/regression_tests.py"],
     ["python3", "tools/scenario_tests.py"],
     ["python3", "tools/diff_game_data.py"],
+    ["python3", "tools/syntax_check.py"],
+    ["python3", "tools/verify_single.py"],
+    ["python3", "tools/verify_release.py"],
 )
 
 

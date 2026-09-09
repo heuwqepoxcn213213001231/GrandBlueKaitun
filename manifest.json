@@ -1,15 +1,17 @@
 {
   "name": "GrandBlueKaitun",
-  "version": "1.2.13",
+  "version": "1.3.0",
   "build": {
-    "commit": "6bfb1ca",
-    "built_at": "2026-09-09T00:06:03+07:00",
-    "generated": "1.2.13",
-    "bundle": "dist/kaitun.lua"
+    "commit": "2761c90",
+    "built_at": "2026-09-09T18:47:37+07:00",
+    "generated": "1.3.0",
+    "bundle": "kaitun.lua",
+    "source_hash": "6c8b8ae6c375bc3a"
   },
-  "entry": "kaitun.lua",
+  "entry": "src/boot.lua",
+  "production": "kaitun.lua",
   "files": {
-    "kaitun.lua": "kaitun.lua",
+    "src/boot.lua": "src/boot.lua",
     "Config.lua": "Config.lua",
     "picker.lua": "picker.lua",
     "Core/Logger.lua": "Core/Logger.lua",
@@ -53,8 +55,7 @@
     "Systems/Tutorial.lua": "Systems/Tutorial.lua",
     "Systems/Respawn.lua": "Systems/Respawn.lua",
     "Progression/Planner.lua": "Progression/Planner.lua",
-    "Progression/DecisionEngine.lua": "Progression/DecisionEngine.lua",
-    "dist/kaitun.lua": "dist/kaitun.lua"
+    "Progression/DecisionEngine.lua": "Progression/DecisionEngine.lua"
   },
   "order": [
     {
@@ -279,5 +280,5 @@
       "factory": false
     }
   ],
-  "bundle": "dist/kaitun.lua"
+  "bundle": "kaitun.lua"
 }

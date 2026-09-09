@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SKIP = {"dist/kaitun.lua"}
+SKIP = {"dist/kaitun.lua", "kaitun.lua"}
 PATTERNS = (
     "GetDescendants",
     "HttpGet",
@@ -29,6 +29,8 @@ def classify(path: str, line: str, pat: str) -> str:
     if "allowdeep" in s or "debug" in s or "dumpnearby" in s or "diagnostic" in s:
         return "DIAGNOSTIC"
     if path.endswith("loader.lua") and pat == "HttpGet":
+        return "ONE_TIME"
+    if path.endswith("src/boot.lua") and pat == "HttpGet":
         return "ONE_TIME"
     if path.endswith("Core/Profiler.lua"):
         return "SAFE"

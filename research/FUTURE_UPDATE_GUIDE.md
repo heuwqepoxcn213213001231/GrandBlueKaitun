@@ -10,8 +10,8 @@ Research JSON / `data.json` stay the source of truth. Generated Lua is never han
 4. `python3 tools/validate_game_data.py` — FAIL means a STATIC_VERIFIED main-route stage lost its plan.
 5. `python3 tools/quest_route_validator.py`
 6. `python3 tools/regression_tests.py`
-7. Rebuild bundle: `python3 tools/build_bundle.py && python3 tools/verify_release.py`
-8. Do **not** publish a `GB_BASE_URL = <old commit>` test command. Production is `main/loader.lua?cb=os.time()` which pins `dist/kaitun.lua` to `manifest.build.commit`.
+7. Rebuild production file: `python3 tools/build_single.py && python3 tools/verify_single.py && python3 tools/verify_release.py`
+8. Production is `main/kaitun.lua?cb=os.time()`. Do not publish a module-loader command.
 
 ## Resolver / path drift
 

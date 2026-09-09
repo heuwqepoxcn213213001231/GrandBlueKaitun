@@ -19,7 +19,8 @@ def main() -> None:
     version_path = root / "VERSION"
     manifest_path = root / "manifest.json"
     loader_path = root / "loader.lua"
-    kaitun_path = root / "kaitun.lua"
+    boot_path = root / "src" / "boot.lua"
+    prod_path = root / "kaitun.lua"
     profiler_path = root / "Core" / "Profiler.lua"
     stats_path = root / "Systems" / "Stats.lua"
     quest_path = root / "Systems" / "Quest.lua"
@@ -27,7 +28,6 @@ def main() -> None:
     combat_path = root / "Systems" / "Combat.lua"
     engine_path = root / "Progression" / "DecisionEngine.lua"
     respawn_path = root / "Systems" / "Respawn.lua"
-    dist_path = root / "dist" / "kaitun.lua"
 
     if not version_path.is_file():
         fail("missing VERSION")
@@ -62,31 +62,34 @@ def main() -> None:
         rel = row.get("path")
         if not isinstance(rel, str) or rel not in files:
             fail(f"manifest.order path invalid: {rel}")
+        if rel in {"kaitun.lua", "dist/kaitun.lua", "src/boot.lua"}:
+            fail(f"{rel} must not be in runtime order")
+
+    if str(manifest.get("entry") or "") != "src/boot.lua":
+        fail("manifest.entry must be src/boot.lua")
+    if str(manifest.get("production") or manifest.get("bundle") or "") != "kaitun.lua":
+        fail("manifest.production/bundle must be kaitun.lua")
+    if "src/boot.lua" not in files:
+        fail("manifest.files missing src/boot.lua")
+    if "kaitun.lua" in files:
+        fail("root kaitun.lua must not be a developer module in manifest.files")
 
     loader_src = loader_path.read_text(encoding="utf-8")
-    kaitun_src = kaitun_path.read_text(encoding="utf-8")
+    boot_src = boot_path.read_text(encoding="utf-8")
+    prod_src = prod_path.read_text(encoding="utf-8")
     profiler_src = profiler_path.read_text(encoding="utf-8")
     player_src = player_data_path.read_text(encoding="utf-8")
     combat_src = combat_path.read_text(encoding="utf-8")
     engine_src = engine_path.read_text(encoding="utf-8")
-    if re.search(r'local\s+versionText\s*=\s*"[\d.]+"', loader_src):
-        fail("loader.lua still has hardcoded version fallback")
-    if "api.github.com/repos/" in loader_src:
-        fail("loader.lua still resolves commit via GitHub API at runtime")
-    if "BOOT_CACHE_BUST" not in loader_src:
-        fail("loader.lua missing VERSION/manifest cache-bust token")
-    if "[Kaitun][Loader][FATAL] VERSION mismatch file=" not in loader_src:
-        fail("loader.lua missing fatal VERSION mismatch guard")
-    if "fetchBestManifest" in loader_src or "pickNewerManifest" in loader_src:
-        fail("loader.lua still shops VERSION/manifest across roots")
-    if '[Kaitun][BOOT] version=%s build=%s' not in loader_src:
-        fail("loader.lua missing authoritative BOOT version/build line")
-    if '[Kaitun][BOOT] version=%s build=%s' not in kaitun_src:
-        fail("kaitun.lua missing authoritative BOOT version/build line")
-    if "GB_VERSION or \"1." in kaitun_src:
-        fail("kaitun.lua still has numeric GB_VERSION fallback")
-    if "GB.lp.CharacterAdded:Connect" in kaitun_src:
-        fail("kaitun.lua still owns CharacterAdded; Respawn.bind must own it")
+
+    if "loader.lua retired" not in loader_src:
+        fail("loader.lua must retire and point at kaitun.lua")
+    if "game:HttpGet" in loader_src and "LoadModule" in loader_src:
+        fail("loader.lua still fetches modules")
+    if "GB.lp.CharacterAdded:Connect" in boot_src:
+        fail("boot still owns CharacterAdded; Respawn.bind must own it")
+    if "GB_VERSION or \"1." in boot_src or "GB_VERSION or \"1." in prod_src:
+        fail("numeric GB_VERSION fallback still present")
     if not respawn_path.is_file():
         fail("missing Systems/Respawn.lua")
     respawn_src = respawn_path.read_text(encoding="utf-8")
@@ -130,8 +133,8 @@ def main() -> None:
         fail("Combat missing pinHover")
     if "function M.objectiveFilled" not in combat_src:
         fail("Combat missing objectiveFilled")
-    if "GB.Scheduler.add(\"stats\"" in kaitun_src:
-        fail("kaitun.lua still has dedicated stats scheduler job")
+    if "GB.Scheduler.add(\"stats\"" in boot_src:
+        fail("boot still has dedicated stats scheduler job")
     if "function M.report(force)" not in profiler_src or "SourceHttpAfterBoot=" not in profiler_src:
         fail("Profiler missing perf report + SourceHttpAfterBoot")
     if "function M.questDirty()" not in player_src:
@@ -142,18 +145,12 @@ def main() -> None:
         fail("Combat missing slow quest validation path")
     if "GB.Stats.tick()" not in engine_src:
         fail("DecisionEngine missing single-owner stats tick")
-    if "DEFAULT_BOOTSTRAP_REF" in loader_src:
-        fail("loader.lua still pins DEFAULT_BOOTSTRAP_REF")
-    if "PinBuild" not in loader_src:
-        fail("loader.lua missing PinBuild / build.commit content pin")
-    if "GB_DEV_MODULAR" not in loader_src:
-        fail("loader.lua missing GB_DEV_MODULAR gate")
     if "Core/RemoteBroker.lua" not in files:
         fail("manifest.files missing Core/RemoteBroker.lua")
     if not any(isinstance(row, dict) and row.get("path") == "Core/RemoteBroker.lua" for row in order):
         fail("manifest.order missing Core/RemoteBroker.lua")
-    if "function GB.SelfCheck" not in kaitun_src:
-        fail("kaitun.lua missing SelfCheck")
+    if "function GB.SelfCheck" not in boot_src or "function GB.SelfCheck" not in prod_src:
+        fail("SelfCheck missing from boot or generated kaitun.lua")
     if "farmSession" not in engine_src:
         fail("DecisionEngine missing farmSession")
     if re.search(r"progressed\s*=\s*true[\s\S]{0,80}lock_active", engine_src):
@@ -186,17 +183,13 @@ def main() -> None:
         source = stats_src if "Stats.lua" in file_name else quest_src
         if marker not in source:
             fail(f"missing marker `{marker}` in {file_name}")
+        if marker not in prod_src:
+            fail(f"generated kaitun.lua missing `{marker}`")
 
-    bundle_rel = str(manifest.get("bundle", "")).strip()
-    if bundle_rel != "dist/kaitun.lua":
-        fail("manifest.bundle must be dist/kaitun.lua")
-    if manifest["files"].get("dist/kaitun.lua") != "dist/kaitun.lua":
-        fail("manifest.files missing dist/kaitun.lua")
-    if not dist_path.is_file():
-        fail("dist/kaitun.lua missing")
-    dist_src = dist_path.read_text(encoding="utf-8")
-    if f"-- Version: {version}" not in dist_src:
-        fail("bundle header version mismatch")
+    if "GENERATED by tools/build_single.py" not in prod_src:
+        fail("kaitun.lua is not the generated single file")
+    if f"-- Version: {version}" not in prod_src:
+        fail("production header version mismatch")
     build = manifest.get("build")
     if not isinstance(build, dict):
         fail("manifest.build missing")
@@ -206,8 +199,8 @@ def main() -> None:
         fail("manifest.build.commit empty")
     if not built_at:
         fail("manifest.build.built_at empty")
-    if f"-- Commit: {commit}" not in dist_src:
-        fail("bundle header commit mismatch")
+    if f"-- Commit: {commit}" not in prod_src:
+        fail("production header commit mismatch")
 
     print("[verify_release] OK")
     print(f"[verify_release] version={version}")

@@ -19,18 +19,18 @@ Current shipped version: **1.0.2** (Graves resolve + quest executor). See `RUNTI
 | Branch | `main` |
 | Version | `1.0.0` |
 | Commit | `d8563b42d09f07e48522201eb9a7097aa9287cb0` |
-| Raw loader URL | https://raw.githubusercontent.com/heuwqepoxcn213213001231/GrandBlueKaitun/main/loader.lua |
+| Raw production URL | https://raw.githubusercontent.com/heuwqepoxcn213213001231/GrandBlueKaitun/main/kaitun.lua |
 
 ## Production command
 
 ```lua
 loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/heuwqepoxcn213213001231/GrandBlueKaitun/main/loader.lua?cb=" ..
-    tostring(os.time())
+    "https://raw.githubusercontent.com/heuwqepoxcn213213001231/GrandBlueKaitun/main/kaitun.lua?cb="
+    .. tostring(os.time())
 ))()
 ```
 
-Loader discovers VERSION/manifest on `main`, then loads `dist/kaitun.lua` from `manifest.build.commit`. Bundle is the production default.
+One file. One request. `loader.lua` is retired.
 
 `GBConfig` **không bắt buộc**. Loader dùng default trong `Config.lua`. Override trước loadstring nếu cần:
 
@@ -44,7 +44,7 @@ getgenv().GBConfig = {
 	AutoBackpack = false,
 	LogLevel = "INFO",
 }
-loadstring(game:HttpGet("https://raw.githubusercontent.com/heuwqepoxcn213213001231/GrandBlueKaitun/main/loader.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/heuwqepoxcn213213001231/GrandBlueKaitun/main/kaitun.lua?cb=" .. tostring(os.time())))()
 ```
 
 Loader default: owner `heuwqepoxcn213213001231`, repo `GrandBlueKaitun`, branch `main`. Override: `GB_REPO`, `GB_BRANCH`, hoặc `GB_BASE_URL`.
