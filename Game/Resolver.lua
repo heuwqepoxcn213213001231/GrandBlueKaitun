@@ -250,7 +250,6 @@ return function(GB)
 		pushName(list, seen, request)
 		pushName(list, seen, opts.DisplayName)
 		pushName(list, seen, opts.InternalName)
-		pushName(list, seen, opts.QuestName)
 		local src = aliases()
 		local function addMapped(key)
 			local v = src[key] or M.NPC_ALIAS[key] or M.ENEMY_ALIAS[key] or M.OBJECT_ALIAS[key]

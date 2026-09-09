@@ -674,31 +674,10 @@ end
 
 function P.live(name)
 	local GB = rawget(getgenv(), "GBKaitun")
-	if GB and GB.PlayerData then
+	if GB and GB.PlayerData and GB.PlayerData.live then
 		return GB.PlayerData.live(name)
 	end
-	local ev = RS:FindFirstChild("Events")
-	local gd = ev and ev:FindFirstChild("GetData")
-	local list = gd and gd:InvokeServer("Quests")
-	if type(list) == "table" then
-		if list[1] ~= nil then
-			for _, v in ipairs(list) do
-				if type(v) == "table" and v.Name == name then
-					if P.finished(name) then
-						return
-					end
-					return v
-				end
-			end
-			return
-		end
-		if list[name] then
-			if P.finished(name) then
-				return
-			end
-			return list[name]
-		end
-	end
+	-- Cache only. Never InvokeServer here — boot used to stall ~30s walking ENTRIES.
 	local q = Cache.Data and Cache.Data.Quests
 	if type(q) ~= "table" then
 		return
@@ -843,5 +822,4 @@ end
 
 getgenv().GBPick = P.pick
 getgenv()._GBPicker = P
-print("[GB Pick]", P.pick().why, P.pick().name or "-", "lv"..P.level(), P.island())
 return P

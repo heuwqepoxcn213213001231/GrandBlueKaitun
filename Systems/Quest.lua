@@ -603,6 +603,9 @@ return function(GB)
 				if string.find(t, "strange", 1, true) or string.find(t, "noticed", 1, true) or string.find(t, "clue", 1, true) then
 					score = score + 700
 				end
+				if string.find(t, "on my way", 1, true) or string.find(t, "hold the line", 1, true) then
+					score = score + 800
+				end
 			end
 			if not string.find(qn, "Marksman", 1, true) then
 				if string.find(t, "teach me", 1, true) or string.find(t, "aim as good", 1, true) or string.find(t, "marksman", 1, true) then
@@ -1912,27 +1915,31 @@ return function(GB)
 			return out
 		end
 
+		local function isQuestTitle(who)
+			if type(who) ~= "string" or who == "" then
+				return true
+			end
+			if who == qsName or who == opts.Quest or who == opts.QuestName then
+				return true
+			end
+			return false
+		end
+
 		local function fireTalkVariants(names, cfg)
 			local lastWhy = "none"
 			for _, who in ipairs(names or {}) do
-				GB.Log.log("QUEST", "Talking " .. tostring(who))
-				local okTalk, whyTalk
-				if automatic then
-					okTalk, whyTalk = GB.Remotes.autoTalk(who)
-				else
-					okTalk, whyTalk = GB.Remotes.talk(who)
-				end
-				lastWhy = tostring(whyTalk or (okTalk and "sent" or "unknown"))
-				local waitFor = okTalk and 0.45 or ((whyTalk == "rate") and 0.2 or 0.15)
-				local untilAt = os.clock() + waitFor
-				while os.clock() < untilAt do
-					if respawnBusy() then
-						return nil, "respawn"
+				if not isQuestTitle(who) then
+					GB.Log.log("QUEST", "Talking " .. tostring(who))
+					local okTalk, whyTalk
+					if automatic then
+						okTalk, whyTalk = GB.Remotes.autoTalk(who)
+					else
+						okTalk, whyTalk = GB.Remotes.talk(who)
 					end
-					if dialogueOpen() then
+					lastWhy = tostring(whyTalk or (okTalk and "sent" or "unknown"))
+					if dialogueOpen() or okTalk then
 						return who, lastWhy
 					end
-					task.wait(0.05)
 				end
 			end
 			return nil, lastWhy
@@ -2071,9 +2078,10 @@ return function(GB)
 		if not pack then
 			local spoken, whyTalk = fireTalkVariants(talkNameList(request), nil)
 			if spoken then
-				task.wait(0.2)
 				if clickAccept(opts) then
 					M.lastClick = os.clock()
+					M._afterDialogueAt = os.clock()
+					M._talkHold = { quest = qsName, target = request, at = os.clock() }
 				end
 				M.lastTalk[key] = os.clock()
 				return true, spoken
@@ -2097,45 +2105,24 @@ return function(GB)
 					return false, "travel"
 				end
 			end
-			GB.World.waitUnpause()
 		end
 		local cfg = GB.Resolver.dialogueConfig(pack.Instance)
 		local spoken, whyTalk = fireTalkVariants(talkNameList(shown, pack), cfg)
-		if not spoken then
-			local lingerUntil = os.clock() + 0.9
-			while os.clock() < lingerUntil do
-				if dialogueOpen() then
-					spoken = shown
-					break
-				end
-				if clickAccept(opts) then
-					spoken = shown
-					M.lastClick = os.clock()
-					break
-				end
-				task.wait(0.05)
-			end
+		if not spoken and dialogueOpen() then
+			spoken = shown
 		end
 		if not spoken and GB.World and GB.World.interact then
 			GB.World.interact(pack.Instance, GB.Config.TalkRange or 14)
-			local waitUntil = os.clock() + 0.6
-			while os.clock() < waitUntil and not dialogueOpen() do
-				task.wait(0.05)
-			end
 			spoken, whyTalk = fireTalkVariants(talkNameList(shown, pack), cfg)
 		end
 		if not spoken then
 			M.lastTalk[key] = os.clock()
 			return false, "talk_no_dialogue:" .. tostring(whyTalk or "none")
 		end
-		if not dialogueOpen() then
-			local readyUntil = os.clock() + 0.45
-			while os.clock() < readyUntil and not dialogueOpen() do
-				task.wait(0.05)
-			end
-		end
 		if clickAccept(opts) then
 			M.lastClick = os.clock()
+			M._afterDialogueAt = os.clock()
+			M._talkHold = { quest = qsName, target = request, at = os.clock() }
 		end
 		M.lastTalk[key] = os.clock()
 		return true, spoken
@@ -2154,29 +2141,21 @@ return function(GB)
 	end
 
 	local function waitQuestAccepted(name, timeout)
-		timeout = timeout or 2.4
-		local t0 = os.clock()
 		if questAcceptedNow(name) then
 			return true, "accepted"
 		end
 		if GB.PlayerData and GB.PlayerData.requestLive then
 			GB.PlayerData.requestLive("accept_wait:" .. tostring(name))
 		end
-		while os.clock() - t0 < timeout do
-			if respawnBusy() then
-				return false, "respawn"
+		if dialogueOpen() and os.clock() - (M.lastClick or 0) >= 0.35 then
+			if clickAccept({ QuestName = name, Action = "accept" }) then
+				M.lastClick = os.clock()
 			end
-			if questAcceptedNow(name) then
-				return true, "accepted"
-			end
-			if dialogueOpen() and os.clock() - (M.lastClick or 0) >= 0.35 then
-				if clickAccept({ QuestName = name, Action = "accept" }) then
-					M.lastClick = os.clock()
-				end
-			end
-			task.wait(0.05)
 		end
-		return questAcceptedNow(name), "timeout"
+		if questAcceptedNow(name) then
+			return true, "accepted"
+		end
+		return false, "pending"
 	end
 
 	function M.waitProgress(name, beforeSig, timeout)
@@ -2357,6 +2336,22 @@ return function(GB)
 		if typ == "Talk" or typ == "Automatic Talk" then
 			local qs = M.questState(questName)
 			local before = M.signature(qs)
+			local hold = M._talkHold
+			if hold and hold.quest == questName and os.clock() - (hold.at or 0) < 2.5 then
+				if GB.PlayerData and GB.PlayerData.requestLive then
+					GB.PlayerData.requestLive("talk_credit:" .. tostring(questName))
+				end
+				if M.signature(M.questState(questName)) ~= before then
+					M._talkHold = nil
+					M.noteOk(questName)
+					return true
+				end
+				if os.clock() - (M._talkFailAt or 0) > 4 then
+					M._talkFailAt = os.clock()
+					GB.Log.warn("QUEST", tostring(questName) .. " talk pending " .. tostring(target))
+				end
+				return false
+			end
 			local ok = M.talk(target, typ == "Automatic Talk", {
 				Quest = questName,
 				Island = qs.Island,
@@ -2367,7 +2362,9 @@ return function(GB)
 			if not ok then
 				return false
 			end
+			M._talkHold = { quest = questName, target = target, at = os.clock() }
 			if M.signature(M.questState(questName)) ~= before then
+				M._talkHold = nil
 				M.noteOk(questName)
 				return true
 			end

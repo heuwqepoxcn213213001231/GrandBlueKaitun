@@ -230,6 +230,23 @@ def main() -> int:
     if "supplycrate" not in read("Game/QuestData.lua"):
         fail("isObjectTarget must match SupplyCrateObjectId")
 
+    picker = read("picker.lua")
+    if 'InvokeServer("Quests")' in picker or "InvokeServer('Quests')" in picker:
+        fail("picker must not InvokeServer Quests")
+    if 'print("[GB Pick]"' in picker:
+        fail("picker must not pick during module load")
+    if "pushName(list, seen, opts.QuestName)" in resolver:
+        fail("namesFor must not treat QuestName as an NPC talk name")
+    if "local waitFor = okTalk and 0.45" in quest:
+        fail("talk still blocks 0.45s per name variant")
+    accWait = quest.split("local function waitQuestAccepted", 1)[-1].split("function M.waitProgress", 1)[0]
+    if "while os.clock()" in accWait:
+        fail("waitQuestAccepted still blocks the engine thread")
+    if 'return false, "pending"' not in accWait:
+        fail("waitQuestAccepted must return pending instead of sleeping")
+    if "hold the line" not in quest:
+        fail("Esopo turn-in choice scoring missing")
+
     if FAILS:
         print("FAIL scenario_tests")
         for row in FAILS:
