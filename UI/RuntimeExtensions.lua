@@ -1199,11 +1199,224 @@ return function(GB)
 
 	RaceTrait.RerollTrait = RaceTrait.rerollTrait
 
+	-- FULL_AUTO Talk (Pirate Instructions / Esopo) was a 0-interval retry:
+	-- ToNPC logged Teleport, setPos failed destOk/snap-back, Quest.talk
+	-- returned "travel" without lastTalk, Engine.decide immediately retried.
+	-- Visible result: spam Teleport, character never moves, no Talk remote.
+	local World = type(GB.World) == "table" and GB.World or nil
+	local Quest = type(GB.Quest) == "table" and GB.Quest or nil
+	if World and type(World.ToNPC) == "function" and type(World.setPos) == "function" then
+		M.originals.WorldSetPos = World.setPos
+		M.originals.WorldToNPC = World.ToNPC
+		World._uiOriginalSetPos = World.setPos
+		World._uiOriginalToNPC = World.ToNPC
+		local talkTravel = {
+			at = 0,
+			key = nil,
+			ok = false,
+		}
+
+		local function copyOpts(opts)
+			local out = {}
+			if type(opts) == "table" then
+				for key, value in pairs(opts) do
+					out[key] = value
+				end
+			end
+			return out
+		end
+
+		local function destVector(cf)
+			if typeof(cf) == "CFrame" then
+				return cf.Position
+			end
+			if typeof(cf) == "Vector3" then
+				return cf
+			end
+			return nil
+		end
+
+		local function clampTalkDest(pos, npcPos)
+			if typeof(pos) ~= "Vector3" then
+				return nil
+			end
+			local yMin = 4
+			local yMax = tonumber(GB.Config and GB.Config.DestYMax) or 260
+			if type(World.waterY) == "function" then
+				local ok, water = pcall(World.waterY)
+				if ok and type(water) == "number" then
+					yMin = math.max(yMin, water + 2)
+				end
+			end
+			local y = pos.Y
+			if y ~= y or y < yMin or y > yMax then
+				if typeof(npcPos) == "Vector3" and npcPos.Y == npcPos.Y then
+					y = npcPos.Y
+				else
+					local root = type(World.hrp) == "function" and World.hrp() or nil
+					y = root and root.Position.Y or (yMin + 6)
+				end
+			end
+			y = math.clamp(y, yMin, yMax)
+			return Vector3.new(pos.X, y, pos.Z)
+		end
+
+		local function applyPivot(pos, lookAt)
+			if typeof(pos) ~= "Vector3" then
+				return false
+			end
+			local root = type(World.hrp) == "function" and World.hrp() or nil
+			local char = type(World.char) == "function" and World.char() or nil
+			local hum = type(World.hum) == "function" and World.hum() or nil
+			if not root then
+				return false
+			end
+			if hum then
+				pcall(function()
+					hum.Sit = false
+					hum.PlatformStand = false
+				end)
+			end
+			pcall(function()
+				root.Anchored = false
+				root.AssemblyLinearVelocity = Vector3.zero
+				root.AssemblyAngularVelocity = Vector3.zero
+			end)
+			local cf
+			if typeof(lookAt) == "Vector3" then
+				cf = CFrame.new(pos, Vector3.new(lookAt.X, pos.Y, lookAt.Z))
+			else
+				cf = CFrame.new(pos)
+			end
+			if char and type(char.PivotTo) == "function" then
+				pcall(char.PivotTo, char, cf)
+			elseif M.originals.WorldSetPos then
+				local snapOpts = { AllowFar = true, SkipGround = true }
+				pcall(M.originals.WorldSetPos, cf, snapOpts)
+			end
+			if type(World.rememberSafe) == "function" then
+				pcall(World.rememberSafe)
+			end
+			if type(World.planarDist) == "function" then
+				return World.planarDist(root.Position, pos) <= 18
+			end
+			return (root.Position - pos).Magnitude <= 22
+		end
+
+		function World.setPos(cf, opts)
+			if M._destroyed then
+				return M.originals.WorldSetPos(cf, opts)
+			end
+			opts = copyOpts(opts)
+			local pos = destVector(cf)
+			if typeof(pos) == "Vector3"
+				and World.destOk
+				and not World.destOk(pos, opts)
+				and (opts.SkipGround == true or opts.AllowFar == true)
+			then
+				opts.AllowFar = true
+				pos = clampTalkDest(pos, nil) or pos
+				cf = pos
+			end
+			local ok = M.originals.WorldSetPos(cf, opts)
+			if ok then
+				local root = type(World.hrp) == "function" and World.hrp() or nil
+				if root and typeof(pos) == "Vector3" and World.planarDist then
+					if World.planarDist(root.Position, pos) <= 16 then
+						return true
+					end
+				elseif ok then
+					return true
+				end
+			end
+			if typeof(pos) ~= "Vector3" then
+				return ok == true
+			end
+			return applyPivot(clampTalkDest(pos, nil) or pos, nil)
+		end
+
+		function World.ToNPC(resolved, range)
+			if M._destroyed then
+				return M.originals.WorldToNPC(resolved, range)
+			end
+			local inst = type(resolved) == "table" and resolved.Instance or resolved
+			local key = tostring(inst or resolved)
+			local now = os.clock()
+			if talkTravel.key == key and now - talkTravel.at < 0.4 then
+				return talkTravel.ok == true
+			end
+			local ok = M.originals.WorldToNPC(resolved, range)
+			local talkRange = (GB.Config and GB.Config.TalkRange) or 14
+			if ok and World.atTalk and World.atTalk(resolved, talkRange) then
+				talkTravel.at = now
+				talkTravel.key = key
+				talkTravel.ok = true
+				return true
+			end
+			local dest = nil
+			if type(World.safeOffset) == "function" then
+				local destOk, value = pcall(World.safeOffset, inst, range or (GB.Config and GB.Config.TalkOffset) or 5)
+				if destOk then
+					dest = value
+				end
+			end
+			local npcPos = inst and GB.Resolver and type(GB.Resolver.positionOf) == "function" and GB.Resolver.positionOf(inst)
+			dest = clampTalkDest(dest or npcPos, npcPos)
+			local moved = dest and applyPivot(dest, npcPos) or false
+			talkTravel.at = now
+			talkTravel.key = key
+			talkTravel.ok = moved == true or (World.atTalk and World.atTalk(resolved, talkRange) == true)
+			if talkTravel.ok then
+				log("log", "TRAVEL", "talk snap " .. tostring(World.displayLabel and World.displayLabel(resolved) or inst))
+			elseif now - (World._uiTalkFailAt or 0) >= 2 then
+				World._uiTalkFailAt = now
+				log("warn", "TRAVEL", "talk snap failed " .. tostring(key))
+			end
+			return talkTravel.ok
+		end
+	end
+
+	if Quest and type(Quest.talk) == "function" then
+		M.originals.QuestTalk = Quest.talk
+		Quest._uiOriginalTalk = Quest.talk
+		local talkGate = {
+			at = 0,
+			key = nil,
+		}
+		function Quest.talk(request, automatic, opts)
+			if M._destroyed then
+				return M.originals.QuestTalk(request, automatic, opts)
+			end
+			local key = tostring(request)
+			local now = os.clock()
+			if talkGate.key == key and now - talkGate.at < 0.45 then
+				return false, "travel"
+			end
+			local ok, why = M.originals.QuestTalk(request, automatic, opts)
+			if ok ~= true and why == "travel" then
+				talkGate.at = now
+				talkGate.key = key
+			else
+				talkGate.key = nil
+			end
+			return ok, why
+		end
+	end
+
 	function M.destroy()
 		if M._destroyed then
 			return true
 		end
 		M._destroyed = true
+		if World and M.originals.WorldSetPos then
+			World.setPos = M.originals.WorldSetPos
+		end
+		if World and M.originals.WorldToNPC then
+			World.ToNPC = M.originals.WorldToNPC
+		end
+		if Quest and M.originals.QuestTalk then
+			Quest.talk = M.originals.QuestTalk
+		end
 		Codes.destroy()
 		if schedulerWrapped then
 			if runtimeShuttingDown() then
