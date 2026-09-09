@@ -1,0 +1,3242 @@
+-- Resolve NPC / enemy / item / island / shop / trainer / remote.
+-- World Graves is DialogueNPCs "Officer Graves [2]" (DisplayName "Officer Graves").
+-- ReplicatedStorage "Officer Graves" is character-create — never interact.
+
+return function(GB)
+	local CS = game:GetService("CollectionService")
+	local RS = game:GetService("ReplicatedStorage")
+	local M = {}
+
+	-- Verified only. Studio + QuestInfo + DialogueUtilities.GetNPCName.
+	M.NPC_ALIAS = {
+		["Officer Graves"] = { "Officer Graves [2]", "Graves" },
+		["Officer Graves [2]"] = { "Officer Graves", "Graves" },
+		["Graves"] = { "Officer Graves", "Officer Graves [2]" },
+	}
+
+	M.ENEMY_ALIAS = {
+		["Barrel Clown"] = { '"Barrel Clown" Binki', "Binki" },
+		["Binki"] = { '"Barrel Clown" Binki', "Barrel Clown" },
+		['"Barrel Clown" Binki'] = { "Barrel Clown", "Binki" },
+		["Hypnotist"] = { '"Hypnotist" Mango', "Mango" },
+		["Mango"] = { '"Hypnotist" Mango', "Hypnotist" },
+		['"Hypnotist" Mango'] = { "Hypnotist", "Mango" },
+		-- Studio: Workspace.Entities.Training Dummy1..8, CollectionService tag TrainingDummy
+		["Training Dummy"] = {
+			"TrainingDummy",
+			"Training Dummy1",
+			"Training Dummy2",
+			"Training Dummy3",
+			"Training Dummy4",
+			"Training Dummy5",
+			"Training Dummy6",
+			"Training Dummy7",
+			"Training Dummy8",
+		},
+		["TrainingDummy"] = { "Training Dummy", "Training Dummy1" },
+		-- Quest/mob-zone name. Live models: Corrupt Swordsman Officer N / Corrupt Sniper Officer N.
+		-- Tag + NPCName are the variant, not "Corrupt Marine Officer". Foot soldier is "Corrupt Marine" only.
+		["Corrupt Marine Officer"] = {
+			"Corrupt Swordsman Officer",
+			"Corrupt Sniper Officer",
+		},
+		["Corrupt Swordsman Officer"] = { "Corrupt Marine Officer", "Corrupt Sniper Officer" },
+		["Corrupt Sniper Officer"] = { "Corrupt Marine Officer", "Corrupt Swordsman Officer" },
+		["Beast Tamer"] = { "Mohji", "Beast Tamer" },
+		["Mohji"] = { "Beast Tamer" },
+		["Circus Lion"] = { "Circus Lion", "Lion" },
+		-- Quest/mob-zone name. Live models: Black Noir Officer N. Prefix match covers numbered copies.
+		["Black Noir Officer"] = {
+			"BlackNoirOfficer",
+			"Black Noir Officer 1",
+			"Black Noir Officer 2",
+			"Black Noir Officer 3",
+			"Black Noir Officer 4",
+			"Black Noir Officer 5",
+		},
+	}
+
+	-- Quest target "Marine Gate". Live: Model Gate tagged Marine Metal Gate. Not the mob-zone part.
+	M.OBJECT_ALIAS = {
+		["Marine Gate"] = { "Marine Metal Gate", "Gate" },
+		["Marine Metal Gate"] = { "Marine Gate", "Gate" },
+		["Muggy Cannon"] = { "MuggyCannon" },
+		["Child Captive"] = { "Captured Child", "Tired Child", "Hostage" },
+		["Captured Child"] = { "Child Captive", "Tired Child", "Hostage" },
+		["Tired Child"] = { "Child Captive", "Captured Child", "Hostage" },
+		["Adult Captive"] = { "Captured Adult", "Captured Civilian", "Hostage" },
+		["Captured Civilian"] = { "Adult Captive", "Hostage" },
+		["Hostage"] = { "Child Captive", "Adult Captive", "Captured Child", "Captured Civilian" },
+		["Cage Container"] = { "CageContainer" },
+		["CageContainer"] = { "Cage Container" },
+		["Supply Crate"] = { "SupplyCrate", "Wooden Crate", "Crate" },
+		["Wooden Crate"] = { "Supply Crate", "Crate" },
+	}
+
+	local missLog = {}
+	local dummyCache = nil
+	local dummyPos = nil
+	local dummyMiss = 0
+	M.lastCandidates = {}
+	local negativeCache = {
+		enemy = {},
+		npc = {},
+		any = {},
+		object = {},
+		marker = {},
+		shop = {},
+	}
+	local NEG_TTL = 3.8
+
+	local indexes = {
+		enemy = { keyToInst = {}, instKeys = {}, built = false, root = nil },
+		npc = { keyToInst = {}, instKeys = {}, built = false, root = nil },
+		marker = { keyToInst = {}, instKeys = {}, built = false, root = nil },
+		object = { keyToInst = {}, instKeys = {}, built = false, root = nil },
+	}
+
+	local function pbegin()
+		return GB.Profiler and GB.Profiler.begin and GB.Profiler.begin() or nil
+	end
+
+	local function pdone(name, t0)
+		if t0 and GB.Profiler and GB.Profiler.done then
+			GB.Profiler.done(name, t0)
+		end
+	end
+
+	local function perfCount(name, n)
+		if GB.Profiler and GB.Profiler.count then
+			GB.Profiler.count(name, n or 1)
+		end
+	end
+
+	local function normalizeKey(v)
+		if type(v) ~= "string" then
+			return ""
+		end
+		local s = string.lower(v)
+		s = s:gsub("[%c\r\n\t]+", " ")
+		s = s:gsub("%s+", " ")
+		s = s:gsub("^%s+", "")
+		s = s:gsub("%s+$", "")
+		return s
+	end
+
+	local function bucketFor(kind)
+		return negativeCache[kind or "any"] or negativeCache.any
+	end
+
+	local function negKey(kind, name, island)
+		local base = normalizeKey(name)
+		local isl = normalizeKey(island or "")
+		return tostring(kind or "any") .. ":" .. base .. "|" .. isl
+	end
+
+	local NEG_MAX = 240
+
+	local function pruneNegative(bucket)
+		local now = os.clock()
+		local n = 0
+		local drop
+		local dropAt
+		for k, untilAt in pairs(bucket) do
+			n = n + 1
+			if untilAt <= now then
+				bucket[k] = nil
+				n = n - 1
+			elseif not dropAt or untilAt < dropAt then
+				dropAt = untilAt
+				drop = k
+			end
+		end
+		if n > NEG_MAX and drop then
+			bucket[drop] = nil
+		end
+	end
+
+	local function noteNegative(kind, names, island, ttl)
+		perfCount("ResolverMiss", 1)
+		local untilAt = os.clock() + (ttl or NEG_TTL)
+		local bucket = bucketFor(kind)
+		pruneNegative(bucket)
+		for _, raw in ipairs(names or {}) do
+			local n = normalizeKey(raw)
+			if n ~= "" then
+				bucket[negKey(kind, n, island)] = untilAt
+			end
+		end
+	end
+
+	local function negativeHit(kind, names, island)
+		local bucket = bucketFor(kind)
+		local now = os.clock()
+		for _, raw in ipairs(names or {}) do
+			local n = normalizeKey(raw)
+			if n ~= "" then
+				local k1 = negKey(kind, n, island)
+				local u1 = bucket[k1]
+				if u1 and u1 > now then
+					return true
+				elseif u1 then
+					bucket[k1] = nil
+				end
+				local k2 = negKey(kind, n, nil)
+				local u2 = bucket[k2]
+				if u2 and u2 > now then
+					return true
+				elseif u2 then
+					bucket[k2] = nil
+				end
+			end
+		end
+		return false
+	end
+
+	local function clearNegativeKind(kind)
+		local bucket = bucketFor(kind)
+		for key in pairs(bucket) do
+			bucket[key] = nil
+		end
+	end
+
+	local function invalidateNegativeKindName(kind, name, island)
+		local n = normalizeKey(name)
+		if n == "" then
+			return
+		end
+		local bucket = bucketFor(kind)
+		bucket[negKey(kind, n, island)] = nil
+		bucket[negKey(kind, n, nil)] = nil
+	end
+
+	function M.isDummyName(name)
+		if type(name) ~= "string" or name == "" then
+			return false
+		end
+		if name == "Training Dummy" or name == "TrainingDummy" then
+			return true
+		end
+		return string.find(name, "Dummy", 1, true) ~= nil
+	end
+
+	function M.invalidateDummy()
+		dummyCache = nil
+	end
+
+	function M.lastDummyPos()
+		return dummyPos
+	end
+
+	function M.dummyMissCount()
+		return dummyMiss
+	end
+
+	local function aliases()
+		if GB.QuestData and GB.QuestData.NPC_ALIAS then
+			return GB.QuestData.NPC_ALIAS
+		end
+		return M.NPC_ALIAS
+	end
+
+	local function pushName(list, seen, name)
+		if type(name) ~= "string" or name == "" or name == "\\" then
+			return
+		end
+		if seen[name] then
+			return
+		end
+		seen[name] = true
+		list[#list + 1] = name
+	end
+
+	function M.namesFor(request, opts)
+		opts = opts or {}
+		local list, seen = {}, {}
+		pushName(list, seen, request)
+		pushName(list, seen, opts.DisplayName)
+		pushName(list, seen, opts.InternalName)
+		local src = aliases()
+		local function addMapped(key)
+			local v = src[key] or M.NPC_ALIAS[key] or M.ENEMY_ALIAS[key] or M.OBJECT_ALIAS[key]
+			if type(v) == "string" then
+				pushName(list, seen, v)
+			elseif type(v) == "table" then
+				for _, n in ipairs(v) do
+					pushName(list, seen, n)
+				end
+			end
+		end
+		for _, n in ipairs({ request, opts.DisplayName, opts.InternalName }) do
+			if type(n) == "string" then
+				addMapped(n)
+			end
+		end
+		for key, v in pairs(src) do
+			if v == request or (type(v) == "table" and table.find(v, request)) then
+				pushName(list, seen, key)
+			end
+		end
+		return list
+	end
+
+	local function inRS(inst)
+		return inst and RS:IsAncestorOf(inst)
+	end
+
+	function M.displayName(model)
+		if not model then
+			return nil
+		end
+		local attr = model:GetAttribute("NPCName") or model:GetAttribute("DisplayName")
+		if type(attr) == "string" and attr ~= "" then
+			return attr
+		end
+		local h = model:FindFirstChildOfClass("Humanoid")
+		if h and h.DisplayName and h.DisplayName ~= "" then
+			return h.DisplayName
+		end
+		return model.Name
+	end
+
+	local function isDialogue(inst)
+		if not inst then
+			return false
+		end
+		if inst:GetAttribute("Interaction") == "Dialogue" then
+			return true
+		end
+		if inst:FindFirstChild("Dialogue") then
+			return true
+		end
+		if inst:HasTag("Dialogue") or inst:HasTag("Interactable") then
+			return true
+		end
+		return false
+	end
+
+	local function partOf(inst)
+		if not inst then
+			return nil
+		end
+		if inst:IsA("BasePart") then
+			return inst
+		end
+		if inst:IsA("Attachment") then
+			local host = inst.Parent
+			if host and host:IsA("BasePart") then
+				return host
+			end
+			return host and host:FindFirstChildWhichIsA("BasePart", true)
+		end
+		if inst:IsA("Model") then
+			if inst.PrimaryPart and inst.PrimaryPart:IsA("BasePart") then
+				return inst.PrimaryPart
+			end
+			local hrp = inst:FindFirstChild("HumanoidRootPart")
+			if hrp and hrp:IsA("BasePart") then
+				return hrp
+			end
+			return inst:FindFirstChildWhichIsA("BasePart", true)
+		end
+		if inst:IsA("ProximityPrompt") then
+			local p = inst.Parent
+			if p and p:IsA("BasePart") then
+				return p
+			end
+			if p and p:IsA("Attachment") then
+				local host = p.Parent
+				if host and host:IsA("BasePart") then
+					return host
+				end
+			end
+			return p and p:FindFirstChildWhichIsA("BasePart", true)
+		end
+		if inst:IsA("Folder") or inst:IsA("Configuration") then
+			return inst:FindFirstChildWhichIsA("BasePart", true)
+		end
+		return inst:FindFirstChildWhichIsA("BasePart", true)
+	end
+
+	function M.part(inst)
+		return partOf(inst)
+	end
+
+	function M.positionOf(inst)
+		if not inst then
+			return nil
+		end
+		if inst:IsA("BasePart") then
+			return inst.Position
+		end
+		if inst:IsA("Attachment") then
+			return inst.WorldPosition
+		end
+		local p = partOf(inst)
+		if p and p:IsA("BasePart") then
+			return p.Position
+		end
+		if inst:IsA("Model") then
+			local ok, cf = pcall(inst.GetPivot, inst)
+			if ok and typeof(cf) == "CFrame" then
+				return cf.Position
+			end
+		end
+		return nil
+	end
+
+	local function climbRoot(inst)
+		if not inst then
+			return nil
+		end
+		if inst:IsA("Model") then
+			return inst
+		end
+		local m = inst:FindFirstAncestorOfClass("Model")
+		if m and not inRS(m) then
+			return m
+		end
+		if inst:IsA("BasePart") or inst:IsA("Folder") or inst:IsA("Configuration") then
+			return inst
+		end
+		return inst
+	end
+
+	-- Studio: Workspace.Entities."<Player> Slot N Pet" tagged Pet (+ NPC/Character).
+	function M.isPet(inst)
+		if not inst then
+			return false
+		end
+		local root = climbRoot(inst) or inst
+		if root:HasTag("Pet") then
+			return true
+		end
+		local n = root.Name
+		if type(n) == "string" and string.find(n, " Slot ", 1, true) and string.sub(n, -4) == " Pet" then
+			return true
+		end
+		return false
+	end
+
+	local function enemyAlive(root)
+		if GB.Combat and GB.Combat.IsEnemyAlive then
+			return GB.Combat.IsEnemyAlive(root)
+		end
+		if not (root and root.Parent) then
+			return false
+		end
+		if root:GetAttribute("Dead") == true then
+			return false
+		end
+		local h = root:FindFirstChildOfClass("Humanoid")
+		if h and h.Health <= 0 then
+			return false
+		end
+		return true
+	end
+
+	local function usable(inst, kind)
+		if not (inst and inst.Parent) or inRS(inst) then
+			return false
+		end
+		local root = climbRoot(inst)
+		if not root or inRS(root) then
+			return false
+		end
+		if M.isPet(root) then
+			return false
+		end
+		if kind == "enemy" then
+			if GB.Combat and GB.Combat.isRecentlyDead and GB.Combat.isRecentlyDead(root) then
+				return false
+			end
+			if not enemyAlive(root) then
+				return false
+			end
+		end
+		if root:IsA("Model") or root:IsA("BasePart") or root:IsA("Folder") or root:IsA("Configuration") then
+			return M.positionOf(root) ~= nil or partOf(root) ~= nil or isDialogue(root)
+		end
+		return false
+	end
+
+	local islandOf
+
+	function M.dummy()
+		if dummyCache and dummyCache.Parent and usable(dummyCache, "enemy") then
+			return dummyCache
+		end
+		dummyCache = nil
+
+		local tagged = CS:GetTagged("TrainingDummy")
+		if type(tagged) == "table" then
+			for _, t in ipairs(tagged) do
+				if usable(t, "enemy") then
+					dummyCache = climbRoot(t) or t
+					dummyPos = M.positionOf(dummyCache)
+					dummyMiss = 0
+					GB.Cache.set("res:enemy:Training Dummy", dummyCache)
+					GB.Log.log("RESOLVE", "Training Dummy -> " .. dummyCache:GetFullName())
+					return dummyCache
+				end
+			end
+		end
+
+		local ents = workspace:FindFirstChild("Entities")
+		if ents then
+			for _, c in ipairs(ents:GetChildren()) do
+				if string.find(c.Name, "Dummy", 1, true) and usable(c, "enemy") then
+					dummyCache = c
+					dummyPos = M.positionOf(c)
+					dummyMiss = 0
+					GB.Cache.set("res:enemy:Training Dummy", dummyCache)
+					GB.Log.log("RESOLVE", "Training Dummy -> " .. c:GetFullName())
+					return c
+				end
+			end
+		end
+
+		dummyMiss = dummyMiss + 1
+		local now = os.clock()
+		local mk = "miss:Training Dummy"
+		if not missLog[mk] or now - missLog[mk] > 8 then
+			missLog[mk] = now
+			GB.Log.warn("ERROR", "resolve miss Training Dummy")
+		end
+		return nil
+	end
+
+	islandOf = function(inst)
+		if not inst then
+			return nil
+		end
+		local p = inst
+		while p and p ~= workspace do
+			local n = p.Name
+			if n == "Anchor Town" or n == "Clown Town" or n == "Maple Village" then
+				return n
+			end
+			p = p.Parent
+		end
+		local pos = M.positionOf(inst)
+		if pos and GB.World and GB.World.GetIslandFromPosition then
+			return GB.World.GetIslandFromPosition(pos)
+		end
+		return nil
+	end
+
+	-- 2 = exact/unscoped, 1 = unknown fallback, 0 = known mismatch.
+	local function islandCandidateRank(inst, requestedIsland)
+		if type(requestedIsland) ~= "string" or requestedIsland == "" then
+			return 2
+		end
+		local resolvedIsland = islandOf(inst)
+		if type(resolvedIsland) ~= "string" or resolvedIsland == "" then
+			return 1
+		end
+		if resolvedIsland == requestedIsland then
+			return 2
+		end
+		return 0
+	end
+
+	function M.pack(inst, request)
+		local root = climbRoot(inst) or inst
+		return {
+			Instance = root,
+			Root = root,
+			Position = M.positionOf(root),
+			DisplayName = M.displayName(root),
+			InternalName = root.Name,
+			Interaction = root:GetAttribute("Interaction"),
+			Island = islandOf(root),
+			Request = request,
+		}
+	end
+
+	local function npcRoots()
+		local roots, seen = {}, {}
+		local function add(inst)
+			if inst and not seen[inst] then
+				seen[inst] = true
+				roots[#roots + 1] = inst
+			end
+		end
+		local aa = workspace:FindFirstChild("AA IMPORTANT")
+		if aa then
+			add(aa:FindFirstChild("DialogueNPCs"))
+			add(aa:FindFirstChild("Markers"))
+			add(aa:FindFirstChild("NPCAreas"))
+			add(aa:FindFirstChild("PointsOfInterest"))
+		end
+		add(workspace:FindFirstChild("DialogueNPCs"))
+		add(workspace:FindFirstChild("Entities"))
+		add(workspace:FindFirstChild("Islands"))
+		return roots
+	end
+
+	function M.baseName(s)
+		if type(s) ~= "string" then
+			return ""
+		end
+		local out = s
+		out = string.gsub(out, " %d+$", "")
+		out = string.gsub(out, " %[%d+%]$", "")
+		out = string.gsub(out, "%s+", " ")
+		out = string.gsub(out, "^%s+", "")
+		out = string.gsub(out, "%s+$", "")
+		return out
+	end
+
+	local function addIndexKey(ix, key, inst)
+		if not (ix and type(key) == "string" and key ~= "" and inst) then
+			return
+		end
+		local list = ix.keyToInst[key]
+		if not list then
+			list = {}
+			ix.keyToInst[key] = list
+		end
+		for i = 1, #list do
+			if list[i] == inst then
+				return
+			end
+		end
+		list[#list + 1] = inst
+	end
+
+	local function removeIndexKey(ix, key, inst)
+		local list = ix and ix.keyToInst and ix.keyToInst[key]
+		if not list then
+			return
+		end
+		for i = #list, 1, -1 do
+			if list[i] == inst or not list[i] or not list[i].Parent then
+				table.remove(list, i)
+			end
+		end
+		if #list == 0 then
+			ix.keyToInst[key] = nil
+		end
+	end
+
+	local function clearIndex(ix)
+		if not ix then
+			return
+		end
+		ix.keyToInst = {}
+		ix.instKeys = {}
+	end
+
+	local function readTags(inst)
+		local ok, tags = pcall(CS.GetTags, CS, inst)
+		if ok and type(tags) == "table" then
+			return tags
+		end
+		return {}
+	end
+
+	local function semanticNames(inst)
+		local out = {}
+		local seen = {}
+		local function push(name)
+			if type(name) ~= "string" or name == "" then
+				return
+			end
+			local norm = normalizeKey(name)
+			if norm == "" or seen[norm] then
+				return
+			end
+			seen[norm] = true
+			out[#out + 1] = norm
+		end
+		push(inst.Name)
+		push(M.baseName(inst.Name))
+		local disp = M.displayName(inst)
+		push(disp)
+		push(M.baseName(disp or ""))
+		local npcName = inst:GetAttribute("NPCName")
+		if type(npcName) == "string" then
+			push(npcName)
+			push(M.baseName(npcName))
+		end
+		local attrDisp = inst:GetAttribute("DisplayName")
+		if type(attrDisp) == "string" then
+			push(attrDisp)
+			push(M.baseName(attrDisp))
+		end
+		for _, tag in ipairs(readTags(inst)) do
+			push(tag)
+		end
+		return out
+	end
+
+	local function indexAddInstance(kind, inst)
+		local ix = indexes[kind]
+		if not ix or not inst then
+			return
+		end
+		local root = climbRoot(inst) or inst
+		if not (root and root.Parent) then
+			return
+		end
+		local useKind = (kind == "enemy") and "enemy" or "npc"
+		if kind == "marker" or kind == "object" then
+			useKind = "any"
+		end
+		if not usable(root, useKind) then
+			return
+		end
+		local old = ix.instKeys[root]
+		if old then
+			for _, key in ipairs(old) do
+				removeIndexKey(ix, key, root)
+			end
+		end
+		local keys = semanticNames(root)
+		ix.instKeys[root] = keys
+		for _, key in ipairs(keys) do
+			addIndexKey(ix, key, root)
+		end
+	end
+
+	local function indexRemoveInstance(kind, inst)
+		local ix = indexes[kind]
+		if not ix or not inst then
+			return
+		end
+		local root = climbRoot(inst) or inst
+		local keys = ix.instKeys[root]
+		if not keys then
+			return
+		end
+		for _, key in ipairs(keys) do
+			removeIndexKey(ix, key, root)
+		end
+		ix.instKeys[root] = nil
+	end
+
+	local function indexQuery(kind, names, opts)
+		local ix = indexes[kind]
+		if not ix then
+			return {}
+		end
+		opts = opts or {}
+		local out = {}
+		local unknown = {}
+		local seen = {}
+		for _, raw in ipairs(names or {}) do
+			local key = normalizeKey(raw)
+			if key ~= "" then
+				local list = ix.keyToInst[key]
+				if list then
+					for i = #list, 1, -1 do
+						local inst = list[i]
+						if not (inst and inst.Parent) then
+							table.remove(list, i)
+						elseif not seen[inst] then
+							local root = climbRoot(inst) or inst
+							local islandRank = islandCandidateRank(root, opts.Island)
+							if islandRank > 0 then
+								seen[inst] = true
+								if islandRank == 1 then
+									unknown[#unknown + 1] = inst
+								else
+									out[#out + 1] = inst
+								end
+							end
+						end
+					end
+					if #list == 0 then
+						ix.keyToInst[key] = nil
+					end
+				end
+			end
+		end
+		for _, inst in ipairs(unknown) do
+			out[#out + 1] = inst
+		end
+		return out
+	end
+
+	local function invalidateNegativeForInstance(kind, inst)
+		if not inst then
+			return
+		end
+		local island = islandOf(inst)
+		for _, key in ipairs(semanticNames(inst)) do
+			invalidateNegativeKindName(kind, key, island)
+		end
+	end
+
+	function M.isCorruptOfficer(inst)
+		if not inst then
+			return false
+		end
+		if inst:HasTag("Corrupt Swordsman Officer") or inst:HasTag("Corrupt Sniper Officer") then
+			return true
+		end
+		for _, s in ipairs({ inst:GetAttribute("NPCName"), inst.Name, M.displayName(inst) }) do
+			if type(s) == "string" and string.find(s, "Officer", 1, true) and string.find(s, "Corrupt", 1, true) then
+				return true
+			end
+		end
+		return false
+	end
+
+	function M.nameMatches(inst, names)
+		if not (inst and type(names) == "table") then
+			return false
+		end
+		local nm = inst.Name
+		local disp = M.displayName(inst)
+		local npc = inst:GetAttribute("NPCName")
+		local bases = { M.baseName(nm), M.baseName(disp or ""), M.baseName(type(npc) == "string" and npc or "") }
+		for _, n in ipairs(names) do
+			if type(n) == "string" and n ~= "" then
+				if n == "Corrupt Marine Officer" and M.isCorruptOfficer(inst) then
+					return true
+				end
+				if nm == n or disp == n or npc == n then
+					return true
+				end
+				local tagged
+				pcall(function()
+					tagged = inst:HasTag(n)
+				end)
+				if tagged then
+					return true
+				end
+				for _, b in ipairs(bases) do
+					if b == n then
+						return true
+					end
+				end
+				if #n > 3 and string.sub(nm, 1, #n) == n then
+					local ch = string.sub(nm, #n + 1, #n + 1)
+					if ch == "" or ch == " " then
+						return true
+					end
+				end
+			end
+		end
+		return false
+	end
+
+	local function nameHit(inst, names)
+		return M.nameMatches(inst, names)
+	end
+
+	local function dialogueNameHit(inst, names)
+		local cfg = inst:FindFirstChild("Dialogue")
+		if not (cfg and cfg:IsA("Configuration")) then
+			return false
+		end
+		local qn = cfg:FindFirstChild("QuestName2") or cfg:FindFirstChild("QuestName")
+		if qn then
+			local v = qn:FindFirstChild("QuestName")
+			local val = v and v.Value
+			-- quest-name node is evidence the model is a quest NPC, not a name match
+			if type(val) == "string" then
+				for _, n in ipairs(names) do
+					if val == n then
+						return true
+					end
+				end
+			end
+		end
+		return false
+	end
+
+	local function firstWorldTagged(tag, kind, island)
+		local ok, tagged = pcall(CS.GetTagged, CS, tag)
+		if not ok or type(tagged) ~= "table" then
+			return nil
+		end
+		local unknown
+		for _, t in ipairs(tagged) do
+			if usable(t, kind or "npc") then
+				local root = climbRoot(t) or t
+				local islandRank = islandCandidateRank(root, island)
+				if islandRank == 2 then
+					return root
+				elseif islandRank == 1 then
+					unknown = unknown or root
+				end
+			end
+		end
+		return unknown
+	end
+
+	local function scanRoots(pred, limit)
+		local t0 = pbegin()
+		limit = limit or 8
+		perfCount("ResolverDeepScan", 1)
+		perfCount("GetDescendants", 1)
+		local hits = {}
+		for _, root in ipairs(npcRoots()) do
+			if pred(root) then
+				hits[#hits + 1] = root
+				if #hits >= limit then
+					pdone("Resolver deep scan", t0)
+					return hits
+				end
+			end
+			for _, d in ipairs(root:GetDescendants()) do
+				if pred(d) then
+					hits[#hits + 1] = d
+					if #hits >= limit then
+						pdone("Resolver deep scan", t0)
+						return hits
+					end
+				end
+			end
+		end
+		pdone("Resolver deep scan", t0)
+		return hits
+	end
+
+	local function scoreInst(inst, names, opts, knownIslandRank)
+		local islandRank = knownIslandRank or islandCandidateRank(inst, opts and opts.Island)
+		if islandRank == 0 then
+			return -math.huge
+		end
+		local s = 0
+		local nm = inst.Name
+		local disp = M.displayName(inst)
+		for i, n in ipairs(names) do
+			local w = (#names - i + 1)
+			if nm == n then
+				s = s + 50 + w
+			end
+			if disp == n then
+				s = s + 45 + w
+			end
+			if inst:HasTag(n) then
+				s = s + 40 + w
+			end
+			if inst:GetAttribute("NPCName") == n then
+				s = s + 42 + w
+			end
+		end
+		if isDialogue(inst) then
+			s = s + 8
+		end
+		local parent = inst.Parent
+		if parent and parent.Parent and parent.Parent.Name == "DialogueNPCs" then
+			s = s + 12
+		end
+		if opts and type(opts.Island) == "string" and opts.Island ~= "" and islandRank == 2 then
+			s = s + 6
+		end
+		if inRS(inst) then
+			s = s - 200
+		end
+		return s
+	end
+
+	local function walkDepth(root, maxDepth, fn)
+		if not root then
+			return
+		end
+		local queue = { { inst = root, depth = 0 } }
+		local head = 1
+		while head <= #queue do
+			local row = queue[head]
+			head = head + 1
+			local inst = row.inst
+			local depth = row.depth
+			if inst ~= root then
+				fn(inst, depth)
+			end
+			if depth < maxDepth then
+				for _, ch in ipairs(inst:GetChildren()) do
+					queue[#queue + 1] = { inst = ch, depth = depth + 1 }
+				end
+			end
+		end
+	end
+
+	local function indexBuildEnemy()
+		local t0 = pbegin()
+		clearIndex(indexes.enemy)
+		local ents = workspace:FindFirstChild("Entities")
+		indexes.enemy.root = ents
+		if ents then
+			for _, ch in ipairs(ents:GetChildren()) do
+				indexAddInstance("enemy", ch)
+			end
+		end
+		indexes.enemy.built = true
+		perfCount("EnemyIndexBuild", 1)
+		pdone("Resolver.enemyIndexBuild", t0)
+	end
+
+	local function indexBuildNpc()
+		local t0 = pbegin()
+		clearIndex(indexes.npc)
+		local aa = workspace:FindFirstChild("AA IMPORTANT")
+		local dlg = (aa and aa:FindFirstChild("DialogueNPCs")) or workspace:FindFirstChild("DialogueNPCs")
+		indexes.npc.root = dlg
+		if dlg then
+			walkDepth(dlg, 4, function(inst)
+				if inst:IsA("Model") or inst:IsA("Folder") or inst:IsA("BasePart") then
+					indexAddInstance("npc", inst)
+				end
+			end)
+		end
+		indexes.npc.built = true
+		perfCount("NPCIndexBuild", 1)
+		pdone("Resolver.npcIndexBuild", t0)
+	end
+
+	local function indexBuildMarker()
+		local t0 = pbegin()
+		clearIndex(indexes.marker)
+		local aa = workspace:FindFirstChild("AA IMPORTANT")
+		indexes.marker.root = aa
+		if aa then
+			for _, folderName in ipairs({ "Markers", "NPCAreas", "PointsOfInterest" }) do
+				local folder = aa:FindFirstChild(folderName)
+				if folder then
+					walkDepth(folder, 3, function(inst)
+						indexAddInstance("marker", inst)
+					end)
+				end
+			end
+		end
+		indexes.marker.built = true
+		perfCount("MarkerIndexBuild", 1)
+		pdone("Resolver.markerIndexBuild", t0)
+	end
+
+	local function indexBuildObject()
+		local t0 = pbegin()
+		clearIndex(indexes.object)
+		local roots = {
+			workspace:FindFirstChild("Afuaru's Chests"),
+			workspace:FindFirstChild("DialogueNPCs"),
+			workspace:FindFirstChild("Islands"),
+		}
+		for _, root in ipairs(roots) do
+			if root then
+				walkDepth(root, 2, function(inst)
+					if inst:HasTag("Interactable") or inst:HasTag("ClientInteractable") then
+						indexAddInstance("object", inst)
+					end
+				end)
+			end
+		end
+		local specs = GB.QuestData and GB.QuestData.OBJECT_TARGETS
+		if type(specs) == "table" then
+			local seenTag = {}
+			for _, spec in pairs(specs) do
+				if type(spec) == "table" and type(spec.Tags) == "table" then
+					for _, tag in ipairs(spec.Tags) do
+						if type(tag) == "string" and tag ~= "" and not seenTag[tag] then
+							seenTag[tag] = true
+							local ok, list = pcall(CS.GetTagged, CS, tag)
+							if ok and type(list) == "table" then
+								for _, inst in ipairs(list) do
+									if inst.Parent and not inRS(inst) then
+										indexAddInstance("object", inst)
+									end
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+		indexes.object.built = true
+		perfCount("ObjectIndexBuild", 1)
+		pdone("Resolver.objectIndexBuild", t0)
+	end
+
+	local function ensureIndex(kind)
+		local ix = indexes[kind]
+		if not ix then
+			return
+		end
+		if kind == "enemy" then
+			local ents = workspace:FindFirstChild("Entities")
+			if (not ix.built) or ix.root ~= ents then
+				indexBuildEnemy()
+			end
+			return
+		end
+		if kind == "npc" then
+			local aa = workspace:FindFirstChild("AA IMPORTANT")
+			local dlg = (aa and aa:FindFirstChild("DialogueNPCs")) or workspace:FindFirstChild("DialogueNPCs")
+			if (not ix.built) or ix.root ~= dlg then
+				indexBuildNpc()
+			end
+			return
+		end
+		if kind == "marker" then
+			local aa = workspace:FindFirstChild("AA IMPORTANT")
+			if (not ix.built) or ix.root ~= aa then
+				indexBuildMarker()
+			end
+			return
+		end
+		if kind == "object" and not ix.built then
+			indexBuildObject()
+		end
+	end
+
+	function M.dumpNearby(request, opts)
+		local t0 = pbegin()
+		opts = opts or {}
+		local names = M.namesFor(request, opts)
+		local origin
+		local hrp = GB.World and GB.World.hrp and GB.World.hrp()
+		if hrp then
+			origin = hrp.Position
+		end
+		local cand = {}
+		perfCount("ResolverDeepScan", 1)
+		for _, root in ipairs(npcRoots()) do
+			for _, d in ipairs(root:GetDescendants()) do
+				if d:IsA("Model") and not inRS(d) then
+					local disp = M.displayName(d)
+					local low = string.lower(d.Name .. " " .. tostring(disp or ""))
+					local want = false
+					for _, n in ipairs(names) do
+						if string.find(low, string.lower(n), 1, true) then
+							want = true
+							break
+						end
+					end
+					if not want and (isDialogue(d) or d:FindFirstChildOfClass("Humanoid")) then
+						local pos = M.positionOf(d)
+						if origin and pos and (pos - origin).Magnitude < 90 then
+							want = true
+						end
+					end
+					if want then
+						local pos = M.positionOf(d)
+						local dist = (origin and pos) and math.floor((pos - origin).Magnitude) or -1
+						cand[#cand + 1] = {
+							Name = d.Name,
+							ClassName = d.ClassName,
+							DisplayName = disp,
+							Parent = d.Parent and d.Parent.Name,
+							Position = pos,
+							Dist = dist,
+							Score = scoreInst(d, names, opts),
+						}
+					end
+				end
+			end
+		end
+		table.sort(cand, function(a, b)
+			if a.Score ~= b.Score then
+				return a.Score > b.Score
+			end
+			local da = a.Dist >= 0 and a.Dist or 1e9
+			local db = b.Dist >= 0 and b.Dist or 1e9
+			return da < db
+		end)
+		local n = math.min(#cand, 8)
+		local bits = {}
+		for i = 1, n do
+			local c = cand[i]
+			bits[i] = string.format(
+				"%s [%s] disp=%s parent=%s d=%s",
+				c.Name,
+				c.ClassName,
+				tostring(c.DisplayName),
+				tostring(c.Parent),
+				tostring(c.Dist)
+			)
+		end
+		GB.Log.warn(
+			"RESOLVE",
+			string.format("miss '%s' nearby=%d %s", tostring(request), #cand, table.concat(bits, " | "))
+		)
+		M.lastCandidates = {}
+		n = math.min(n, 16)
+		for i = 1, n do
+			local c = cand[i]
+			M.lastCandidates[i] = {
+				Name = c.Name,
+				DisplayName = c.DisplayName,
+				Parent = c.Parent,
+				Dist = c.Dist,
+			}
+		end
+		pdone("Resolver deep scan", t0)
+		return cand
+	end
+
+	function M.resolve(request, opts)
+		local t0 = pbegin()
+		opts = opts or {}
+		if type(request) ~= "string" or request == "" or request == "\\" then
+			pdone("Resolver.resolve", t0)
+			return nil
+		end
+		local kind0 = opts.ExpectedRole or opts.kind or "npc"
+		if (kind0 == "enemy" or kind0 == "any") and M.isDummyName(request) then
+			local d = M.dummy()
+			if d and islandCandidateRank(climbRoot(d) or d, opts.Island) == 0 then
+				d = nil
+			end
+			local out = d and M.pack(d, request)
+			pdone("Resolver.resolve", t0)
+			return out
+		end
+		local names = M.namesFor(request, opts)
+		local kind = opts.ExpectedRole or opts.kind or "npc"
+		local cacheKey = "res:" .. kind .. ":" .. table.concat(names, "|") .. "|" .. tostring(opts.Island or "")
+		local hit = GB.Cache.get(cacheKey, opts.deep and 0.4 or 2.0)
+		local cachedFallback
+		if hit and hit.Parent and usable(hit, kind) then
+			local root = climbRoot(hit) or hit
+			local islandRank = islandCandidateRank(root, opts.Island)
+			if islandRank == 2 then
+				local out = M.pack(root, request)
+				pdone("Resolver.resolve", t0)
+				return out
+			elseif islandRank == 1 then
+				cachedFallback = root
+			end
+		end
+		if not opts.deep and not cachedFallback and negativeHit(kind, names, opts.Island) then
+			pdone("Resolver.resolve", t0)
+			return nil
+		end
+
+		local best, bestS, bestIslandRank
+		local function consider(inst)
+			if not usable(inst, kind) then
+				return
+			end
+			local root = climbRoot(inst)
+			if not root then
+				return
+			end
+			local islandRank = islandCandidateRank(root, opts.Island)
+			if islandRank == 0 then
+				return
+			end
+			if not (nameHit(root, names) or dialogueNameHit(root, names)) then
+				return
+			end
+			local s = scoreInst(root, names, opts, islandRank)
+			if
+				not bestS
+				or islandRank > bestIslandRank
+				or (islandRank == bestIslandRank and s > bestS)
+			then
+				best, bestS, bestIslandRank = root, s, islandRank
+			end
+		end
+
+		if cachedFallback then
+			consider(cachedFallback)
+		end
+
+		local function considerFromIndex(indexKind)
+			ensureIndex(indexKind)
+			for _, inst in ipairs(indexQuery(indexKind, names, opts)) do
+				consider(inst)
+			end
+		end
+
+		if kind == "enemy" then
+			considerFromIndex("enemy")
+		elseif kind == "npc" then
+			considerFromIndex("npc")
+		elseif kind == "marker" then
+			considerFromIndex("marker")
+		elseif kind == "object" or kind == "shop" or kind == "ore" or kind == "chest" then
+			considerFromIndex("object")
+			considerFromIndex("marker")
+		else
+			considerFromIndex("npc")
+			considerFromIndex("marker")
+			considerFromIndex("object")
+			considerFromIndex("enemy")
+		end
+
+		for _, n in ipairs(names) do
+			local tagged = firstWorldTagged(n, kind == "enemy" and "enemy" or "any", opts.Island)
+			if tagged then
+				consider(tagged)
+			end
+		end
+
+		local ents = workspace:FindFirstChild("Entities")
+		if ents and (kind == "enemy" or kind == "any") then
+			for _, n in ipairs(names) do
+				local c = ents:FindFirstChild(n)
+				if c then
+					indexAddInstance("enemy", c)
+					consider(c)
+				end
+			end
+		end
+
+		local aa = workspace:FindFirstChild("AA IMPORTANT")
+		local dlg = (aa and aa:FindFirstChild("DialogueNPCs")) or workspace:FindFirstChild("DialogueNPCs")
+		if dlg and (kind == "npc" or kind == "any") then
+			if opts.Island then
+				local folder = dlg:FindFirstChild(opts.Island)
+				if folder then
+					for _, c in ipairs(folder:GetChildren()) do
+						indexAddInstance("npc", c)
+						consider(c)
+					end
+				end
+			end
+			for _, islandFolder in ipairs(dlg:GetChildren()) do
+				for _, c in ipairs(islandFolder:GetChildren()) do
+					indexAddInstance("npc", c)
+					consider(c)
+				end
+			end
+		end
+
+		local allowDeep = opts.deep == true
+			or ((GB.Config and GB.Config.DebugResolverDeepScan == true) and opts.allowDiagnosticDeep == true)
+		if (not best) and allowDeep then
+			scanRoots(function(d)
+				if d:IsA("Model") or d:IsA("Folder") or d:IsA("BasePart") then
+					consider(d)
+				end
+				return false
+			end, 1)
+		end
+
+		if best then
+			GB.Cache.set(cacheKey, best)
+			for _, n in ipairs(names) do
+				invalidateNegativeKindName(kind, n, opts.Island)
+			end
+			local pack = M.pack(best, request)
+			GB.Log.log("RESOLVE", string.format("%s -> %s", request, best:GetFullName()))
+			pdone("Resolver.resolve", t0)
+			return pack
+		end
+
+		local now = os.clock()
+		local mk = "miss:" .. request
+		if not missLog[mk] or now - missLog[mk] > 8 then
+			missLog[mk] = now
+			GB.Log.warn("ERROR", "resolve miss " .. table.concat(names, " / "))
+		end
+		noteNegative(kind, names, opts.Island, opts.negTTL or NEG_TTL)
+		pdone("Resolver.resolve", t0)
+		return nil
+	end
+
+	local function followPath(path)
+		if type(path) ~= "table" then
+			return nil
+		end
+		local cur = workspace
+		for _, step in ipairs(path) do
+			if not (cur and type(step) == "string") then
+				return nil
+			end
+			cur = cur:FindFirstChild(step)
+		end
+		return cur
+	end
+
+	local function hasAnyTag(inst, tags)
+		if not (inst and type(tags) == "table") then
+			return false
+		end
+		for _, tag in ipairs(tags) do
+			local ok, hit = pcall(function()
+				return inst:HasTag(tag)
+			end)
+			if ok and hit then
+				return true
+			end
+		end
+		return false
+	end
+
+	function M.resolveObject(name, opts)
+		opts = opts or {}
+		local spec = GB.QuestData and GB.QuestData.objectSpec and GB.QuestData.objectSpec(name) or nil
+		if not spec then
+			return M.resolve(name, {
+				kind = "object",
+				ExpectedRole = "object",
+				Island = opts.Island,
+				deep = opts.deep,
+			})
+		end
+		local requestedIsland = spec.Island or opts.Island
+		local unknown
+		local function directCandidate(inst)
+			if not inst then
+				return nil
+			end
+			local root = climbRoot(inst) or inst
+			local islandRank = islandCandidateRank(root, requestedIsland)
+			if islandRank == 2 then
+				return root
+			elseif islandRank == 1 then
+				unknown = unknown or root
+			end
+			return nil
+		end
+		local hit = directCandidate(followPath(spec.Path))
+		if hit then
+			return M.pack(hit, name)
+		end
+		if type(spec.Tags) == "table" then
+			for _, tag in ipairs(spec.Tags) do
+				local tagged = firstWorldTagged(tag, "any", requestedIsland)
+				if tagged then
+					local root = directCandidate(tagged)
+					if root then
+						return M.pack(root, name)
+					end
+				end
+			end
+		end
+		local pack = M.resolve(name, {
+			kind = "object",
+			ExpectedRole = "object",
+			Island = requestedIsland,
+			deep = opts.deep,
+		})
+		if pack and hasAnyTag(pack.Instance, spec.Tags) then
+			return pack
+		end
+		return pack or (unknown and M.pack(unknown, name))
+	end
+
+	function M.byName(name, kind)
+		local pack = M.resolve(name, { kind = kind or "any", ExpectedRole = kind })
+		return pack and pack.Instance
+	end
+
+	function M.npc(name, opts)
+		opts = opts or {}
+		opts.ExpectedRole = opts.ExpectedRole or "npc"
+		opts.kind = "npc"
+		local pack = M.resolve(name, opts)
+		return pack and pack.Instance
+	end
+
+	function M.resolveNPC(name, opts)
+		opts = opts or {}
+		opts.ExpectedRole = opts.ExpectedRole or "npc"
+		opts.kind = "npc"
+		return M.resolve(name, opts)
+	end
+
+	function M.resolveMarker(name, opts)
+		opts = opts or {}
+		opts.ExpectedRole = opts.ExpectedRole or "marker"
+		opts.kind = "marker"
+		return M.resolve(name, opts)
+	end
+
+	function M.marker(name, opts)
+		local pack = M.resolveMarker(name, opts)
+		return pack and pack.Instance
+	end
+
+	local _resolveObjectRaw = M.resolveObject
+	function M.resolveObject(name, opts)
+		local t0 = pbegin()
+		local out = { pcall(_resolveObjectRaw, name, opts) }
+		pdone("Resolver.resolveObject", t0)
+		if not out[1] then
+			error(out[2])
+		end
+		return unpack(out, 2)
+	end
+
+	local _resolveNPCRaw = M.resolveNPC
+	function M.resolveNPC(name, opts)
+		local t0 = pbegin()
+		local out = { pcall(_resolveNPCRaw, name, opts) }
+		pdone("Resolver.resolveNPC", t0)
+		if not out[1] then
+			error(out[2])
+		end
+		return unpack(out, 2)
+	end
+
+	function M.enemies(name)
+		local t0 = pbegin()
+		local out = {}
+		if name == "\\" or name == "" then
+			pdone("Resolver.EnemyIndexLookup", t0)
+			return out
+		end
+		if M.isDummyName(name) then
+			local d = M.dummy()
+			if d then
+				out[1] = d
+			end
+			pdone("Resolver.EnemyIndexLookup", t0)
+			return out
+		end
+		local origin
+		local hrp = GB.World and GB.World.hrp and GB.World.hrp()
+		if hrp then
+			origin = hrp.Position
+		end
+		local seen = {}
+		local names = M.namesFor(name, {})
+		local function consider(inst)
+			if not usable(inst, "enemy") then
+				return
+			end
+			local root = climbRoot(inst) or inst
+			if seen[root] or M.isPet(root) then
+				return
+			end
+			if GB.Combat and GB.Combat.isRecentlyDead and GB.Combat.isRecentlyDead(root) then
+				return
+			end
+			if GB.Combat and GB.Combat.IsEnemyAlive and not GB.Combat.IsEnemyAlive(root) then
+				return
+			end
+			seen[root] = true
+			local pos = M.positionOf(root)
+			local d = (origin and pos) and (pos - origin).Magnitude or 1e9
+			out[#out + 1] = { inst = root, dist = d }
+		end
+		ensureIndex("enemy")
+		for _, inst in ipairs(indexQuery("enemy", names, {})) do
+			consider(inst)
+		end
+		if #out == 0 then
+			local ents = workspace:FindFirstChild("Entities")
+			if ents then
+				for _, c in ipairs(ents:GetChildren()) do
+					if nameHit(c, names) then
+						indexAddInstance("enemy", c)
+						consider(c)
+					end
+				end
+			end
+		end
+		table.sort(out, function(a, b)
+			return a.dist < b.dist
+		end)
+		local flat = {}
+		for i, row in ipairs(out) do
+			flat[i] = row.inst
+		end
+		pdone("Resolver.EnemyIndexLookup", t0)
+		return flat
+	end
+
+	function M.enemy(name)
+		if name == "\\" or name == "" then
+			return nil
+		end
+		if M.isDummyName(name) then
+			return M.dummy()
+		end
+		local list = M.enemies(name)
+		local best = list[1]
+		if best then
+			GB.Log.log("RESOLVE", string.format("%s -> %s", name, best:GetFullName()))
+			return best
+		end
+		return nil
+	end
+
+	local MARKER_CONTAINERS = {
+		Markers = true,
+		NPCAreas = true,
+		PointsOfInterest = true,
+		["Spawn Locations"] = true,
+		MobZones = true,
+	}
+
+	local GENERIC_MARKER_WORDS = {
+		footsteps = true,
+		campsite = true,
+		marker = true,
+		black = true,
+		noir = true,
+		pirate = true,
+		camp = true,
+		signal = true,
+		fire = true,
+		village = true,
+		supply = true,
+		crate = true,
+	}
+
+	function M.isMarkerContainer(inst)
+		return inst ~= nil and MARKER_CONTAINERS[inst.Name] == true
+	end
+
+	function M.markerLeafOf(inst, tag)
+		if not inst then
+			return nil
+		end
+		local function usableLeaf(x)
+			if not (x and x.Parent) or inRS(x) or M.isPet(x) then
+				return false
+			end
+			if M.isMarkerContainer(x) then
+				return false
+			end
+			return x:IsA("BasePart") or x:IsA("Model") or x:IsA("Folder") or x:IsA("Attachment")
+		end
+		local needles = {}
+		if type(tag) == "string" and tag ~= "" then
+			needles[#needles + 1] = tag
+			for part in string.gmatch(tag, "[^%s%(%)]+") do
+				local low = string.lower(part)
+				if #part >= 5 and not GENERIC_MARKER_WORDS[low] then
+					needles[#needles + 1] = part
+				end
+			end
+		end
+		local exact, taggedLeaf, named, near, nearD
+		local origin
+		local hrp = GB.World and GB.World.hrp and GB.World.hrp()
+		if hrp then
+			origin = hrp.Position
+		end
+		local function consider(x)
+			if not usableLeaf(x) then
+				return
+			end
+			local disp = M.displayName(x)
+			if tag and (x.Name == tag or disp == tag) then
+				exact = exact or x
+				return
+			end
+			local tagged = false
+			if tag then
+				pcall(function()
+					tagged = x:HasTag(tag)
+				end)
+			end
+			if tagged then
+				taggedLeaf = taggedLeaf or x
+			end
+			for _, n in ipairs(needles) do
+				if n ~= tag and (string.find(x.Name, n, 1, true) or (disp and string.find(disp, n, 1, true))) then
+					named = named or x
+					break
+				end
+			end
+			if origin then
+				local pos = M.positionOf(x)
+				if pos then
+					local d = (pos - origin).Magnitude
+					if d <= 45 and (not nearD or d < nearD) then
+						near, nearD = x, d
+					end
+				end
+			end
+		end
+		if not M.isMarkerContainer(inst) then
+			consider(inst)
+		end
+		if exact then
+			return exact
+		end
+		local ok, desc = pcall(inst.GetDescendants, inst)
+		if ok and type(desc) == "table" then
+			for _, d in ipairs(desc) do
+				consider(d)
+				if exact then
+					return exact
+				end
+			end
+		end
+		return taggedLeaf or named or near
+	end
+
+	function M.taggedAny(tag)
+		if type(tag) ~= "string" or tag == "" then
+			return nil
+		end
+		if MARKER_CONTAINERS[tag] then
+			return nil
+		end
+		for _, inst in ipairs(CS:GetTagged(tag)) do
+			if inst.Parent and not inRS(inst) and not M.isPet(inst) then
+				if M.isMarkerContainer(inst) then
+					local leaf = M.markerLeafOf(inst, tag)
+					if leaf then
+						return leaf
+					end
+				else
+					return inst
+				end
+			end
+		end
+		return nil
+	end
+
+	function M.scanMarkerFolder(tag)
+		if type(tag) ~= "string" or tag == "" or MARKER_CONTAINERS[tag] then
+			return nil
+		end
+		local roots = {}
+		local aa = workspace:FindFirstChild("AA IMPORTANT")
+		if aa then
+			roots[#roots + 1] = aa:FindFirstChild("Markers")
+		end
+		roots[#roots + 1] = workspace:FindFirstChild("Markers")
+		roots[#roots + 1] = workspace:FindFirstChild("PointsOfInterest")
+		for _, folder in ipairs(roots) do
+			if folder then
+				local leaf = M.markerLeafOf(folder, tag)
+				if leaf then
+					return leaf
+				end
+			end
+		end
+		return nil
+	end
+
+	function M.findPlace(name, island)
+		if type(name) ~= "string" or name == "" or MARKER_CONTAINERS[name] then
+			return nil
+		end
+		local now = os.clock()
+		local key = name .. "|" .. tostring(island or "")
+		if M._placeCache and M._placeKey == key and now - (M._placeAt or 0) < 2 and M._placeCache.Parent then
+			return M._placeCache
+		end
+		local hit = M.taggedAny(name)
+		if hit then
+			M._placeKey = key
+			M._placeAt = now
+			M._placeCache = hit
+			return hit
+		end
+		local function match(inst)
+			if not (inst and inst.Parent) or M.isMarkerContainer(inst) then
+				return false
+			end
+			if inst.Name == name then
+				return true
+			end
+			local ok, tagged = pcall(function()
+				return inst:HasTag(name)
+			end)
+			return ok and tagged == true
+		end
+		local roots = {}
+		local isles = workspace:FindFirstChild("Islands")
+		if isles and type(island) == "string" and island ~= "" then
+			roots[#roots + 1] = isles:FindFirstChild(island)
+		end
+		roots[#roots + 1] = workspace:FindFirstChild("AA IMPORTANT")
+		roots[#roots + 1] = workspace:FindFirstChild("Markers")
+		roots[#roots + 1] = workspace:FindFirstChild("PointsOfInterest")
+		for _, root in ipairs(roots) do
+			if root then
+				if match(root) then
+					M._placeKey = key
+					M._placeAt = now
+					M._placeCache = root
+					return root
+				end
+				local q = root:GetChildren()
+				local i = 1
+				local seen = 0
+				while i <= #q and seen < 480 do
+					local inst = q[i]
+					i = i + 1
+					seen = seen + 1
+					if match(inst) then
+						M._placeKey = key
+						M._placeAt = now
+						M._placeCache = inst
+						return inst
+					end
+					for _, ch in ipairs(inst:GetChildren()) do
+						q[#q + 1] = ch
+					end
+				end
+			end
+		end
+		M._placeKey = key
+		M._placeAt = now
+		M._placeCache = nil
+		return nil
+	end
+
+	function M.findLoosePlace(needles, island)
+		if type(needles) ~= "table" or #needles == 0 then
+			return nil
+		end
+		local now = os.clock()
+		local key = table.concat(needles, "|") .. "|" .. tostring(island or "")
+		if M._looseCache and M._looseKey == key and now - (M._looseAt or 0) < 2.5 and M._looseCache.Parent then
+			return M._looseCache
+		end
+		local function nameHit(inst)
+			if not (inst and inst.Parent) or M.isMarkerContainer(inst) then
+				return false
+			end
+			local n = string.lower(tostring(inst.Name or ""))
+			if string.find(n, "footstep", 1, true) and not string.find(n, "marker", 1, true) then
+				return false
+			end
+			for i = 1, #needles do
+				local nd = string.lower(tostring(needles[i] or ""))
+				if #nd >= 4 and string.find(n, nd, 1, true) then
+					if string.find(n, "marker", 1, true) or string.find(n, "campsite", 1, true) or string.find(n, "signal fire", 1, true) or string.find(n, "supply crate", 1, true) then
+						return true
+					end
+					if not string.find(n, "pirate", 1, true) and not string.find(n, "officer", 1, true) then
+						return true
+					end
+				end
+			end
+			return false
+		end
+		local okTags, tags = pcall(function()
+			return CS:GetRegisteredTags()
+		end)
+		if okTags and type(tags) == "table" then
+			for i = 1, #tags do
+				local t = tags[i]
+				if nameHit({ Name = t, Parent = workspace }) then
+					local hit = M.taggedAny(t)
+					if hit then
+						M._looseKey = key
+						M._looseAt = now
+						M._looseCache = hit
+						return hit
+					end
+				end
+			end
+		end
+		local roots = {}
+		local isles = workspace:FindFirstChild("Islands")
+		if isles and type(island) == "string" and island ~= "" then
+			roots[#roots + 1] = isles:FindFirstChild(island)
+		end
+		roots[#roots + 1] = workspace:FindFirstChild("AA IMPORTANT")
+		roots[#roots + 1] = workspace:FindFirstChild("Markers")
+		for _, root in ipairs(roots) do
+			if root then
+				local q = { root }
+				local i = 1
+				local seen = 0
+				while i <= #q and seen < 360 do
+					local inst = q[i]
+					i = i + 1
+					seen = seen + 1
+					if nameHit(inst) then
+						M._looseKey = key
+						M._looseAt = now
+						M._looseCache = inst
+						return inst
+					end
+					for _, ch in ipairs(inst:GetChildren()) do
+						q[#q + 1] = ch
+					end
+				end
+			end
+		end
+		M._looseKey = key
+		M._looseAt = now
+		M._looseCache = nil
+		return nil
+	end
+
+	function M.findQuestBeam(questName, tag)
+		local now = os.clock()
+		local key = tostring(questName or "") .. "|" .. tostring(tag or "")
+		if M._beamCache and M._beamKey == key and now - (M._beamAt or 0) < 1.2 and M._beamCache.Parent then
+			return M._beamCache
+		end
+		local needles = {}
+		if type(questName) == "string" and questName ~= "" then
+			needles[#needles + 1] = questName
+		end
+		if type(tag) == "string" and tag ~= "" then
+			needles[#needles + 1] = tag
+		end
+		if #needles == 0 then
+			return nil
+		end
+		local function hitText(s)
+			if type(s) ~= "string" or s == "" then
+				return false
+			end
+			for i = 1, #needles do
+				if string.find(s, needles[i], 1, true) then
+					return true
+				end
+			end
+			return false
+		end
+		local function fromBillboard(bb)
+			if not bb then
+				return nil
+			end
+			local adornee = bb.Adornee
+			if adornee and adornee.Parent and not M.isMarkerContainer(adornee) then
+				return adornee
+			end
+			local p = bb.Parent
+			if p and p.Parent and not M.isMarkerContainer(p) then
+				if p:IsA("BasePart") or p:IsA("Model") or p:IsA("Attachment") then
+					return p
+				end
+			end
+			return nil
+		end
+		local function scan(root)
+			if not root then
+				return nil
+			end
+			local ok, desc = pcall(root.GetDescendants, root)
+			if not (ok and type(desc) == "table") then
+				return nil
+			end
+			for _, d in ipairs(desc) do
+				if d:IsA("BillboardGui") then
+					if hitText(d.Name) then
+						local inst = fromBillboard(d)
+						if inst then
+							return inst
+						end
+					end
+					for _, c in ipairs(d:GetChildren()) do
+						if (c:IsA("TextLabel") or c:IsA("TextButton") or c:IsA("TextBox")) and hitText(c.Text) then
+							local inst = fromBillboard(d)
+							if inst then
+								return inst
+							end
+						end
+					end
+				elseif (d:IsA("TextLabel") or d:IsA("TextButton")) and hitText(d.Text) then
+					local bb = d:FindFirstAncestorOfClass("BillboardGui")
+					local inst = fromBillboard(bb)
+					if inst then
+						return inst
+					end
+				end
+			end
+			return nil
+		end
+		local aa = workspace:FindFirstChild("AA IMPORTANT")
+		local hit = scan(aa and aa:FindFirstChild("Markers")) or scan(workspace:FindFirstChild("Markers"))
+		local pg = GB.lp and GB.lp.PlayerGui
+		if not hit and pg then
+			hit = scan(pg:FindFirstChild("Markers")) or scan(pg:FindFirstChild("QuestMarkers"))
+			if not hit then
+				for _, gui in ipairs(pg:GetChildren()) do
+					if gui:IsA("LayerCollector") and gui.Enabled then
+						local n = gui.Name
+						if n == "HUD" or n == "Hud" or n == "Main" or n == "MainGui" or n == "Quests"
+							or string.find(n, "Marker", 1, true) or string.find(n, "Quest", 1, true)
+							or string.find(n, "Compass", 1, true) or string.find(n, "Tracker", 1, true)
+						then
+							hit = scan(gui)
+							if hit then
+								break
+							end
+						end
+					end
+				end
+			end
+		end
+		M._beamKey = key
+		M._beamAt = now
+		M._beamCache = hit
+		return hit
+	end
+
+	function M.findHudAdornee(questName)
+		local now = os.clock()
+		if M._hudCache and M._hudKey == questName and now - (M._hudAt or 0) < 1.2 and M._hudCache.Parent then
+			return M._hudCache
+		end
+		local pg = GB.lp and GB.lp.PlayerGui
+		if not pg then
+			return nil
+		end
+		local best
+		for _, gui in ipairs(pg:GetChildren()) do
+			if gui:IsA("LayerCollector") and gui.Enabled then
+				local n = gui.Name
+				local look = n == "HUD" or n == "Hud" or n == "Main" or n == "MainGui" or n == "Quests"
+					or string.find(n, "Marker", 1, true) or string.find(n, "Quest", 1, true)
+					or string.find(n, "Compass", 1, true) or string.find(n, "Tracker", 1, true)
+				if look then
+					local ok, desc = pcall(gui.GetDescendants, gui)
+					if ok and type(desc) == "table" then
+						for _, d in ipairs(desc) do
+							if d:IsA("ObjectValue") and d.Value and typeof(d.Value) == "Instance" then
+								local vn = d.Name
+								if vn == "Target" or vn == "Adornee" or vn == "Marker" or vn == "Objective" or vn == "Instance" then
+									if d.Value.Parent and not M.isMarkerContainer(d.Value) then
+										if questName and (d.Value.Name == questName or M.displayName(d.Value) == questName) then
+											M._hudKey = questName
+											M._hudAt = now
+											M._hudCache = d.Value
+											return d.Value
+										end
+										best = best or d.Value
+									end
+								end
+							elseif d:IsA("BillboardGui") and d.Adornee and d.Adornee.Parent and not M.isMarkerContainer(d.Adornee) then
+								local questHit = false
+								local distHit = false
+								for _, c in ipairs(d:GetDescendants()) do
+									if c:IsA("TextLabel") or c:IsA("TextButton") then
+										local t = c.Text
+										if type(t) == "string" then
+											if questName and string.find(t, questName, 1, true) then
+												questHit = true
+											end
+											if string.match(t, "^%d+m$") then
+												distHit = true
+											end
+										end
+									end
+								end
+								if questHit then
+									M._hudKey = questName
+									M._hudAt = now
+									M._hudCache = d.Adornee
+									return d.Adornee
+								end
+								if distHit then
+									best = best or d.Adornee
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+		M._hudKey = questName
+		M._hudAt = now
+		M._hudCache = best
+		return best
+	end
+
+	function M.taggedLeaf(tag)
+		if type(tag) ~= "string" or tag == "" or MARKER_CONTAINERS[tag] then
+			return nil
+		end
+		local leaf = M.taggedAny(tag)
+		if leaf and not M.isMarkerContainer(leaf) then
+			return leaf
+		end
+		return M.scanMarkerFolder(tag)
+	end
+
+	function M.waitTaggedLeaf(tag, timeout)
+		return M.taggedLeaf(tag)
+	end
+
+	function M.isMarkerTree(inst)
+		local p = inst
+		while p and p ~= workspace do
+			local n = p.Name
+			if n == "Markers" or n == "NPCAreas" or n == "PointsOfInterest" or n == "Spawn Locations" or n == "MobZones" then
+				return true
+			end
+			p = p.Parent
+		end
+		return false
+	end
+
+	function M.objectCombatRoot(inst, name)
+		if not inst then
+			return nil
+		end
+		local spec = GB.QuestData and GB.QuestData.objectSpec and GB.QuestData.objectSpec(name)
+		local tags = { name }
+		if spec and type(spec.Tags) == "table" then
+			for _, t in ipairs(spec.Tags) do
+				if type(t) == "string" and t ~= "" then
+					tags[#tags + 1] = t
+				end
+			end
+		end
+		local function taggedAs(x)
+			if not x then
+				return false
+			end
+			if type(name) == "string" and name ~= "" then
+				if x.Name == name then
+					return true
+				end
+				local ot = x:GetAttribute("ObjectType")
+				if type(ot) == "string" and ot == name then
+					return true
+				end
+			end
+			if x.Name == "Jail" or x:GetAttribute("ObjectType") == "ClownCage" then
+				return name == "Jail"
+			end
+			return hasAnyTag(x, tags)
+		end
+		local cur = inst
+		while cur.Parent and cur.Parent ~= workspace do
+			local parent = cur.Parent
+			local pn = parent.Name
+			if pn == "Islands" or pn == "Entities" or pn == "AA IMPORTANT" or pn == "Island" then
+				break
+			end
+			if taggedAs(parent) then
+				cur = parent
+			else
+				break
+			end
+		end
+		return cur
+	end
+
+	function M.findCaptiveCages(kind)
+		kind = string.lower(tostring(kind or "any"))
+		local islands = workspace:FindFirstChild("Islands")
+		local town = islands and islands:FindFirstChild("Clown Town")
+		local island = town and town:FindFirstChild("Island")
+		local jail = island and island:FindFirstChild("Jail")
+		local out = {}
+		local seen = {}
+		local function labelOf(inst)
+			return string.lower(tostring(inst.Name or "") .. " " .. tostring(M.displayName(inst) or ""))
+		end
+		local function isChild(inst)
+			local n = labelOf(inst)
+			return string.find(n, "child", 1, true) or string.find(n, "tired", 1, true)
+		end
+		local function isAdult(inst)
+			return string.find(labelOf(inst), "adult", 1, true)
+		end
+		local function isCage(inst)
+			if not inst or not inst.Parent or inRS(inst) then
+				return false
+			end
+			if inst.Name == "Hostage" then
+				return true
+			end
+			local n = labelOf(inst)
+			return string.find(n, "hostage", 1, true)
+				or string.find(n, "captive", 1, true)
+				or string.find(n, "captured", 1, true)
+				or string.find(n, "cage", 1, true)
+		end
+		local function add(inst)
+			if not inst or seen[inst] or not isCage(inst) then
+				return
+			end
+			if kind == "child" and isAdult(inst) then
+				return
+			end
+			if kind == "adult" and isChild(inst) then
+				return
+			end
+			if not (M.part(inst) or M.positionOf(inst)) then
+				return
+			end
+			seen[inst] = true
+			out[#out + 1] = inst
+		end
+		local hostage = jail and jail:FindFirstChild("Hostage")
+		add(hostage)
+		if hostage then
+			for _, ch in ipairs(hostage:GetChildren()) do
+				add(ch)
+			end
+		end
+		if jail then
+			for _, ch in ipairs(jail:GetChildren()) do
+				add(ch)
+			end
+		end
+		local spec = GB.QuestData and GB.QuestData.objectSpec and GB.QuestData.objectSpec(
+			kind == "adult" and "Adult Captive" or "Child Captive"
+		)
+		if spec and spec.Path then
+			add(followPath(spec.Path))
+		end
+		local here = GB.World and GB.World.hrp and GB.World.hrp()
+		local herePos = here and here.Position
+		if herePos then
+			table.sort(out, function(a, b)
+				local pa = M.positionOf(a)
+				local pb = M.positionOf(b)
+				local da = pa and (pa - herePos).Magnitude or 1e9
+				local db = pb and (pb - herePos).Magnitude or 1e9
+				return da < db
+			end)
+		end
+		return out
+	end
+
+	function M.jailKind(jail)
+		if not jail then
+			return "any"
+		end
+		local function kindOf(inst)
+			if not inst then
+				return nil
+			end
+			local child = false
+			local adult = false
+			pcall(function()
+				child = inst:HasTag("Child Captive") or inst:GetAttribute("IsChild") == true
+				adult = inst:HasTag("Adult Captive")
+			end)
+			if child then
+				return "child"
+			end
+			if adult then
+				return "adult"
+			end
+			local n = string.lower(tostring(M.displayName(inst) or "") .. " " .. tostring(inst.Name or ""))
+			if string.find(n, "child", 1, true) or string.find(n, "tired", 1, true) then
+				return "child"
+			end
+			if string.find(n, "civilian", 1, true) or string.find(n, "adult", 1, true) then
+				return "adult"
+			end
+			return nil
+		end
+		local k = kindOf(jail:FindFirstChild("Hostage"))
+		if k then
+			return k
+		end
+		for _, ch in ipairs(jail:GetChildren()) do
+			k = kindOf(ch)
+			if k then
+				return k
+			end
+		end
+		return "any"
+	end
+
+	function M.jailParts(jail)
+		local container, cage, hostage
+		if not jail then
+			return nil, nil, nil
+		end
+		local function classify(ch)
+			if not ch then
+				return
+			end
+			local ot = ch:GetAttribute("ObjectType")
+			if ch.Name == "Cage Container" or ot == "Cage Container" then
+				container = container or ch
+				return
+			end
+			if ch.Name == "Cage" or ot == "Cage" then
+				cage = cage or ch
+				return
+			end
+			local tagged = false
+			pcall(function()
+				tagged = ch:HasTag("Captive") or ch:HasTag("Child Captive") or ch:HasTag("Adult Captive")
+			end)
+			if ch.Name == "Hostage" or tagged then
+				hostage = hostage or ch
+			end
+		end
+		for _, ch in ipairs(jail:GetChildren()) do
+			classify(ch)
+		end
+		if not container then
+			container = jail:FindFirstChild("Cage Container", true)
+		end
+		if not cage then
+			cage = jail:FindFirstChild("Cage", true)
+		end
+		if not hostage then
+			hostage = jail:FindFirstChild("Hostage", true)
+		end
+		return container, cage, hostage
+	end
+
+	local function nearbyNamed(want, radius)
+		local hits = {}
+		local seen = {}
+		local hrp = GB.World and GB.World.hrp and GB.World.hrp()
+		if not (hrp and type(want) == "string" and want ~= "") then
+			return hits
+		end
+		local ok, parts = pcall(function()
+			return workspace:GetPartBoundsInRadius(hrp.Position, radius or 64)
+		end)
+		if not ok or type(parts) ~= "table" then
+			return hits
+		end
+		for _, p in ipairs(parts) do
+			local cur = p
+			while cur and cur ~= workspace do
+				if not seen[cur] then
+					seen[cur] = true
+					local ot = cur:GetAttribute("ObjectType")
+					if cur.Name == want or ot == want then
+						hits[#hits + 1] = cur
+						break
+					end
+				end
+				cur = cur.Parent
+			end
+		end
+		return hits
+	end
+
+	function M.findJailSites(kind)
+		kind = string.lower(tostring(kind or "any"))
+		local sites = {}
+		local seen = {}
+		local function isJail(inst)
+			if not inst then
+				return false
+			end
+			local tagged = false
+			pcall(function()
+				tagged = inst:HasTag("Jail")
+			end)
+			return tagged or inst.Name == "Jail" or inst:GetAttribute("ObjectType") == "ClownCage"
+		end
+		local function addJail(jail)
+			if not jail or seen[jail] or not jail.Parent or inRS(jail) then
+				return
+			end
+			if jail:GetAttribute("Freed") == true then
+				return
+			end
+			local jk = M.jailKind(jail)
+			if kind ~= "any" and jk ~= "any" and jk ~= kind then
+				return
+			end
+			seen[jail] = true
+			local container, cage, hostage = M.jailParts(jail)
+			sites[#sites + 1] = {
+				Jail = jail,
+				Container = container,
+				Cage = cage,
+				Hostage = hostage,
+				Kind = jk,
+			}
+		end
+		local ok, jails = pcall(CS.GetTagged, CS, "Jail")
+		if ok and type(jails) == "table" then
+			for _, jail in ipairs(jails) do
+				addJail(jail)
+			end
+		end
+		for _, tag in ipairs({ "Child Captive", "Adult Captive", "Captive" }) do
+			local ok2, list = pcall(CS.GetTagged, CS, tag)
+			if ok2 and type(list) == "table" then
+				for _, cap in ipairs(list) do
+					if cap and cap.Parent and isJail(cap.Parent) then
+						addJail(cap.Parent)
+					end
+				end
+			end
+		end
+		local havePart = false
+		for _, site in ipairs(sites) do
+			if site.Container or site.Cage then
+				havePart = true
+				break
+			end
+		end
+		if not havePart then
+			for _, box in ipairs(nearbyNamed("Cage Container", 72)) do
+				if box.Parent and isJail(box.Parent) then
+					addJail(box.Parent)
+				elseif box.Parent and not inRS(box) then
+					addJail(box.Parent)
+				end
+			end
+			for _, cg in ipairs(nearbyNamed("Cage", 72)) do
+				if cg.Parent and isJail(cg.Parent) then
+					addJail(cg.Parent)
+				end
+			end
+		end
+		local here = GB.World and GB.World.hrp and GB.World.hrp()
+		local herePos = here and here.Position
+		if herePos then
+			table.sort(sites, function(a, b)
+				local pa = M.positionOf(a.Container or a.Cage or a.Hostage or a.Jail)
+				local pb = M.positionOf(b.Container or b.Cage or b.Hostage or b.Jail)
+				local da = pa and (pa - herePos).Magnitude or 1e9
+				local db = pb and (pb - herePos).Magnitude or 1e9
+				return da < db
+			end)
+		end
+		return sites
+	end
+
+	function M.dumpJailMiss(kind)
+		local sites = M.findJailSites(kind)
+		local n = 0
+		pcall(function()
+			n = #CS:GetTagged("Jail")
+		end)
+		local kids = {}
+		local jail = sites[1] and sites[1].Jail
+		if jail then
+			for _, ch in ipairs(jail:GetChildren()) do
+				kids[#kids + 1] = tostring(ch.Name) .. ":" .. tostring(ch:GetAttribute("ObjectType") or "-")
+			end
+		end
+		GB.Log.warn(
+			"QUEST",
+			string.format("Jail tagged=%d sites=%d kids=%s", n, #sites, #kids > 0 and table.concat(kids, ",") or "-")
+		)
+		return sites
+	end
+
+	function M.findCageContainer(kind)
+		local sites = M.findJailSites(kind)
+		for _, site in ipairs(sites) do
+			if site.Container then
+				return site.Container, sites
+			end
+		end
+		return nil, sites
+	end
+
+	function M.jailCageReady(cage)
+		if not (cage and cage.Parent) then
+			return false
+		end
+		if cage:GetAttribute("Crashed") == true then
+			return true
+		end
+		local pr
+		pcall(function()
+			pr = cage:FindFirstChildWhichIsA("ProximityPrompt", true)
+		end)
+		return pr ~= nil and pr.Enabled == true
+	end
+
+	function M.jailContainerLive(container)
+		if not (container and container.Parent) then
+			return false
+		end
+		if GB.Combat and GB.Combat.hasDeadFlag and GB.Combat.hasDeadFlag(container) then
+			return false
+		end
+		if GB.Combat and GB.Combat.isRecentlyDead and GB.Combat.isRecentlyDead(container) then
+			return false
+		end
+		local hp = GB.Combat and GB.Combat.readHealth and GB.Combat.readHealth(container)
+		if type(hp) == "number" and hp <= 0 then
+			return false
+		end
+		return true
+	end
+
+	function M.findJailBreakTarget(kind, preferJail)
+		local sites = M.findJailSites(kind)
+		local function fromSite(site)
+			if not site or not site.Jail or site.Jail:GetAttribute("Freed") == true then
+				return nil
+			end
+			if M.jailCageReady(site.Cage) then
+				return site.Cage, "Cage", site
+			end
+			if M.jailContainerLive(site.Container) then
+				return site.Container, "Cage Container", site
+			end
+			if site.Cage and site.Cage.Parent then
+				return site.Cage, "Cage", site
+			end
+			return nil
+		end
+		if preferJail and preferJail.Parent and preferJail:GetAttribute("Freed") ~= true then
+			for _, site in ipairs(sites) do
+				if site.Jail == preferJail then
+					local inst, phase = fromSite(site)
+					if inst then
+						return inst, phase, site
+					end
+					return nil, nil, site
+				end
+			end
+			local container, cage, hostage = M.jailParts(preferJail)
+			local forced = {
+				Jail = preferJail,
+				Container = container,
+				Cage = cage,
+				Hostage = hostage,
+				Kind = M.jailKind(preferJail),
+			}
+			local inst, phase = fromSite(forced)
+			if inst then
+				return inst, phase, forced
+			end
+		end
+		for _, site in ipairs(sites) do
+			if M.jailCageReady(site.Cage) then
+				return site.Cage, "Cage", site
+			end
+		end
+		for _, site in ipairs(sites) do
+			local inst, phase = fromSite(site)
+			if inst then
+				return inst, phase, site
+			end
+		end
+		return nil, nil, sites[1]
+	end
+
+	function M.isCrateLike(inst, want)
+		if not (inst and inst.Parent) then
+			return false
+		end
+		local n = string.lower(tostring(inst.Name or "") .. " " .. tostring(M.displayName(inst) or ""))
+		if not string.find(n, "crate", 1, true) then
+			return false
+		end
+		local explosive = string.find(n, "explosive", 1, true)
+		local tomato = string.find(n, "tomato", 1, true)
+		if want == "Explosive Wooden Crate" then
+			return explosive ~= nil
+		end
+		if want == "Tomato Crate" then
+			return tomato ~= nil
+		end
+		return not explosive and not tomato
+	end
+
+	function M.findCrateLike(island, want)
+		want = want or "Supply Crate"
+		local function accept(inst)
+			if not M.isCrateLike(inst, want) or M.isMarkerContainer(inst) or inRS(inst) or M.isPet(inst) then
+				return nil
+			end
+			if island then
+				local got = islandOf(inst)
+				if got and got ~= island then
+					return nil
+				end
+			end
+			if GB.Combat and GB.Combat.isRecentlyDead and GB.Combat.isRecentlyDead(inst) then
+				return nil
+			end
+			if not (M.part(inst) or M.positionOf(inst)) then
+				return nil
+			end
+			return inst
+		end
+		local okTags, tags = pcall(function()
+			return CS:GetRegisteredTags()
+		end)
+		if okTags and type(tags) == "table" then
+			for i = 1, #tags do
+				local t = tags[i]
+				if type(t) == "string" and string.find(string.lower(t), "crate", 1, true) then
+					local hit = accept(M.taggedAny(t))
+					if hit then
+						return hit
+					end
+				end
+			end
+		end
+		local roots = {}
+		local isles = workspace:FindFirstChild("Islands")
+		if isles and type(island) == "string" and island ~= "" then
+			roots[#roots + 1] = isles:FindFirstChild(island)
+		end
+		roots[#roots + 1] = workspace:FindFirstChild("AA IMPORTANT")
+		for _, root in ipairs(roots) do
+			if root then
+				local q = { root }
+				local i = 1
+				local seen = 0
+				while i <= #q and seen < 420 do
+					local inst = q[i]
+					i = i + 1
+					seen = seen + 1
+					local hit = accept(inst)
+					if hit then
+						return hit
+					end
+					for _, ch in ipairs(inst:GetChildren()) do
+						q[#q + 1] = ch
+					end
+				end
+			end
+		end
+		return nil
+	end
+
+	function M.findDestroyable(name, opts)
+		opts = opts or {}
+		if type(name) ~= "string" or name == "" then
+			return nil
+		end
+		if name == "Cage Container" or name == "Cage" then
+			local sites = M.findJailSites("any")
+			if name == "Cage Container" then
+				for _, site in ipairs(sites) do
+					if site.Container then
+						return site.Container
+					end
+				end
+				return nil
+			end
+			for _, site in ipairs(sites) do
+				if site.Cage then
+					return site.Cage
+				end
+			end
+			return nil
+		end
+		local spec = GB.QuestData and GB.QuestData.objectSpec and GB.QuestData.objectSpec(name)
+		local island = opts.Island or (spec and spec.Island)
+		local tags = { name }
+		local seen = { [name] = true }
+		local function addTag(t)
+			if type(t) == "string" and t ~= "" and not seen[t] then
+				seen[t] = true
+				tags[#tags + 1] = t
+			end
+		end
+		if spec and type(spec.Tags) == "table" then
+			for _, t in ipairs(spec.Tags) do
+				addTag(t)
+			end
+		end
+		local alias = M.OBJECT_ALIAS[name]
+		if type(alias) == "string" then
+			addTag(alias)
+		elseif type(alias) == "table" then
+			for _, t in ipairs(alias) do
+				addTag(t)
+			end
+		end
+
+		local function consider(inst)
+			if not inst or not inst.Parent or inRS(inst) or M.isPet(inst) then
+				return nil
+			end
+			local root = M.objectCombatRoot(inst, name) or inst
+			if not root or not root.Parent or inRS(root) then
+				return nil
+			end
+			if M.isMarkerTree(root) then
+				local hp, _ = nil, nil
+				if GB.Combat and GB.Combat.readHealth then
+					hp = GB.Combat.readHealth(root)
+				end
+				if type(hp) ~= "number" then
+					return nil
+				end
+			end
+			if island then
+				local got = islandOf(root)
+				if got and got ~= island then
+					return nil
+				end
+			end
+			if not (M.part(root) or M.positionOf(root)) then
+				return nil
+			end
+			if GB.Combat and GB.Combat.isRecentlyDead and GB.Combat.isRecentlyDead(root) then
+				return nil
+			end
+			if GB.Combat and GB.Combat.IsEnemyAlive and not GB.Combat.IsEnemyAlive(root) then
+				return nil
+			end
+			return root
+		end
+
+		if spec and spec.Path then
+			local hit = consider(followPath(spec.Path))
+			if hit then
+				return hit
+			end
+		end
+		for _, tag in ipairs(tags) do
+			local ok, list = pcall(CS.GetTagged, CS, tag)
+			if ok and type(list) == "table" then
+				for _, inst in ipairs(list) do
+					local hit = consider(inst)
+					if hit then
+						return hit
+					end
+				end
+			end
+		end
+		if name == "Supply Crate" or string.find(string.lower(name), "crate", 1, true) then
+			local loose = M.findCrateLike(island, name)
+			if loose then
+				return loose
+			end
+		end
+		return nil
+	end
+
+	function M.isBinkiRequest(name)
+		if type(name) ~= "string" or name == "" then
+			return false
+		end
+		return string.find(name, "Binki", 1, true) ~= nil
+			or string.find(name, "Barrel Clown", 1, true) ~= nil
+	end
+
+	local function barrelName(n)
+		if type(n) ~= "string" or n == "" then
+			return false
+		end
+		return string.find(string.lower(n), "barrel", 1, true) ~= nil
+	end
+
+	function M.isBarrelName(n)
+		return barrelName(n)
+	end
+
+	local function barrelRoot(inst)
+		if not inst then
+			return nil
+		end
+		if barrelName(inst.Name) and (inst:IsA("Model") or inst:IsA("BasePart")) then
+			return inst
+		end
+		local cur = inst
+		while cur and cur ~= workspace do
+			if barrelName(cur.Name) and (cur:IsA("Model") or cur:IsA("BasePart")) then
+				local p = cur.Parent
+				if p and (p.Name == "Islands" or p.Name == "Entities" or p.Name == "Island" or p.Name == "AA IMPORTANT") then
+					return cur
+				end
+				if p and not barrelName(p.Name) then
+					return cur
+				end
+			end
+			cur = cur.Parent
+		end
+		return inst
+	end
+
+	function M.findDisguisedEnemy(name)
+		if not M.isBinkiRequest(name) then
+			return nil
+		end
+		for _, tag in ipairs({ name, "Binki", "Barrel Clown", '"Barrel Clown" Binki' }) do
+			local tagged = M.taggedAny(tag)
+			if tagged and tagged.Parent and not inRS(tagged) and not M.isPet(tagged) then
+				return M.objectCombatRoot(tagged, name) or tagged
+			end
+		end
+		local ents = workspace:FindFirstChild("Entities")
+		if not ents then
+			return nil
+		end
+		local names = M.namesFor(name, {})
+		for _, ch in ipairs(ents:GetChildren()) do
+			if ch.Parent and not M.isPet(ch) then
+				if M.nameMatches(ch, names) then
+					return ch
+				end
+				local npc = ch:GetAttribute("NPCName") or ch:GetAttribute("DisplayName")
+				if type(npc) == "string" and (string.find(npc, "Binki", 1, true) or string.find(npc, "Barrel Clown", 1, true)) then
+					return ch
+				end
+				if ch:FindFirstChildOfClass("Humanoid") and barrelName(ch.Name) then
+					return ch
+				end
+			end
+		end
+		return nil
+	end
+
+	function M.nearbyBarrelProps(origin, radius)
+		if typeof(origin) ~= "Vector3" then
+			return {}
+		end
+		radius = radius or 70
+		local hits, seen = {}, {}
+		local function add(inst, pos)
+			if not inst or seen[inst] or not inst.Parent or inRS(inst) or M.isPet(inst) then
+				return
+			end
+			if M.isMarkerTree and M.isMarkerTree(inst) then
+				return
+			end
+			local root = barrelRoot(inst)
+			if not root or seen[root] or not barrelName(root.Name) then
+				return
+			end
+			if not (M.part(root) or M.positionOf(root)) then
+				return
+			end
+			seen[inst] = true
+			seen[root] = true
+			local at = pos or M.positionOf(root)
+			if not at then
+				return
+			end
+			local d = (at - origin).Magnitude
+			if d <= radius then
+				hits[#hits + 1] = { inst = root, dist = d }
+			end
+		end
+		local ents = workspace:FindFirstChild("Entities")
+		if ents then
+			for _, ch in ipairs(ents:GetChildren()) do
+				if barrelName(ch.Name) then
+					add(ch)
+				end
+			end
+		end
+		local ok, parts = pcall(function()
+			return workspace:GetPartBoundsInRadius(origin, radius)
+		end)
+		if ok and type(parts) == "table" then
+			for _, part in ipairs(parts) do
+				if part and barrelName(part.Name) then
+					add(part, part.Position)
+				else
+					local model = part and part:FindFirstAncestorOfClass("Model")
+					if model and barrelName(model.Name) then
+						add(model)
+					end
+				end
+			end
+		end
+		table.sort(hits, function(a, b)
+			return a.dist < b.dist
+		end)
+		return hits
+	end
+
+	function M.waitTagged(tag, timeout)
+		timeout = timeout or 4
+		local hit = firstWorldTagged(tag)
+		if hit then
+			return hit
+		end
+		local t0 = os.clock()
+		local got
+		local conn = CS:GetInstanceAddedSignal(tag):Connect(function(inst)
+			if usable(inst, "npc") then
+				got = climbRoot(inst)
+			end
+		end)
+		while not got and os.clock() - t0 < timeout do
+			got = firstWorldTagged(tag)
+			if got then
+				break
+			end
+			task.wait(0.15)
+		end
+		conn:Disconnect()
+		return got
+	end
+
+	function M.shopItem(name)
+		name = name or ""
+		local cacheKey = "shop:" .. name
+		local hit = GB.Cache.get(cacheKey, 4)
+		if hit and hit.Parent then
+			return hit
+		end
+		local tagged = M.taggedAny(name)
+		if tagged and (tagged:GetAttribute("Interaction") == "Shop Item" or M.prompt(tagged, "Shop Item")) then
+			local root = M.interactableOf and M.interactableOf(tagged) or tagged
+			GB.Cache.set(cacheKey, root)
+			return root
+		end
+		ensureIndex("object")
+		local names = M.namesFor(name, { kind = "object", ExpectedRole = "object" })
+		for _, inst in ipairs(indexQuery("object", names, {})) do
+			if inst:GetAttribute("Interaction") == "Shop Item" or M.prompt(inst, "Shop Item") then
+				local root = M.interactableOf and M.interactableOf(inst) or inst
+				GB.Cache.set(cacheKey, root)
+				return root
+			end
+		end
+		return M.byName(name, "shop")
+	end
+
+	function M.mobZone(name)
+		if type(name) ~= "string" or name == "" then
+			return nil
+		end
+		local aa = workspace:FindFirstChild("AA IMPORTANT")
+		local mz = aa and aa:FindFirstChild("MobZones")
+		local inner = mz and (mz:FindFirstChild("MobZones") or mz)
+		if not inner then
+			return nil
+		end
+		local hit = inner:FindFirstChild(name)
+		if hit and hit.Parent then
+			return hit
+		end
+		for _, ch in ipairs(inner:GetChildren()) do
+			if ch.Name == name or M.baseName(ch.Name) == name then
+				return ch
+			end
+		end
+		return nil
+	end
+
+	function M.island(name)
+		local isles = workspace:FindFirstChild("Islands")
+		return isles and isles:FindFirstChild(name)
+	end
+
+	function M.dialogueConfig(model)
+		if not model then
+			return nil
+		end
+		local cfg = model:FindFirstChildWhichIsA("Configuration")
+		if cfg then
+			return cfg
+		end
+		perfCount("ResolverLocalScan", 1)
+		for _, d in ipairs(model:GetDescendants()) do
+			if d:IsA("Configuration") then
+				return d
+			end
+		end
+		return nil
+	end
+
+	function M.prompt(model, interaction)
+		if not model then
+			return nil
+		end
+		perfCount("ResolverLocalScan", 1)
+		for _, d in ipairs(model:GetDescendants()) do
+			if d:IsA("ProximityPrompt") then
+				if not interaction or d.Name == interaction or d:GetAttribute("Interaction") == interaction then
+					return d
+				end
+			end
+		end
+		return nil
+	end
+
+	function M.interactableOf(inst)
+		local cur = inst
+		while cur do
+			if cur:HasTag("Interactable") or cur:HasTag("ClientInteractable") then
+				return cur
+			end
+			cur = cur.Parent
+		end
+		return inst
+	end
+
+	function M.promptAnchor(inst)
+		if not inst then
+			return nil, nil
+		end
+		local pr = inst:IsA("ProximityPrompt") and inst or M.prompt(inst)
+		if pr then
+			local p = pr.Parent
+			if p and p:IsA("Attachment") then
+				return p.WorldPosition, p.WorldCFrame.LookVector, pr
+			end
+			if p and p:IsA("BasePart") then
+				return p.Position, p.CFrame.LookVector, pr
+			end
+		end
+		local hrp = inst:FindFirstChild("HumanoidRootPart", true)
+		if hrp and hrp:IsA("Attachment") then
+			return hrp.WorldPosition, hrp.WorldCFrame.LookVector, pr
+		end
+		if hrp and hrp:IsA("BasePart") then
+			return hrp.Position, hrp.CFrame.LookVector, pr
+		end
+		return M.positionOf(inst), nil, pr
+	end
+
+	function M.ore()
+		return M.byName("Copper Ore", "ore")
+			or M.byName("Iron Ore", "ore")
+			or M.byName("Lead Ore", "ore")
+	end
+
+	local function chestOpened(inst)
+		return inst and inst:GetAttribute("Opened") == true
+	end
+
+	function M.chests()
+		local out = {}
+		local seen = {}
+		local function add(inst)
+			if not inst or seen[inst] or inRS(inst) or not inst.Parent then
+				return
+			end
+			if chestOpened(inst) then
+				return
+			end
+			seen[inst] = true
+			out[#out + 1] = inst
+		end
+		for i = 1, 8 do
+			local tagged
+			pcall(function()
+				tagged = CS:GetTagged("Afuaru's Chest " .. i)
+			end)
+			if tagged then
+				for _, t in ipairs(tagged) do
+					add(t)
+				end
+			end
+		end
+		local folder = workspace:FindFirstChild("Afuaru's Chests")
+		if folder then
+			for _, c in ipairs(folder:GetChildren()) do
+				add(c)
+			end
+		end
+		local interact
+		pcall(function()
+			interact = CS:GetTagged("ClientInteractable")
+		end)
+		if interact then
+			for _, t in ipairs(interact) do
+				local n = t.Name
+				if string.find(n, "Afuaru", 1, true) and string.find(n, "Chest", 1, true) then
+					add(t)
+				end
+			end
+		end
+		return out
+	end
+
+	function M.chest()
+		local list = M.chests()
+		if list[1] then
+			return list[1]
+		end
+		return M.byName("Afuaru's Chests", "chest")
+	end
+
+	local function dropConns(ix)
+		if not (ix and ix.conns) then
+			return
+		end
+		for _, conn in ipairs(ix.conns) do
+			pcall(function()
+				conn:Disconnect()
+			end)
+		end
+		ix.conns = {}
+	end
+
+	local function hookEnemyIndex()
+		if M._indexesStopped then
+			return
+		end
+		local ix = indexes.enemy
+		local root = workspace:FindFirstChild("Entities")
+		if ix.root == root and ix.conns then
+			return
+		end
+		dropConns(ix)
+		ix.root = root
+		ix.conns = {}
+		indexBuildEnemy()
+		if not root then
+			return
+		end
+		ix.conns[#ix.conns + 1] = root.ChildAdded:Connect(function(ch)
+			indexAddInstance("enemy", ch)
+			invalidateNegativeForInstance("enemy", ch)
+		end)
+		ix.conns[#ix.conns + 1] = root.ChildRemoved:Connect(function(ch)
+			indexRemoveInstance("enemy", ch)
+		end)
+	end
+
+	local function hookNpcIndex()
+		if M._indexesStopped then
+			return
+		end
+		local ix = indexes.npc
+		local aa = workspace:FindFirstChild("AA IMPORTANT")
+		local root = (aa and aa:FindFirstChild("DialogueNPCs")) or workspace:FindFirstChild("DialogueNPCs")
+		if ix.root == root and ix.conns then
+			return
+		end
+		dropConns(ix)
+		ix.root = root
+		ix.conns = {}
+		indexBuildNpc()
+		if not root then
+			return
+		end
+		ix.conns[#ix.conns + 1] = root.DescendantAdded:Connect(function(ch)
+			indexAddInstance("npc", ch)
+			invalidateNegativeForInstance("npc", ch)
+		end)
+		ix.conns[#ix.conns + 1] = root.DescendantRemoving:Connect(function(ch)
+			indexRemoveInstance("npc", ch)
+		end)
+	end
+
+	local function hookMarkerIndex()
+		if M._indexesStopped then
+			return
+		end
+		local ix = indexes.marker
+		local aa = workspace:FindFirstChild("AA IMPORTANT")
+		if ix.root == aa and ix.conns then
+			return
+		end
+		dropConns(ix)
+		ix.root = aa
+		ix.conns = {}
+		indexBuildMarker()
+		if not aa then
+			return
+		end
+		local function isMarkerDesc(inst)
+			local cur = inst
+			while cur and cur ~= aa do
+				local n = cur.Name
+				if n == "Markers" or n == "NPCAreas" or n == "PointsOfInterest" then
+					return true
+				end
+				cur = cur.Parent
+			end
+			return false
+		end
+		ix.conns[#ix.conns + 1] = aa.DescendantAdded:Connect(function(ch)
+			if isMarkerDesc(ch) then
+				indexAddInstance("marker", ch)
+				invalidateNegativeForInstance("marker", ch)
+			end
+		end)
+		ix.conns[#ix.conns + 1] = aa.DescendantRemoving:Connect(function(ch)
+			if isMarkerDesc(ch) then
+				indexRemoveInstance("marker", ch)
+			end
+		end)
+	end
+
+	local function hookResolverInvalidation()
+		hookEnemyIndex()
+		hookNpcIndex()
+		hookMarkerIndex()
+		GB.conns[#GB.conns + 1] = workspace.ChildAdded:Connect(function(ch)
+			if ch.Name == "Entities" then
+				hookEnemyIndex()
+			elseif ch.Name == "AA IMPORTANT" or ch.Name == "DialogueNPCs" then
+				hookNpcIndex()
+				hookMarkerIndex()
+			elseif ch.Name == "Islands" then
+				indexes.object.built = false
+				clearNegativeKind("object")
+			end
+		end)
+		GB.conns[#GB.conns + 1] = workspace.ChildRemoved:Connect(function(ch)
+			if ch.Name == "Entities" then
+				hookEnemyIndex()
+			elseif ch.Name == "AA IMPORTANT" or ch.Name == "DialogueNPCs" then
+				hookNpcIndex()
+				hookMarkerIndex()
+			elseif ch.Name == "Islands" then
+				indexes.object.built = false
+				clearNegativeKind("object")
+			end
+		end)
+	end
+
+	function M.enemySnapshot()
+		ensureIndex("enemy")
+		local out = {}
+		local origin
+		local hrp = GB.World and GB.World.hrp and GB.World.hrp()
+		if hrp then
+			origin = hrp.Position
+		end
+		for inst in pairs(indexes.enemy.instKeys) do
+			if inst and inst.Parent and not M.isPet(inst) then
+				local alive = true
+				if GB.Combat and GB.Combat.IsEnemyAlive then
+					alive = GB.Combat.IsEnemyAlive(inst)
+				end
+				if alive then
+					local pos = M.positionOf(inst)
+					out[#out + 1] = {
+						Name = M.displayName(inst) or M.baseName(inst.Name) or inst.Name,
+						Instance = inst,
+						Distance = (origin and pos) and (pos - origin).Magnitude or math.huge,
+						Island = islandOf(inst),
+					}
+				end
+			end
+		end
+		table.sort(out, function(a, b)
+			if a.Distance ~= b.Distance then
+				return a.Distance < b.Distance
+			end
+			return tostring(a.Name) < tostring(b.Name)
+		end)
+		return out
+	end
+
+	function M.indexStats()
+		local out = {}
+		for kind, ix in pairs(indexes) do
+			local count = 0
+			for inst in pairs(ix.instKeys) do
+				if inst and inst.Parent then
+					count = count + 1
+				end
+			end
+			out[kind] = {
+				Built = ix.built == true,
+				Count = count,
+			}
+		end
+		return out
+	end
+
+	function M.refreshIndexes()
+		M._indexesStopped = false
+		for kind, ix in pairs(indexes) do
+			dropConns(ix)
+			clearIndex(ix)
+			ix.built = false
+			ix.root = nil
+			clearNegativeKind(kind)
+		end
+		clearNegativeKind("any")
+		clearNegativeKind("shop")
+		hookEnemyIndex()
+		hookNpcIndex()
+		hookMarkerIndex()
+		ensureIndex("object")
+		return true
+	end
+
+	function M.stopIndexes()
+		M._indexesStopped = true
+		for _, ix in pairs(indexes) do
+			dropConns(ix)
+			clearIndex(ix)
+			ix.built = false
+			ix.root = nil
+		end
+		return true
+	end
+
+	M.RefreshIndexes = M.refreshIndexes
+
+	hookResolverInvalidation()
+
+	return M
+end
