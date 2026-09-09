@@ -6,13 +6,13 @@
 -- SOURCE_HASH: bea19224a70d288b
 -- UI-Version: 1.1.3
 -- Core-Version: 1.3.2
--- Commit: 6c46cc3
--- BuiltAt: 2026-09-10T00:11:27+07:00
+-- Commit: 8c6c887477bd520eb0a0686ed149876bfbdd3fc8
+-- BuiltAt: 2026-09-09T17:11:33+00:00
 
 local VERSION = "1.3.2"
 local UI_VERSION = "1.1.3"
-local BUILD = "6c46cc3"
-local BUILD_AT = "2026-09-10T00:11:27+07:00"
+local BUILD = "8c6c887477bd520eb0a0686ed149876bfbdd3fc8"
+local BUILD_AT = "2026-09-09T17:11:33+00:00"
 
 if type(getgenv) ~= "function" then
 	error("[Kaitun UI] getgenv missing")
