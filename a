@@ -1,6 +1,6 @@
     --[[
         Ouwland Kaitun
-        VERSION: 2026-09-21-quest-accept
+        VERSION: 2026-09-21-addquest-remote
 
         Single-file copy → paste → execute script.
         Game logic is taken from Ouwland research + live Studio inspection.
@@ -1616,6 +1616,28 @@
         return Runtime.SignalEvent, Runtime.SignalRemote
     end
 
+    function Net.AddQuest(key)
+        if type(key) ~= "string" or key == "" then
+            return false, "empty key"
+        end
+        local event = ReplicatedStorage:FindFirstChild("Communication")
+        event = event and event:FindFirstChild("ServerAndClient")
+        event = event and event:FindFirstChild("Signals")
+        event = event and event:FindFirstChild("SignalEvent")
+        event = event and event:FindFirstChild("Event")
+        if event and event:IsA("RemoteEvent") then
+            local ok, err = pcall(function()
+                event:FireServer("AddQuest", key)
+            end)
+            if ok then
+                Runtime.SignalRemote = event
+                return true
+            end
+            Logger.Debug("Net", "AddQuest FireServer failed: " .. tostring(err))
+        end
+        return Net.ToServer("AddQuest", key)
+    end
+
     function Net.ToServer(action, ...)
         if type(action) ~= "string" or action == "" then
             return false, "empty action"
@@ -2965,7 +2987,15 @@
         end
         -- Committed hunt only while that boss is still due (live or spawning in a few seconds).
         if Runtime.HuntAccepting then
-            return true
+            local patrol = Runtime.HuntPatrol
+            local huntFloor = Config.Boss.HuntFromLevel or 70
+            if patrol and (patrol.Level or 0) < huntFloor and (Game.PlayerData.GetLevel() or 0) >= huntFloor then
+                Runtime.HuntAccepting = false
+                Runtime.PendingBossQuest = nil
+                Systems.BossOpportunity.ClearPatrol()
+            else
+                return true
+            end
         end
         if Runtime.HuntPatrol then
             local spawn = Systems.BossOpportunity.GetSpawn(Runtime.HuntPatrol.Code)
@@ -3389,12 +3419,6 @@
             Runtime.LastProgressAt = os.clock()
             return true
         end
-        if Systems.Training and Systems.Training.GetSession and Systems.Training.GetSession() then
-            return false, "training"
-        end
-        if Game.PlayerData.HasTimedStat and Game.PlayerData.HasTimedStat("pause_gameplay") then
-            return false, "paused"
-        end
         local def = Systems.Quest.GetDefinition(key) or QuestDB[key]
         local atGiver, destOrErr, giverName = Systems.Quest.IsAtGiver(def)
         if not atGiver then
@@ -3405,22 +3429,13 @@
                 return false, "pending"
             end
             if not Runtime.PendingAcceptRetried and Config.Quest.AcceptRetries > 0 then
-                local canRetry, retryWhy = Systems.Quest.CanTakeQuest(key)
-                if not canRetry then
-                    Runtime.PendingAccept = nil
-                    return false, retryWhy
-                end
-                Logger.Warn("Quest", "AddQuest not in Holder, retrying once at " .. tostring(giverName) .. ": " .. key)
-                Net.ToServer("AddQuest", key)
+                Logger.Warn("Quest", "AddQuest retry at " .. tostring(giverName) .. ": " .. key)
+                Net.AddQuest(key)
                 Runtime.PendingAcceptRetried = true
                 Runtime.PendingAcceptAt = os.clock()
                 return false, "retrying"
             end
             Runtime.PendingAccept = nil
-            local cd, remain = Systems.Quest.OnCooldown()
-            if cd then
-                return false, "cooldown:" .. string.format("%.1f", remain)
-            end
             return false, "not in Holder"
         end
         if def and def.Boss then
@@ -3442,8 +3457,7 @@
             return false, reason
         end
         Logger.Info("Quest", "AddQuest " .. key .. " at " .. tostring(giverName))
-        Systems.Quest.FireNpcPrompt(giverName)
-        local fired, err = Net.ToServer("AddQuest", key)
+        local fired, err = Net.AddQuest(key)
         if not fired then
             return false, err or "remote"
         end
@@ -6789,10 +6803,9 @@
         }
     end
 
-    function Systems.Watchdog.MarkProgress()
-        Runtime.LastProgressAt = os.clock()
-        Systems.Recovery.Clear()
-    end
+function Systems.Watchdog.MarkProgress()
+    Runtime.LastProgressAt = os.clock()
+end
 
     function Systems.Watchdog.Tick()
         local now = Systems.Watchdog.Fingerprint()
@@ -7946,7 +7959,6 @@
                     end
                     return
                 end
-                Systems.Quest.FireNpcPrompt(npcName)
             end
             local ok, err = Systems.Quest.AcceptQuest(key)
             if ok then
