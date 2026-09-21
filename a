@@ -1,6 +1,6 @@
 --[[
     Ouwland Kaitun
-    VERSION: 2026-09-21-thunder-npc-hold
+    VERSION: 2026-09-21-train-no-void
 
     Single-file copy → paste → execute script.
     Game logic is taken from Ouwland research + live Studio inspection.
@@ -5725,6 +5725,35 @@ function Systems.Training.StationTypeForTask(task)
     return TrainingTaskType[task.Name]
 end
 
+function Systems.Training.HasGeometry(inst)
+    if not inst then
+        return false
+    end
+    if inst:IsA("ProximityPrompt") then
+        inst = inst.Parent
+    end
+    if inst:IsA("BasePart") then
+        return true
+    end
+    local part = inst:FindFirstChildWhichIsA("BasePart", true)
+    return part ~= nil
+end
+
+function Systems.Training.HasFloor(cf)
+    local pos = cf and cf.Position
+    if not pos then
+        return false
+    end
+    if pos.Y < 80 then
+        return false
+    end
+    local hit = Workspace:Raycast(pos + Vector3.new(0, 12, 0), Vector3.new(0, -42, 0), Systems.Movement.RayParams())
+    if not hit then
+        return false
+    end
+    return pos.Y - hit.Position.Y < 20
+end
+
 function Systems.Training.WorldPos(inst)
     if not inst then
         return nil
@@ -5735,17 +5764,18 @@ function Systems.Training.WorldPos(inst)
     if inst:IsA("BasePart") then
         return inst.CFrame
     end
-    if inst:IsA("Model") or inst:IsA("Folder") then
-        local ok, cf = pcall(function()
-            return inst:GetPivot()
-        end)
-        if ok and cf then
-            return cf
-        end
-        local part = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart", true)
-        if part then
-            return part.CFrame
-        end
+    if not Systems.Training.HasGeometry(inst) then
+        return nil
+    end
+    local part = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart", true)
+    if part then
+        return part.CFrame
+    end
+    local ok, cf = pcall(function()
+        return inst:GetPivot()
+    end)
+    if ok and cf then
+        return cf
     end
     return nil
 end
@@ -5793,16 +5823,37 @@ function Systems.Training.PromptMatches(prompt, kind)
 end
 
 function Systems.Training.FindStation(kind)
+    local marker = Systems.Training.MarkerPos(kind)
+    local markerPos = marker and marker.Position
     local _, _, root = Resolver.Character()
     local here = root and root.Position
-    local bestPrompt, bestCf, bestDist
+    local bestPrompt, bestCf, bestScore
     local function consider(prompt, cf)
         if not cf then
             return
         end
-        local dist = here and (cf.Position - here).Magnitude or 0
-        if not bestDist or dist < bestDist then
-            bestDist = dist
+        local p = cf.Position
+        if p.Y < 80 then
+            return
+        end
+        if not Systems.Training.HasFloor(cf) then
+            return
+        end
+        if markerPos then
+            local dy = math.abs(p.Y - markerPos.Y)
+            local flat = Vector3.new(p.X - markerPos.X, 0, p.Z - markerPos.Z).Magnitude
+            if dy > 80 or flat > 180 then
+                return
+            end
+        end
+        local distMark = markerPos and (p - markerPos).Magnitude or 0
+        local distHere = here and (p - here).Magnitude or 0
+        local s = -distMark - distHere * 0.2
+        if prompt then
+            s = s + 8000
+        end
+        if not bestScore or s > bestScore then
+            bestScore = s
             bestPrompt = prompt
             bestCf = cf
         end
@@ -5818,31 +5869,16 @@ function Systems.Training.FindStation(kind)
                         consider(d, Systems.Training.WorldPos(d))
                     end
                 end
-                if not bestPrompt then
-                    for _, child in ipairs(sub:GetChildren()) do
-                        if child.Name ~= "Sign" then
-                            local cf = Systems.Training.WorldPos(child)
-                            if cf then
-                                consider(nil, cf)
-                            end
-                        end
+                for _, child in ipairs(sub:GetChildren()) do
+                    if child.Name ~= "Sign" then
+                        consider(child:FindFirstChildWhichIsA("ProximityPrompt", true), Systems.Training.WorldPos(child))
                     end
                 end
             end
         end
     end
-    if not bestPrompt then
-        -- Stay inside workspace.Training only — never scan all of Workspace (lags Execute).
-        if folder then
-            for _, d in ipairs(folder:GetDescendants()) do
-                if d:IsA("ProximityPrompt") and Systems.Training.PromptMatches(d, kind) then
-                    consider(d, Systems.Training.WorldPos(d))
-                end
-            end
-        end
-    end
     if not bestCf then
-        bestCf = Systems.Training.MarkerPos(kind)
+        bestCf = marker
     end
     return bestCf, bestPrompt
 end
@@ -5916,6 +5952,14 @@ function Systems.Training.PlayAndFinish(kind, session)
     end
 end
 
+function Systems.Training.StandCFrame(dest)
+    local cf = Util.ToCFrame(dest)
+    if not cf then
+        return nil
+    end
+    return CFrame.new(cf.Position + Vector3.new(0, 4, 0))
+end
+
 function Systems.Training.DoCurrentTask()
     if Runtime.TrainBusyUntil and os.clock() < Runtime.TrainBusyUntil then
         Systems.Watchdog.MarkProgress()
@@ -5923,6 +5967,13 @@ function Systems.Training.DoCurrentTask()
     end
     if Game.PlayerData.HasTimedStat("pause_gameplay") and not Systems.Training.GetSession() then
         Systems.Watchdog.MarkProgress()
+        return
+    end
+    local _, hum, root = Resolver.Character()
+    if not root or not hum or hum.Health <= 0 then
+        return
+    end
+    if root.Position.Y < 80 then
         return
     end
     local task = Runtime.CurrentTask
@@ -5945,26 +5996,35 @@ function Systems.Training.DoCurrentTask()
         end
         return
     end
-    local grounded = Systems.Movement.GroundedCFrame(dest, 4) or dest
-    if not Systems.Movement.HasArrived(grounded, 7) then
-        if Systems.Movement.MoveTo(grounded, 6) then
-            Systems.Watchdog.MarkProgress()
-        else
-            local dist = Systems.Movement.DistanceTo(grounded)
-            if dist and dist < 50 then
-                Systems.Watchdog.MarkProgress()
-            end
+    local stand = Systems.Training.StandCFrame(dest)
+    local stamp = kind .. string.format(" %.0f,%.0f,%.0f", stand.Position.X, stand.Position.Y, stand.Position.Z)
+    if Runtime.LastTrainDestLog ~= stamp then
+        Runtime.LastTrainDestLog = stamp
+        Logger.Info("Training", "Go " .. stamp)
+    end
+    local a, b = root.Position, stand.Position
+    local flat = Vector3.new(a.X - b.X, 0, a.Z - b.Z).Magnitude
+    local dy = math.abs(a.Y - b.Y)
+    if flat > 10 or dy > 14 then
+        if Runtime.NpcHoldCf then
+            Systems.Movement.ReleaseNpcHold()
         end
+        Systems.Movement.StartTween(stand, 4, "npc")
+        Systems.Watchdog.MarkProgress()
         return
     end
+    Systems.Movement.HoldNpc(stand)
     Systems.Watchdog.MarkProgress()
+    if dy > 8 then
+        return
+    end
     if not Runtime.LastTrainPromptAt or os.clock() - Runtime.LastTrainPromptAt > 1.4 then
         Runtime.LastTrainPromptAt = os.clock()
         if prompt then
             Systems.Loot.FirePrompt(prompt)
             Logger.Info("Training", "Train prompt " .. kind)
         else
-            local again, found = Systems.Training.FindStation(kind)
+            local _, found = Systems.Training.FindStation(kind)
             if found then
                 Systems.Loot.FirePrompt(found)
                 Logger.Info("Training", "Train prompt (rescan) " .. kind)
@@ -7374,6 +7434,7 @@ function StateMachine.Transition(state)
             or state == "QUEST_COMPLETE"
             or state == "QUEST_DELIVER"
             or state == "WAIT_COOLDOWN"
+            or state == "TRAINING"
         if Runtime.NpcHoldCf and not keepNpcHold then
             Systems.Movement.ReleaseNpcHold()
             if Systems.Movement.UnfreezeLocomotion then
