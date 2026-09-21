@@ -1,6 +1,6 @@
 --[[
     Ouwland Kaitun
-    VERSION: 2026-09-21-thunder-breathing
+    VERSION: 2026-09-21-thunder-npc-hold
 
     Single-file copy → paste → execute script.
     Game logic is taken from Ouwland research + live Studio inspection.
@@ -101,6 +101,7 @@ local Config = {
         TweenSpeed = 250, -- studs per second
         NpcDistance = 5,
         NpcStandDistance = 3.2,
+        NpcStandHeight = 14, -- Zentaro/cliff NPCs: don't require dy<=5 while landing
         TargetRepathDistance = 5,
         NoclipDuringTween = true,
         FlyClearance = 42,
@@ -3848,9 +3849,16 @@ function Systems.Movement.GroundedCFrame(destination, hover)
         return nil
     end
     local pos = cf.Position
+    local authoredY = pos.Y
     local hit = Workspace:Raycast(pos + Vector3.new(0, 90, 0), Vector3.new(0, -280, 0), Systems.Movement.RayParams())
     if hit then
-        pos = hit.Position + Vector3.new(0, hover, 0)
+        local groundedY = hit.Position.Y + hover
+        -- High trainers (Zentaro ~1660): a miss-ray onto the valley floor must not drop us 400 studs.
+        if authoredY - groundedY > 22 then
+            pos = Vector3.new(pos.X, authoredY, pos.Z)
+        else
+            pos = Vector3.new(pos.X, groundedY, pos.Z)
+        end
     else
         pos = pos + Vector3.new(0, hover, 0)
     end
@@ -3982,6 +3990,35 @@ function Systems.Movement.Reached(cf, range)
     return Systems.Movement.HasArrived(cf, range or Config.Movement.NpcDistance)
 end
 
+function Systems.Movement.ReleaseNpcHold()
+    Runtime.NpcHoldCf = nil
+    local _, _, root = Resolver.Character()
+    if root then
+        pcall(function()
+            if root.Anchored then
+                root.Anchored = false
+            end
+        end)
+    end
+end
+
+function Systems.Movement.HoldNpc(destination)
+    local _, _, root = Resolver.Character()
+    local cf = Util.ToCFrame(destination)
+    if not root or not cf then
+        return false
+    end
+    Runtime.NpcHoldCf = cf
+    Systems.Movement.FreezeLocomotion()
+    pcall(function()
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+        root.Anchored = true
+        root.CFrame = cf
+    end)
+    return true
+end
+
 function Systems.Movement.Cancel(reason)
     Runtime.MoveToken = (Runtime.MoveToken or 0) + 1
     if Runtime.ActiveTween then
@@ -3990,6 +4027,7 @@ function Systems.Movement.Cancel(reason)
         end)
         Runtime.ActiveTween = nil
     end
+    Systems.Movement.ReleaseNpcHold()
     Runtime.MovePurpose = nil
     Runtime.MoveTarget = nil
     Runtime.MoveFollow = nil
@@ -4233,7 +4271,7 @@ function Systems.Movement.FreezeLocomotion()
 end
 
 function Systems.Movement.UnfreezeLocomotion()
-    if Runtime.LockTarget or Runtime.ActiveTween or Runtime.MovePurpose == "combat" then
+    if Runtime.LockTarget or Runtime.ActiveTween or Runtime.MovePurpose == "combat" or Runtime.NpcHoldCf then
         return
     end
     Runtime.AnimateFrozen = false
@@ -4402,6 +4440,23 @@ function Systems.Movement.BindHeartbeat()
             return
         end
         Systems.Movement.ApplyCombatLock()
+        if Runtime.NpcHoldCf then
+            local _, _, root = Resolver.Character()
+            if root then
+                pcall(function()
+                    if not root.Anchored then
+                        root.Anchored = true
+                    end
+                    root.AssemblyLinearVelocity = Vector3.zero
+                    root.AssemblyAngularVelocity = Vector3.zero
+                    if (root.Position - Runtime.NpcHoldCf.Position).Magnitude > 1.5 then
+                        root.CFrame = Runtime.NpcHoldCf
+                    end
+                end)
+            end
+            Systems.Movement.FreezeLocomotion()
+            return
+        end
         if Runtime.ActiveTween or Runtime.LockTarget or Runtime.MovePurpose or Systems.Movement.BusyWithNpc() then
             Systems.Movement.ApplyNoclip()
             if Runtime.ActiveTween or Runtime.MovePurpose == "travel" or Runtime.MovePurpose == "npc" then
@@ -4479,7 +4534,8 @@ function Systems.Movement.IsBesideNpc(destination, model)
     local flat = Vector3.new(a.X - b.X, 0, a.Z - b.Z).Magnitude
     local dy = math.abs(a.Y - b.Y)
     local maxFlat = (Config.Movement.NpcStandDistance or 3.2) + 1.8
-    return flat <= maxFlat and dy <= 5
+    local maxDy = Config.Movement.NpcStandHeight or 14
+    return flat <= maxFlat and dy <= maxDy
 end
 
 function Systems.Movement.NpcApproachCFrame(destination, model)
@@ -4589,6 +4645,13 @@ function Systems.Movement.StartTween(destination, range, purpose, followInst)
         speed = 250
     end
     local duration = math.max(0.05, dist / speed)
+    if Runtime.NpcHoldCf then
+        Systems.Movement.ReleaseNpcHold()
+    elseif root.Anchored then
+        pcall(function()
+            root.Anchored = false
+        end)
+    end
     Systems.Movement.ApplyNoclip()
     Systems.Movement.FreezeLocomotion()
     local tween = TweenService:Create(root, TweenInfo.new(duration, Enum.EasingStyle.Linear), { CFrame = goal })
@@ -4622,6 +4685,9 @@ function Systems.Movement.StartTween(destination, range, purpose, followInst)
             return
         end
         if purpose == "npc" or purpose == "pickup" then
+            if purpose == "npc" then
+                Systems.Movement.HoldNpc(land or goal)
+            end
             return
         end
         Systems.Movement.Unstuck()
@@ -4679,7 +4745,11 @@ function Systems.Movement.Update()
             end)
             Runtime.ActiveTween = nil
         end
-        if Runtime.MovePurpose ~= "npc" and Runtime.MovePurpose ~= "pickup" and Runtime.MovePurpose ~= "combat" then
+        if Runtime.MovePurpose == "npc" then
+            Systems.Movement.HoldNpc(Runtime.MoveDestination)
+            return
+        end
+        if Runtime.MovePurpose ~= "pickup" and Runtime.MovePurpose ~= "combat" then
             Systems.Movement.Unstuck()
             Systems.Movement.SafeRestoreCollision()
         end
@@ -4697,16 +4767,31 @@ function Systems.Movement.MoveToNPC(npcName, fallbackCFrame)
     if not raw then
         return false, "npc missing"
     end
+    local dest = Systems.Movement.NpcApproachCFrame(raw, model) or raw
     if Systems.Movement.IsBesideNpc(raw, model) then
+        Systems.Movement.HoldNpc(dest)
         return true
     end
-    local dest = Systems.Movement.NpcApproachCFrame(raw, model) or raw
+    local _, _, root = Resolver.Character()
+    if root then
+        local flat = Vector3.new(root.Position.X - dest.Position.X, 0, root.Position.Z - dest.Position.Z).Magnitude
+        -- Already at the cliff XZ (Zentaro): snap up to stand height instead of falling through noclip.
+        if flat <= 10 then
+            Systems.Movement.HoldNpc(dest)
+            if Systems.Movement.IsBesideNpc(raw, model) then
+                return true
+            end
+        end
+    end
+    if Runtime.NpcHoldCf then
+        Systems.Movement.ReleaseNpcHold()
+    end
     local stamp = tostring(npcName) .. tostring(dest)
     if Runtime.LastNpcTweenStamp ~= stamp then
         Runtime.LastNpcTweenStamp = stamp
         Logger.Info("Quest", "Tween NPC " .. tostring(npcName))
     end
-    Systems.Movement.StartTween(dest, 2.2, "npc")
+    Systems.Movement.StartTween(dest, 4, "npc")
     return false, "moving"
 end
 
@@ -7283,6 +7368,17 @@ function StateMachine.Transition(state)
             or (from == "QUEST_ACCEPT" and state == "HUNT_TRAVEL")
         if huntSwap and Systems.Movement.Cancel then
             Systems.Movement.Cancel("hunt-quest-swap")
+        end
+        local keepNpcHold = state == "QUEST_TRAVEL"
+            or state == "QUEST_ACCEPT"
+            or state == "QUEST_COMPLETE"
+            or state == "QUEST_DELIVER"
+            or state == "WAIT_COOLDOWN"
+        if Runtime.NpcHoldCf and not keepNpcHold then
+            Systems.Movement.ReleaseNpcHold()
+            if Systems.Movement.UnfreezeLocomotion then
+                Systems.Movement.UnfreezeLocomotion()
+            end
         end
         if state ~= "FARM_COMBAT" and state ~= "FARM_TRAVEL" and state ~= "WAIT_RESPAWN" and state ~= "WAITING_FOR_BOSS" and state ~= "LOOT_CHEST" and state ~= "BOSS_PREEMPT" and state ~= "HUNT_TRAVEL" and state ~= "TRAINING" then
             if Runtime.LockTarget then
