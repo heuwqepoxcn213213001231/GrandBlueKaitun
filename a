@@ -1,6 +1,6 @@
 --[[
     Ouwland Kaitun
-    VERSION: 2026-09-21-train-no-void
+    VERSION: 2026-09-21-train-minigames
 
     Single-file copy → paste → execute script.
     Game logic is taken from Ouwland research + live Studio inspection.
@@ -22,6 +22,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local CollectionService = game:GetService("CollectionService")
 local VirtualUser = game:GetService("VirtualUser")
+local GuiService = game:GetService("GuiService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 
 local LocalPlayer = Players.LocalPlayer
 while not LocalPlayer do
@@ -189,7 +191,7 @@ local Config = {
         Pickup = 15,
         Dialogue = 10,
         Idle = 60,
-        Training = 45,
+        Training = 90,
     },
 
     Shop = {
@@ -5883,33 +5885,368 @@ function Systems.Training.FindStation(kind)
     return bestCf, bestPrompt
 end
 
-function Systems.Training.ClickDarts()
+function Systems.Training.MiscGui()
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    return pg and pg:FindFirstChild("Misc")
+end
+
+function Systems.Training.IsExitGui(gui)
+    local walk = gui
+    for _ = 1, 8 do
+        if not walk or not walk:IsA("GuiObject") then
+            break
+        end
+        if walk.Name == "Exit" then
+            return true
+        end
+        if (walk:IsA("TextButton") or walk:IsA("TextLabel") or walk:IsA("TextBox"))
+            and string.find(string.lower(tostring(walk.Text)), "exit", 1, true)
+        then
+            return true
+        end
+        walk = walk.Parent
+    end
+    return false
+end
+
+function Systems.Training.FireSignal(signal, ...)
+    if not signal then
+        return false
+    end
+    local args = { ... }
+    local unpackFn = table.unpack or unpack
+    local fired = false
+    pcall(function()
+        if not getconnections then
+            return
+        end
+        for _, conn in ipairs(getconnections(signal)) do
+            local ok = false
+            if conn.Fire then
+                ok = pcall(conn.Fire, conn, unpackFn(args))
+            elseif type(conn.Function) == "function" then
+                ok = pcall(conn.Function, unpackFn(args))
+            end
+            if ok then
+                fired = true
+            end
+        end
+    end)
+    return fired
+end
+
+function Systems.Training.FakeMouseInput()
+    return {
+        UserInputType = Enum.UserInputType.MouseButton1,
+        UserInputState = Enum.UserInputState.Begin,
+        Position = Vector3.new(0, 0, 0),
+    }
+end
+
+function Systems.Training.GuiCenter(gui)
+    if not gui then
+        return nil
+    end
+    local inset = GuiService:GetGuiInset()
+    return Vector2.new(
+        gui.AbsolutePosition.X + gui.AbsoluteSize.X * 0.5 + inset.X,
+        gui.AbsolutePosition.Y + gui.AbsoluteSize.Y * 0.5 + inset.Y
+    )
+end
+
+function Systems.Training.VimMove(pos)
+    if not pos then
+        return
+    end
+    pcall(function()
+        VirtualInputManager:SendMouseMoveEvent(pos.X, pos.Y, game)
+    end)
+end
+
+function Systems.Training.VimClickAt(pos)
+    if not pos then
+        return
+    end
+    pcall(function()
+        VirtualInputManager:SendMouseMoveEvent(pos.X, pos.Y, game)
+        VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 1)
+        VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 1)
+    end)
+end
+
+function Systems.Training.VimMouseUp()
+    if not Runtime.TrainMouseDown then
+        return
+    end
+    Runtime.TrainMouseDown = false
+    pcall(function()
+        local pos = game:GetService("UserInputService"):GetMouseLocation()
+        VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 1)
+    end)
+end
+
+function Systems.Training.FireClickDetector(cd)
+    if not cd or not cd:IsA("ClickDetector") then
+        return false
+    end
+    local fired = false
+    pcall(function()
+        if fireclickdetector then
+            fireclickdetector(cd)
+            fired = true
+        end
+    end)
+    if not fired then
+        fired = Systems.Training.FireSignal(cd.MouseClick, LocalPlayer)
+    end
+    return fired
+end
+
+function Systems.Training.LogHit(kind)
+    local now = os.clock()
+    if Runtime.LastTrainHitLog and now - Runtime.LastTrainHitLog < 2 then
+        return
+    end
+    Runtime.LastTrainHitLog = now
+    Logger.Info("Training", "Play " .. tostring(kind))
+end
+
+function Systems.Training.PlaySlideBar()
+    local misc = Systems.Training.MiscGui()
+    if not misc then
+        return
+    end
+    local hitbox = misc:FindFirstChild("Hitbox", true)
+    local slider = misc:FindFirstChild("Slider", true)
+    if not slider or not slider:IsA("GuiObject") then
+        return
+    end
+    local holder = slider.Parent
+    if not holder then
+        return
+    end
+    local zone
+    local bestT = 2
+    for _, ch in ipairs(holder:GetChildren()) do
+        if ch:IsA("GuiObject") and ch ~= slider and ch.Name ~= "Slider" then
+            local t = ch.BackgroundTransparency
+            if t < 1 and t < bestT then
+                bestT = t
+                zone = ch
+            end
+        end
+    end
+    if not zone then
+        return
+    end
+    local half = math.max(zone.Size.X.Scale * 0.5, 0.01)
+    if math.abs(slider.Position.X.Scale - zone.Position.X.Scale) > half + 0.03 then
+        return
+    end
+    local now = os.clock()
+    if Runtime.LastTrainSlideAt and now - Runtime.LastTrainSlideAt < 0.16 then
+        return
+    end
+    Runtime.LastTrainSlideAt = now
+    local input = Systems.Training.FakeMouseInput()
+    local fired = false
+    if hitbox then
+        fired = Systems.Training.FireSignal(hitbox.InputBegan, input, false)
+    end
+    if not fired then
+        Systems.Training.VimClickAt(Systems.Training.GuiCenter(holder))
+    end
+    Systems.Training.LogHit("Meditation")
+end
+
+function Systems.Training.PlayShrink()
+    local misc = Systems.Training.MiscGui()
+    if not misc then
+        return
+    end
+    local now = os.clock()
+    if Runtime.LastTrainShrinkAt and now - Runtime.LastTrainShrinkAt < 0.12 then
+        return
+    end
+    for _, pod in ipairs(misc:GetDescendants()) do
+        if pod.Name == "Pod" and pod:IsA("GuiObject") then
+            local shrink = pod:FindFirstChild("Shrink")
+            local holder = pod:FindFirstChild("Holder")
+            local btn = pod:FindFirstChildWhichIsA("TextButton", true)
+            if shrink and holder and btn and not Systems.Training.IsExitGui(btn) then
+                if math.abs(shrink.Size.X.Scale - holder.Size.X.Scale) < 0.125 then
+                    Runtime.LastTrainShrinkAt = now
+                    local fired = Systems.Training.FireSignal(btn.MouseButton1Up)
+                    if not fired then
+                        Systems.Training.VimClickAt(Systems.Training.GuiCenter(btn))
+                    end
+                    Systems.Training.LogHit("Pushups")
+                    return
+                end
+            end
+        end
+    end
+end
+
+function Systems.Training.PlayCups()
+    local now = os.clock()
+    if Runtime.LastTrainCupAt and now - Runtime.LastTrainCupAt < 1.4 then
+        return
+    end
+    local folder = Workspace:FindFirstChild("Training")
+    local sub = folder and folder:FindFirstChild("Cup Game")
+    if not sub then
+        return
+    end
+    local ball = sub:FindFirstChild("Ball", true)
+    local detectors = {}
+    for _, d in ipairs(sub:GetDescendants()) do
+        if d:IsA("ClickDetector") then
+            local parent = d.Parent
+            local name = parent and parent.Name or ""
+            if string.match(name, "^Cup%d+$") then
+                table.insert(detectors, d)
+            end
+        end
+    end
+    if #detectors == 0 then
+        return
+    end
+    local ballPart = ball
+    if ball and ball:IsA("Model") then
+        ballPart = ball.PrimaryPart or ball:FindFirstChildWhichIsA("BasePart", true)
+    end
+    if ballPart and ballPart:IsA("BasePart") and ballPart.Transparency < 0.5 then
+        return
+    end
+    local best, bestDist
+    local ballPos = ballPart and ballPart.Position
+    for i = 1, #detectors do
+        local cd = detectors[i]
+        local part = cd.Parent
+        if part and part:IsA("BasePart") then
+            local dist = ballPos and (part.Position - ballPos).Magnitude or 0
+            if not bestDist or dist < bestDist then
+                bestDist = dist
+                best = cd
+            end
+        end
+    end
+    if not best then
+        return
+    end
+    Runtime.LastTrainCupAt = now
+    Systems.Training.FireClickDetector(best)
+    Systems.Training.LogHit("Cup Game")
+end
+
+function Systems.Training.PlayDarts()
     local debris = Workspace:FindFirstChild("Debree")
     if not debris then
         return
     end
-    for _, d in ipairs(debris:GetDescendants()) do
+    local folder = debris:FindFirstChild("TargetShootingDarts") or debris
+    local now = os.clock()
+    if Runtime.LastTrainDartAt and now - Runtime.LastTrainDartAt < 0.08 then
+        return
+    end
+    for _, d in ipairs(folder:GetDescendants()) do
         if d:IsA("ClickDetector") then
-            pcall(function()
-                if fireclickdetector then
-                    fireclickdetector(d)
-                end
-            end)
-            pcall(function()
-                if getconnections then
-                    for _, conn in ipairs(getconnections(d.MouseClick)) do
-                        pcall(function()
-                            if conn.Fire then
-                                conn:Fire(LocalPlayer)
-                            elseif conn.Function then
-                                conn.Function(LocalPlayer)
-                            end
-                        end)
-                    end
-                end
-            end)
+            Runtime.LastTrainDartAt = now
+            Systems.Training.FireClickDetector(d)
+            Systems.Training.LogHit("Target Shooting")
+            return
         end
     end
+end
+
+function Systems.Training.PlayBoulder()
+    local misc = Systems.Training.MiscGui()
+    if not misc then
+        Systems.Training.VimMouseUp()
+        return
+    end
+    local wrapper, hitbox, final
+    for _, d in ipairs(misc:GetDescendants()) do
+        if d.Name == "Wrapper" and d:IsA("GuiObject") then
+            local actual = d:FindFirstChild("Actual", true)
+            local drag = actual and actual:FindFirstChild("Dragger")
+            local fin = actual and actual:FindFirstChild("Final")
+            local hb = drag and drag:FindFirstChild("Hitbox")
+            if hb and fin and not Systems.Training.IsExitGui(hb) then
+                wrapper = d
+                hitbox = hb
+                final = fin
+                break
+            end
+        end
+    end
+    if not wrapper then
+        Systems.Training.VimMouseUp()
+        return
+    end
+    Systems.Training.FireSignal(wrapper.MouseEnter)
+    if wrapper ~= Runtime.TrainBoulderWrapper then
+        Runtime.TrainBoulderWrapper = wrapper
+        Runtime.TrainMouseDown = false
+    end
+    if not Runtime.TrainMouseDown then
+        local p = Systems.Training.GuiCenter(hitbox)
+        Systems.Training.VimMove(p)
+        Systems.Training.FireSignal(hitbox.MouseButton1Down)
+        if p then
+            pcall(function()
+                VirtualInputManager:SendMouseButtonEvent(p.X, p.Y, 0, true, game, 1)
+            end)
+        end
+        Runtime.TrainMouseDown = true
+        Systems.Training.LogHit("Boulder Split")
+        return
+    end
+    Systems.Training.VimMove(Systems.Training.GuiCenter(final))
+end
+
+function Systems.Training.PlayTick(kind)
+    if kind == "Meditation" then
+        Systems.Training.PlaySlideBar()
+    elseif kind == "Pushups" then
+        Systems.Training.PlayShrink()
+    elseif kind == "Cup Game" then
+        Systems.Training.PlayCups()
+    elseif kind == "Target Shooting" then
+        Systems.Training.PlayDarts()
+    elseif kind == "Boulder Split" then
+        Systems.Training.PlayBoulder()
+    end
+end
+
+function Systems.Training.EnsurePlayLoop(kind)
+    if Runtime.TrainPlaying and Runtime.TrainPlayKind == kind then
+        return
+    end
+    Runtime.TrainPlayKind = kind
+    Runtime.TrainPlayGen = (Runtime.TrainPlayGen or 0) + 1
+    local gen = Runtime.TrainPlayGen
+    Runtime.TrainPlaying = true
+    Runtime.TrainMouseDown = false
+    Runtime.TrainBoulderWrapper = nil
+    task.spawn(function()
+        Logger.Info("Training", "Minigame " .. tostring(kind))
+        while stillCurrent() and Runtime.TrainPlayGen == gen and Systems.Training.GetSession() do
+            Systems.Watchdog.MarkProgress()
+            local ok, err = pcall(Systems.Training.PlayTick, kind)
+            if not ok then
+                Logger.Debug("Training", "play " .. tostring(err))
+            end
+            task.wait()
+        end
+        if Runtime.TrainPlayGen == gen then
+            Systems.Training.VimMouseUp()
+            Runtime.TrainPlaying = false
+            Runtime.TrainPlayKind = nil
+            Runtime.TrainBoulderWrapper = nil
+        end
+    end)
 end
 
 function Systems.Training.PlayAndFinish(kind, session)
@@ -5917,39 +6254,10 @@ function Systems.Training.PlayAndFinish(kind, session)
         Runtime.TrainSessionInst = session
         Runtime.TrainSessionAt = os.clock()
         Runtime.TrainFinished = false
+        Runtime.TrainPlaying = false
+        Runtime.TrainPlayKind = nil
     end
-    if kind == "Target Shooting" then
-        Systems.Training.ClickDarts()
-    end
-    local elapsed = os.clock() - (Runtime.TrainSessionAt or os.clock())
-    local waitFor = 0.9
-    if kind == "Cup Game" then
-        waitFor = 1.7
-    elseif kind == "Target Shooting" then
-        waitFor = 1.3
-    elseif kind == "Boulder Split" then
-        waitFor = 1.0
-    end
-    if elapsed < waitFor then
-        return
-    end
-    if Runtime.TrainFinished then
-        if elapsed > waitFor + 7 then
-            Runtime.TrainFinished = false
-        end
-        return
-    end
-    Runtime.TrainFinished = true
-    if kind == "Boulder Split" then
-        Net.ToServer("training_signaler", "StateChanged")
-    end
-    Net.ToServer("training_signaler", "Stop", true)
-    Logger.Info("Training", "Finish " .. tostring(kind))
-    if kind == "Boulder Split" then
-        Runtime.TrainBusyUntil = os.clock() + 13
-    else
-        Runtime.TrainBusyUntil = os.clock() + 1.2
-    end
+    Systems.Training.EnsurePlayLoop(kind)
 end
 
 function Systems.Training.StandCFrame(dest)
