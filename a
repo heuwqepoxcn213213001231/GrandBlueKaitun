@@ -1,6 +1,6 @@
     --[[
         Ouwland Kaitun
-        VERSION: 2026-09-22-loot-first
+        VERSION: 2026-09-22-loot-beside
 
         Single-file copy → paste → execute script.
         Game logic is taken from Ouwland research + live Studio inspection.
@@ -4269,6 +4269,10 @@
         end
         Systems.Movement.ApplyNoclip()
         local safe = Systems.Movement.GroundedCFrame(root.CFrame, 7)
+        if safe and safe.Position.Y < root.Position.Y - 8 then
+            Systems.Movement.ApplyNoclip()
+            return false
+        end
         if safe then
             pcall(function()
                 root.AssemblyLinearVelocity = Vector3.zero
@@ -4396,7 +4400,12 @@
         if not Runtime.DrinkingPotion then
             Systems.Movement.UnfreezeLocomotion()
         end
-        Systems.Movement.SafeRestoreCollision()
+        -- Restoring collision on top of a chest/drop shoves loot off cliffs.
+        if Runtime.State == "LOOT_CHEST" or reason == "loot-claim" or reason == "potion" then
+            Systems.Movement.ApplyNoclip()
+        else
+            Systems.Movement.SafeRestoreCollision()
+        end
     end
 
     function Systems.Movement.Stop()
@@ -4963,8 +4972,16 @@
         if purpose == "combat" then
             goal = cf
         elseif purpose == "pickup" then
-            -- Chest/drop: walk the ground to the item. Never hop/fly.
-            goal = cf
+            -- Stay on the loot floor. Never tween down a cliff/void after a falling drop.
+            local floorY = Runtime.LootFloorY or root.Position.Y
+            local y = cf.Position.Y
+            if y < floorY - 6 then
+                y = floorY
+            end
+            if y < root.Position.Y - 8 then
+                y = root.Position.Y
+            end
+            goal = CFrame.new(cf.Position.X, y, cf.Position.Z)
             skipHop = true
         elseif purpose == "npc" then
             local flat = Vector3.new(root.Position.X - cf.Position.X, 0, root.Position.Z - cf.Position.Z).Magnitude
@@ -5246,9 +5263,9 @@
         return false
     end
 
-    -- Loot/claim: tween to the chest on the ground, then stand on it. Never hop.
+    -- Stand beside the chest on the same floor. Do not stand on/inside the drop.
     function Systems.Movement.MoveToLoot(destination, range)
-        range = range or 3.5
+        range = range or 4.5
         local _, _, root = Resolver.Character()
         if not root then
             return false
@@ -5257,16 +5274,25 @@
         if not cf then
             return false
         end
-        local dest = CFrame.new(cf.Position.X, cf.Position.Y + 2.5, cf.Position.Z)
-        local dy = math.abs(root.Position.Y - dest.Position.Y)
-        local flat = Vector3.new(root.Position.X - dest.Position.X, 0, root.Position.Z - dest.Position.Z).Magnitude
-        if flat <= range and dy <= 6 then
-            if dy > 2 then
-                pcall(function()
-                    root.CFrame = dest
-                    root.AssemblyLinearVelocity = Vector3.zero
-                end)
-            end
+        local floorY = Runtime.LootFloorY or root.Position.Y
+        if cf.Position.Y < floorY - 16 then
+            return false
+        end
+        local destY = floorY
+        if destY < root.Position.Y - 6 then
+            destY = root.Position.Y
+        end
+        local item = Vector3.new(cf.Position.X, destY, cf.Position.Z)
+        local away = Vector3.new(root.Position.X - item.X, 0, root.Position.Z - item.Z)
+        if away.Magnitude < 0.35 then
+            away = Vector3.new(1, 0, 0)
+        end
+        local stand = item + away.Unit * 4.5
+        local dest = CFrame.new(stand.X, destY, stand.Z)
+        local dy = math.abs(root.Position.Y - destY)
+        local flatItem = Vector3.new(root.Position.X - item.X, 0, root.Position.Z - item.Z).Magnitude
+        if flatItem >= 3.2 and flatItem <= 8 and dy <= 8 then
+            Systems.Movement.ApplyNoclip()
             return true
         end
         Runtime.SkipHop = true
@@ -7331,6 +7357,7 @@ end
         Runtime.LootUntil = nil
         Runtime.LootPhase = nil
         Runtime.LootHardUntil = 0
+        Runtime.LootFloorY = nil
         Runtime.MovePurpose = nil
         if Systems.Movement.Cancel then
             Systems.Movement.Cancel("loot-abort")
@@ -7389,6 +7416,9 @@ end
         end
         local _, _, root = Resolver.Character()
         Runtime.LootOrigin = origin or Runtime.LastCombatPos or (root and root.Position)
+        Runtime.LootFloorY = (root and root.Position.Y)
+            or (Runtime.LootOrigin and Runtime.LootOrigin.Y)
+            or Runtime.LootFloorY
         local seconds = Config.Boss.LootSeconds or 12
         local now = os.clock()
         if not Runtime.LootHardUntil or Runtime.LootHardUntil < now then
@@ -7432,6 +7462,7 @@ end
         Runtime.LootUntil = nil
         Runtime.LootPhase = nil
         Runtime.LootHardUntil = 0
+        Runtime.LootFloorY = nil
         Runtime.LootSpent = true
         Runtime.BossFightEngaged = false
         Runtime.MovePurpose = nil
@@ -7724,6 +7755,9 @@ end
             if (pos - origin).Magnitude > range then
                 return
             end
+            if (origin.Y - pos.Y) > 18 then
+                return
+            end
             local prompt = inst:IsA("ProximityPrompt") and inst or (model and model:FindFirstChildWhichIsA("ProximityPrompt", true))
                 or (inst:IsA("BasePart") and inst:FindFirstChildWhichIsA("ProximityPrompt", true))
             local resolvedKind = kind
@@ -7842,23 +7876,27 @@ end
         local dy = root and math.abs(root.Position.Y - best.Pos.Y) or 0
         local flat = root and Vector3.new(root.Position.X - best.Pos.X, 0, root.Position.Z - best.Pos.Z).Magnitude or best.Dist
         local playerDist = root and (root.Position - best.Pos).Magnitude or best.Dist
+        local floorY = Runtime.LootFloorY or (root and root.Position.Y)
+        if floorY and best.Pos.Y < floorY - 16 then
+            return false
+        end
         -- Don't hop across the map for a distant tagged chest (causes Y bounce after world bosses).
         if playerDist > 85 then
             return false
         end
 
-        -- Close enough to claim: STOP tween / unstuck and fire T. Do not re-path.
-        local inRange = (best.Dist <= standDist or flat <= standDist) and dy <= 10
+        -- Close enough beside the chest: fire T. Do not stand on the item.
+        local inRange = flat >= 2.4 and (best.Dist <= standDist or flat <= standDist) and dy <= 10
         if not inRange then
             Systems.Movement.MoveToLoot(best.Pos, standDist)
             Systems.Loot.ExtendWindow(8)
             return true
         end
 
-        -- Cancel any leftover pickup tween so we don't jitter while claiming.
-        if Systems.Movement.Cancel then
+        if Runtime.ActiveTween then
             Systems.Movement.Cancel("loot-claim")
         end
+        Systems.Movement.ApplyNoclip()
         Runtime.MovePurpose = "pickup"
         Runtime.SkipHop = true
 
@@ -8525,7 +8563,8 @@ end
             return
         end
         if state == "LOOT_CHEST" then
-            -- Drop combat lock so we can stand at Common/Rare Chest (prompt Key T / Open).
+            -- Keep noclip so the character does not shove drops off cliffs.
+            Systems.Movement.ApplyNoclip()
             Runtime.LockTarget = nil
             if Systems.Movement.ReleasePin then
                 Systems.Movement.ReleasePin()
