@@ -1,6 +1,6 @@
     --[[
         Ouwland Kaitun
-        VERSION: 2026-09-22-loot-beside
+        VERSION: 2026-09-22-loot-center
 
         Single-file copy → paste → execute script.
         Game logic is taken from Ouwland research + live Studio inspection.
@@ -4972,16 +4972,8 @@
         if purpose == "combat" then
             goal = cf
         elseif purpose == "pickup" then
-            -- Stay on the loot floor. Never tween down a cliff/void after a falling drop.
-            local floorY = Runtime.LootFloorY or root.Position.Y
-            local y = cf.Position.Y
-            if y < floorY - 6 then
-                y = floorY
-            end
-            if y < root.Position.Y - 8 then
-                y = root.Position.Y
-            end
-            goal = CFrame.new(cf.Position.X, y, cf.Position.Z)
+            -- Exact stand CFrame already computed (chest center). Do not rewrite Y.
+            goal = cf
             skipHop = true
         elseif purpose == "npc" then
             local flat = Vector3.new(root.Position.X - cf.Position.X, 0, root.Position.Z - cf.Position.Z).Magnitude
@@ -5263,35 +5255,28 @@
         return false
     end
 
-    -- Stand beside the chest on the same floor. Do not stand on/inside the drop.
+    -- Tween to the exact chest/drop center, then snap. Never stand off to the side.
     function Systems.Movement.MoveToLoot(destination, range)
-        range = range or 4.5
+        range = range or 0.45
         local _, _, root = Resolver.Character()
         if not root then
             return false
         end
-        local cf = Util.ToCFrame(destination)
-        if not cf then
+        local dest = Systems.Loot.StandCFrame(destination)
+        if not dest then
             return false
         end
-        local floorY = Runtime.LootFloorY or root.Position.Y
-        if cf.Position.Y < floorY - 16 then
+        if Systems.Loot.IsFallenVoid(dest.Position) then
             return false
         end
-        local destY = floorY
-        if destY < root.Position.Y - 6 then
-            destY = root.Position.Y
-        end
-        local item = Vector3.new(cf.Position.X, destY, cf.Position.Z)
-        local away = Vector3.new(root.Position.X - item.X, 0, root.Position.Z - item.Z)
-        if away.Magnitude < 0.35 then
-            away = Vector3.new(1, 0, 0)
-        end
-        local stand = item + away.Unit * 4.5
-        local dest = CFrame.new(stand.X, destY, stand.Z)
-        local dy = math.abs(root.Position.Y - destY)
-        local flatItem = Vector3.new(root.Position.X - item.X, 0, root.Position.Z - item.Z).Magnitude
-        if flatItem >= 3.2 and flatItem <= 8 and dy <= 8 then
+        local flat = Vector3.new(root.Position.X - dest.Position.X, 0, root.Position.Z - dest.Position.Z).Magnitude
+        local dy = math.abs(root.Position.Y - dest.Position.Y)
+        if flat <= range and dy <= 1.6 then
+            pcall(function()
+                root.CFrame = dest
+                root.AssemblyLinearVelocity = Vector3.zero
+                root.AssemblyAngularVelocity = Vector3.zero
+            end)
             Systems.Movement.ApplyNoclip()
             return true
         end
@@ -7533,6 +7518,48 @@ end
         return nil
     end
 
+    function Systems.Loot.StandCFrame(destination)
+        local cf = Util.ToCFrame(destination)
+        if not cf then
+            return nil
+        end
+        local pos = cf.Position
+        local y = pos.Y + 2.8
+        local hit
+        pcall(function()
+            hit = Workspace:Raycast(
+                Vector3.new(pos.X, pos.Y + 8, pos.Z),
+                Vector3.new(0, -40, 0),
+                Systems.Movement.RayParams()
+            )
+        end)
+        if hit and math.abs(hit.Position.Y - pos.Y) <= 12 then
+            y = hit.Position.Y + 3
+        end
+        return CFrame.new(pos.X, y, pos.Z)
+    end
+
+    function Systems.Loot.IsFallenVoid(pos)
+        if not pos then
+            return true
+        end
+        if pos.Y < -20 then
+            return true
+        end
+        local hit
+        pcall(function()
+            hit = Workspace:Raycast(
+                pos + Vector3.new(0, 8, 0),
+                Vector3.new(0, -70, 0),
+                Systems.Movement.RayParams()
+            )
+        end)
+        if not hit then
+            return pos.Y < 15
+        end
+        return (pos.Y - hit.Position.Y) > 90
+    end
+
     -- Verified from ReplicatedStorage.Assets.Chests (Studio):
     -- Boss loot commonly: Common Chest, Rare Chest.
     -- Also exist: Demon Chest, Sealed Chest, Ice Chest, Snow Chest,
@@ -7648,7 +7675,7 @@ end
         pcall(function()
             local vim = game:GetService("VirtualInputManager")
             vim:SendKeyEvent(true, key, false, game)
-            task.wait(0.05)
+            task.wait(0.12)
             vim:SendKeyEvent(false, key, false, game)
         end)
         -- Synapse-style keypress fallbacks
@@ -7685,9 +7712,7 @@ end
         pcall(function()
             if fireproximityprompt then
                 fireproximityprompt(prompt)
-                if hold > 0 then
-                    fireproximityprompt(prompt, hold)
-                end
+                fireproximityprompt(prompt, hold > 0 and hold or 1)
             end
         end)
 
@@ -7716,7 +7741,7 @@ end
         -- 3) Native InputHold
         pcall(function()
             prompt:InputHoldBegin()
-            task.wait(math.max(hold, 0.05))
+            task.wait(math.max(hold, 0.12))
             prompt:InputHoldEnd()
         end)
 
@@ -7755,7 +7780,7 @@ end
             if (pos - origin).Magnitude > range then
                 return
             end
-            if (origin.Y - pos.Y) > 18 then
+            if Systems.Loot.IsFallenVoid(pos) then
                 return
             end
             local prompt = inst:IsA("ProximityPrompt") and inst or (model and model:FindFirstChildWhichIsA("ProximityPrompt", true))
@@ -7870,31 +7895,35 @@ end
             return false
         end
         local prompt = best.Prompt
-        local maxDist = (prompt and prompt.MaxActivationDistance) or 10
-        local standDist = math.max(3, math.min(maxDist - 0.5, 8))
         local _, _, root = Resolver.Character()
-        local dy = root and math.abs(root.Position.Y - best.Pos.Y) or 0
-        local flat = root and Vector3.new(root.Position.X - best.Pos.X, 0, root.Position.Z - best.Pos.Z).Magnitude or best.Dist
+        if Systems.Loot.IsFallenVoid(best.Pos) then
+            return false
+        end
         local playerDist = root and (root.Position - best.Pos).Magnitude or best.Dist
-        local floorY = Runtime.LootFloorY or (root and root.Position.Y)
-        if floorY and best.Pos.Y < floorY - 16 then
+        if playerDist > 120 then
             return false
         end
-        -- Don't hop across the map for a distant tagged chest (causes Y bounce after world bosses).
-        if playerDist > 85 then
+        local stand = Systems.Loot.StandCFrame(best.Pos)
+        if not stand then
             return false
         end
-
-        -- Close enough beside the chest: fire T. Do not stand on the item.
-        local inRange = flat >= 2.4 and (best.Dist <= standDist or flat <= standDist) and dy <= 10
-        if not inRange then
-            Systems.Movement.MoveToLoot(best.Pos, standDist)
+        local flat = root and Vector3.new(root.Position.X - stand.Position.X, 0, root.Position.Z - stand.Position.Z).Magnitude or 99
+        local dy = root and math.abs(root.Position.Y - stand.Position.Y) or 99
+        if flat > 0.55 or dy > 1.8 then
+            Systems.Movement.MoveToLoot(best.Pos, 0.45)
             Systems.Loot.ExtendWindow(8)
             return true
         end
 
         if Runtime.ActiveTween then
             Systems.Movement.Cancel("loot-claim")
+        end
+        if root then
+            pcall(function()
+                root.CFrame = stand
+                root.AssemblyLinearVelocity = Vector3.zero
+                root.AssemblyAngularVelocity = Vector3.zero
+            end)
         end
         Systems.Movement.ApplyNoclip()
         Runtime.MovePurpose = "pickup"
