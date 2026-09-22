@@ -1,6 +1,6 @@
     --[[
         Ouwland Kaitun
-        VERSION: 2026-09-21-world-boss-claim
+        VERSION: 2026-09-22-potion-remote
 
         Single-file copy → paste → execute script.
         Game logic is taken from Ouwland research + live Studio inspection.
@@ -76,7 +76,7 @@
         AutoTravel = true,
         AutoEquipment = true,
         AutoSkills = true, -- UnlockSkillTreeNode via SignalFunction
-        AutoPotion = true, -- no damage potion exists; use stamina/health regen
+        AutoPotion = true, -- Health Potion/Elixir via Tool_Mouse Down. Off after 3 failed remotes (die/respawn).
         AutoBreathing = true,
         -- true = từ Lv100 nhận Thunder Breathing khi đủ 7000 Wen + 10 Demon Horns, làm hết chuỗi tập.
         -- false = bỏ qua, farm bình thường. Runtime: getgenv().OuwlandAutoThunder = false
@@ -137,20 +137,13 @@
 
         Potion = {
             HealthPercent = 0.42,
-            DrinkTimeout = 3.2,
-            Recheck = 1.25,
-            -- Health Potion ToolScript; no Skill Potion / Additional Damage consumable in Items.Potions.
-            CombatBuffs = {
-                "Stamina Regen Elixir",
-                "Stamina Regen Potion",
-            },
+            DrinkTimeout = 2.2,
+            Recheck = 2.8,
+            -- Official consume: Toolbar + CapWeld + SignalEvent Tool_Mouse Down.
+            -- Server MouseUp cancels the drink thread. Never send Up. Never VirtualInput hold.
             HealthInstant = {
                 "Health Elixir",
                 "Health Potion",
-            },
-            HealthRegen = {
-                "Health Regen Elixir",
-                "Health Regen Potion",
             },
         },
 
@@ -532,6 +525,7 @@
         DrinkingPotion = false,
         PotionUntil = 0,
         LastPotionAt = 0,
+        PotionFailStreak = 0,
         LastSkillSpendAt = 0,
 
         LastSwingAt = 0,
@@ -2277,11 +2271,15 @@
                 end
                 Logger.Info("Lifecycle", "Character died — wait respawn, keep quest")
                 Runtime.DiedAt = os.clock()
+                if Systems.Loot and Systems.Loot.EndWindow then
+                    Systems.Loot.EndWindow("death")
+                end
                 if Systems.Movement then
                     Systems.Movement.Cancel("death")
                 end
                 Runtime.CurrentTarget = nil
                 Runtime.LockTarget = nil
+                Runtime.BossFightEngaged = false
                 if Systems.Watchdog and Systems.Watchdog.MarkProgress then
                     Systems.Watchdog.MarkProgress()
                 end
@@ -3075,7 +3073,8 @@
             local center = (spawn and spawn.Center) or (def and def.Center)
             local useModel = model or (spawn and spawn.Model)
             local mroot = useModel and Systems.Enemy.GetRoot(useModel)
-            if mroot then
+            -- Keep authored spawn as travel dest. Chasing a walking Hashira restarts hop every tick.
+            if mroot and origin and (origin - mroot.Position).Magnitude <= 80 then
                 center = mroot.Position
             end
             if not center then
@@ -3226,6 +3225,8 @@
         Runtime.HuntArriveAt = nil
         Runtime.HuntAccepting = false
         Runtime.HuntPatrolLogged = nil
+        Runtime.HuntTravelCode = nil
+        Runtime.HuntTravelDest = nil
     end
 
     function Systems.BossOpportunity.ShouldPatrol(holder)
@@ -4392,7 +4393,9 @@
         Runtime.LockTarget = nil
         Systems.Movement.ReleasePin()
         Systems.Movement.SetCombatLock(false)
-        Systems.Movement.UnfreezeLocomotion()
+        if not Runtime.DrinkingPotion then
+            Systems.Movement.UnfreezeLocomotion()
+        end
         Systems.Movement.SafeRestoreCollision()
     end
 
@@ -4575,7 +4578,10 @@
     -- CFrame tween makes default Animate load walk/jump forever until the 64-track cap (yellow warning).
     function Systems.Movement.PruneLocomotionTracks()
         local now = os.clock()
-        if Runtime.LastAnimPrune and (now - Runtime.LastAnimPrune) < 0.4 then
+        local hunting = Runtime.State == "HUNT_TRAVEL" or Runtime.State == "LOOT_CHEST"
+            or Runtime.MovePurpose == "hunt" or Runtime.MovePurpose == "pickup"
+        local gap = hunting and 0.2 or 0.4
+        if Runtime.LastAnimPrune and (now - Runtime.LastAnimPrune) < gap then
             return
         end
         local char = Runtime.Character or LocalPlayer.Character
@@ -4584,11 +4590,15 @@
         end
         local tracks = Systems.Movement.PlayingTracks(char)
         local n = #tracks
-        if n < 24 then
+        if hunting then
+            if n < 16 then
+                return
+            end
+        elseif n < 24 then
             return
         end
         Runtime.LastAnimPrune = now
-        local aggressive = n >= 40
+        local aggressive = n >= 40 or hunting
         for i = 1, n do
             local track = tracks[i]
             if track and not Systems.Movement.IsSwingTrack(track) then
@@ -4625,6 +4635,9 @@
     end
 
     function Systems.Movement.UnfreezeLocomotion()
+        if Runtime.DrinkingPotion then
+            return
+        end
         if Runtime.LockTarget or Runtime.ActiveTween or Runtime.MovePurpose == "combat" or Runtime.NpcHoldCf then
             return
         end
@@ -4738,6 +4751,9 @@
     end
 
     function Systems.Movement.ApplyCombatLock()
+        if Runtime.DrinkingPotion then
+            return
+        end
         local model = Runtime.LockTarget
         if not model then
             if Runtime.PinModel then
@@ -4772,6 +4788,9 @@
     end
 
     function Systems.Movement.HoldCombat(model)
+        if Runtime.DrinkingPotion then
+            return false
+        end
         if not model then
             return false
         end
@@ -4813,7 +4832,9 @@
             end
             if Runtime.ActiveTween or Runtime.LockTarget or Runtime.MovePurpose or Systems.Movement.BusyWithNpc() then
                 Systems.Movement.ApplyNoclip()
-                if Runtime.ActiveTween or Runtime.MovePurpose == "travel" or Runtime.MovePurpose == "npc" then
+                if Runtime.ActiveTween or Runtime.MovePurpose == "travel" or Runtime.MovePurpose == "npc"
+                    or Runtime.MovePurpose == "hunt" or Runtime.State == "HUNT_TRAVEL"
+                then
                     Systems.Movement.FreezeLocomotion()
                 end
             elseif Systems.Movement.Overlapping() then
@@ -4920,6 +4941,9 @@
     end
 
     function Systems.Movement.StartTween(destination, range, purpose, followInst)
+        if Runtime.DrinkingPotion then
+            return false, "drinking"
+        end
         if not Config.AutoTravel then
             return Systems.Movement.HasArrived(destination, range)
         end
@@ -4954,7 +4978,7 @@
             local hover = Config.Movement.GroundHover or 5
             goal = Systems.Movement.GroundedCFrame(cf, hover) or CFrame.new(cf.Position.X, cf.Position.Y + 3, cf.Position.Z)
             local flat = Vector3.new(root.Position.X - goal.Position.X, 0, root.Position.Z - goal.Position.Z).Magnitude
-            local hopDist = Config.Movement.HopDistance or 22
+            local hopDist = (purpose == "hunt") and 40 or (Config.Movement.HopDistance or 22)
             local lift = Config.Movement.FlyClearance or 42
             if not skipHop and flat > hopDist then
                 landAfter = goal
@@ -4981,8 +5005,17 @@
                 if latest and (latest.Position - Runtime.MoveDestination.Position).Magnitude < (Config.Movement.TargetRepathDistance or 5) then
                     return false, "moving"
                 end
-            elseif not followInst and Runtime.MoveGoalRaw and (settled - Runtime.MoveGoalRaw).Magnitude < 2.5 then
-                return false, "moving"
+            elseif not followInst and Runtime.MoveGoalRaw then
+                local repath = 2.5
+                if purpose == "travel" or purpose == "hunt" then
+                    repath = 48
+                elseif purpose == "pickup" then
+                    repath = 18
+                end
+                local flatDelta = Vector3.new(settled.X - Runtime.MoveGoalRaw.X, 0, settled.Z - Runtime.MoveGoalRaw.Z).Magnitude
+                if flatDelta < repath then
+                    return false, "moving"
+                end
             end
         end
         local token = (Runtime.MoveToken or 0) + 1
@@ -5044,6 +5077,19 @@
                 end
                 return
             end
+            if purpose == "hunt" then
+                Systems.Movement.FreezeLocomotion()
+                return
+            end
+            if purpose == "travel" then
+                Systems.Movement.FreezeLocomotion()
+                if Systems.Movement.Overlapping() then
+                    Systems.Movement.ApplyNoclip()
+                else
+                    Systems.Movement.SafeRestoreCollision()
+                end
+                return
+            end
             Systems.Movement.Unstuck()
             Systems.Movement.SafeRestoreCollision()
             Runtime.MovePurpose = nil
@@ -5055,6 +5101,12 @@
     end
 
     function Systems.Movement.Update()
+        if Runtime.DrinkingPotion then
+            if Runtime.ActiveTween then
+                Systems.Movement.Cancel("drinking")
+            end
+            return
+        end
         local _, _, root = Resolver.Character()
         if not root then
             if Runtime.ActiveTween then
@@ -5150,6 +5202,9 @@
     end
 
     function Systems.Movement.MoveToEnemy(model)
+        if Runtime.DrinkingPotion then
+            return false, "drinking"
+        end
         local offset = Systems.Movement.CombatOffset(model)
         if not offset then
             return false, "no root"
@@ -5176,6 +5231,15 @@
             return true
         end
         Systems.Movement.StartTween(destination, range, "travel")
+        return false
+    end
+
+    function Systems.Movement.MoveToHunt(destination, range)
+        range = range or (Config.Boss.HuntArriveRange or 42)
+        if Systems.Movement.HasArrived(destination, range) then
+            return true
+        end
+        Systems.Movement.StartTween(destination, range, "hunt")
         return false
     end
 
@@ -5726,6 +5790,9 @@
     end
 
     function Systems.Combat.Cycle(expectedCode)
+        if Runtime.DrinkingPotion then
+            return "DRINKING"
+        end
         local edef = expectedCode and EnemyDB[expectedCode]
         local isBoss = edef and edef.Boss == true
 
@@ -6784,13 +6851,6 @@
 
     Systems.Potion = {}
 
-    local POTION_BUFF_STAT = {
-        ["Stamina Regen Elixir"] = "Stamina Regen Speed",
-        ["Stamina Regen Potion"] = "Stamina Regen Speed",
-        ["Health Regen Elixir"] = "Health Regen Speed",
-        ["Health Regen Potion"] = "Health Regen Speed",
-    }
-
     function Systems.Potion.IsPotionName(name)
         if type(name) ~= "string" then
             return false
@@ -6814,6 +6874,9 @@
         if Runtime.DrinkingPotion then
             return false, "busy"
         end
+        if itemName ~= "Health Potion" and itemName ~= "Health Elixir" then
+            return false, "not heal"
+        end
         if not Game.PlayerData.HasItem(itemName) then
             return false, "missing"
         end
@@ -6821,6 +6884,7 @@
         if not id then
             return false, "no id"
         end
+        local amountBefore = Game.PlayerData.GetItemAmount(itemName) or 0
         local slotIndex, slotName = Game.PlayerData.FindToolbarSlot(itemName)
         local previousId
         if not slotIndex then
@@ -6833,38 +6897,98 @@
             Runtime.LastEquipAt = os.clock()
         end
         Runtime.DrinkingPotion = true
-        Runtime.PotionUntil = os.clock() + ((Config.Potion and Config.Potion.DrinkTimeout) or 3.2)
+        Runtime.PotionUntil = os.clock() + ((Config.Potion and Config.Potion.DrinkTimeout) or 2.2) + 2
         Runtime.LastPotionAt = os.clock()
+        Runtime.LockTarget = nil
+        if Systems.Movement.ReleasePin then
+            Systems.Movement.ReleasePin()
+        end
+        if Systems.Movement.SetCombatLock then
+            Systems.Movement.SetCombatLock(false)
+        end
+        if Systems.Movement.Cancel then
+            Systems.Movement.Cancel("potion")
+        end
         task.spawn(function()
-            task.wait(0.18)
-            if not stillCurrent() then
+            local finished = false
+            local function finish(ok, why)
+                if finished then
+                    return
+                end
+                finished = true
                 Runtime.DrinkingPotion = false
+                Runtime.PotionUntil = 0
+                if stillCurrent() then
+                    Systems.Potion.SetEquippedSlot(1)
+                    if previousId and previousId ~= 0 then
+                        Net.ToServer("Toolbar_Equip", slotName, previousId)
+                    end
+                    Systems.Combat.EquipBest()
+                    if ok then
+                        Runtime.PotionFailStreak = 0
+                        Logger.Info("Potion", "Drank " .. itemName .. " (" .. tostring(why) .. ")")
+                    else
+                        Runtime.PotionFailStreak = (Runtime.PotionFailStreak or 0) + 1
+                        Logger.Warn("Potion", "Drink failed (" .. tostring(why) .. ") x" .. tostring(Runtime.PotionFailStreak))
+                        if Runtime.PotionFailStreak >= 3 then
+                            Config.AutoPotion = false
+                            Logger.Warn("Potion", "Health Potion remote did not complete — AutoPotion off, die/respawn")
+                        end
+                    end
+                end
+            end
+            task.wait(0.2)
+            if not stillCurrent() or not Resolver.IsPlayerAlive() then
+                finish(false, "dead")
                 return
             end
             Systems.Potion.SetEquippedSlot(slotIndex)
-            local character = select(1, Resolver.Character())
-            local deadline = os.clock() + 1.4
+            local welded = false
+            local deadline = os.clock() + 1.8
             while os.clock() < deadline and stillCurrent() do
-                character = select(1, Resolver.Character())
-                if character and (character:FindFirstChild(itemName) or character:FindFirstChild("CapWeld", true)) then
+                local character = select(1, Resolver.Character())
+                if character and character:FindFirstChild("CapWeld", true) then
+                    welded = true
                     break
                 end
                 task.wait(0.08)
             end
-            Net.ToServer("Tool_Mouse", "Down", Vector3.zero)
-            task.wait(2.45)
-            if stillCurrent() then
-                Net.ToServer("Tool_Mouse", "Up", Vector3.zero)
-                Systems.Potion.SetEquippedSlot(1)
-                if previousId and previousId ~= 0 then
-                    Net.ToServer("Toolbar_Equip", slotName, previousId)
-                end
-                Runtime.DrinkingPotion = false
-                Systems.Combat.EquipBest()
-                Logger.Info("Potion", "Used " .. itemName)
-            else
-                Runtime.DrinkingPotion = false
+            if not welded then
+                finish(false, "no-capweld")
+                return
             end
+            local _, humanoid, root = Resolver.Character()
+            local hp0 = humanoid and humanoid.Health
+            local look = root and (root.Position + root.CFrame.LookVector * 6) or Vector3.zero
+            -- Official consume remote. Do not send Up — server MouseUp cancels the 1.85s drink.
+            Net.ToServer("Tool_Mouse", "Down", look)
+            local drinkUntil = os.clock() + ((Config.Potion and Config.Potion.DrinkTimeout) or 2.2)
+            while os.clock() < drinkUntil and stillCurrent() do
+                if not Resolver.IsPlayerAlive() then
+                    finish(false, "died")
+                    return
+                end
+                local hum = select(2, Resolver.Character())
+                if hp0 and hum and hum.Health > hp0 + 8 then
+                    finish(true, "healed")
+                    return
+                end
+                task.wait(0.08)
+            end
+            if Game.PlayerData.Refresh then
+                Game.PlayerData.Refresh()
+            end
+            local left = Game.PlayerData.GetItemAmount(itemName) or 0
+            if amountBefore > 0 and left < amountBefore then
+                finish(true, "consumed")
+                return
+            end
+            local hum = select(2, Resolver.Character())
+            if hp0 and hum and hum.Health > hp0 + 8 then
+                finish(true, "healed")
+                return
+            end
+            finish(false, "no-heal")
         end)
         return true
     end
@@ -6888,8 +7012,11 @@
         if Runtime.DrinkingPotion then
             return true
         end
+        if Runtime.State == "LOOT_CHEST" or Runtime.State == "WAIT_RESPAWN" or Runtime.State == "PLAYER_DEAD" then
+            return false
+        end
         local now = os.clock()
-        local recheck = (Config.Potion and Config.Potion.Recheck) or 1.25
+        local recheck = (Config.Potion and Config.Potion.Recheck) or 2.8
         if Runtime.LastPotionAt and now - Runtime.LastPotionAt < recheck then
             return false
         end
@@ -6898,25 +7025,12 @@
             return false
         end
         local hpFrac = humanoid.MaxHealth > 0 and (humanoid.Health / humanoid.MaxHealth) or 1
-        local cfg = Config.Potion or {}
-        if hpFrac <= (cfg.HealthPercent or 0.42) then
-            local heal = Systems.Potion.Pick(cfg.HealthInstant)
-            if heal then
-                return Systems.Potion.Drink(heal)
-            end
+        if hpFrac > ((Config.Potion and Config.Potion.HealthPercent) or 0.42) then
+            return false
         end
-        local inCombat = Runtime.State == "FARM_COMBAT" or Runtime.LockTarget ~= nil
-        if inCombat then
-            local buff = Systems.Potion.Pick(cfg.CombatBuffs)
-            if buff and not Game.PlayerData.HasTimedStat(POTION_BUFF_STAT[buff] or "Stamina Regen Speed") then
-                return Systems.Potion.Drink(buff)
-            end
-        end
-        if hpFrac < 0.85 then
-            local regen = Systems.Potion.Pick(cfg.HealthRegen)
-            if regen and not Game.PlayerData.HasTimedStat(POTION_BUFF_STAT[regen] or "Health Regen Speed") then
-                return Systems.Potion.Drink(regen)
-            end
+        local heal = Systems.Potion.Pick((Config.Potion and Config.Potion.HealthInstant) or { "Health Elixir", "Health Potion" })
+        if heal then
+            return Systems.Potion.Drink(heal)
         end
         return false
     end
@@ -7059,6 +7173,9 @@
         if state == "HUNT_TRAVEL" then
             return Config.Watchdog.TravelBase + 30
         end
+        if state == "POTION_DRINK" then
+            return (Config.Potion.DrinkTimeout or 2.2) + 4
+        end
         if state == "LOOT_CHEST" then
             return (Config.Boss.LootSeconds or 10) + 6
         end
@@ -7161,6 +7278,14 @@ end
         end
         if Runtime.State == "QUEST_ACCEPT" then
             Systems.Recovery.Handle("QUEST_ACCEPT_FAILED")
+            return
+        end
+        if Runtime.State == "POTION_DRINK" then
+            Runtime.DrinkingPotion = false
+            Runtime.PotionUntil = 0
+            Systems.Potion.SetEquippedSlot(1)
+            Systems.Combat.EquipBest()
+            Logger.Warn("Potion", "Drink watchdog timeout — resume farm")
             return
         end
         if Runtime.State == "FARM_TRAVEL" or Runtime.State == "QUEST_TRAVEL" or Runtime.State == "TRAINING" then
@@ -7634,6 +7759,11 @@ end
         local _, _, root = Resolver.Character()
         local dy = root and math.abs(root.Position.Y - best.Pos.Y) or 0
         local flat = root and Vector3.new(root.Position.X - best.Pos.X, 0, root.Position.Z - best.Pos.Z).Magnitude or best.Dist
+        local playerDist = root and (root.Position - best.Pos).Magnitude or best.Dist
+        -- Don't hop across the map for a distant tagged chest (causes Y bounce after world bosses).
+        if playerDist > 85 then
+            return false
+        end
 
         -- Close enough to claim: STOP tween / unstuck and fire T. Do not re-path.
         local inRange = (best.Dist <= standDist or flat <= standDist) and dy <= 10
@@ -7702,6 +7832,10 @@ end
         local origin = Runtime.LootOrigin or Runtime.LastCombatPos or (root and root.Position)
         if not origin then
             return false
+        end
+        if root and (root.Position - origin).Magnitude > 55 then
+            Systems.Movement.MoveToLoot(origin, 8)
+            return true
         end
         local chests, drops = Systems.Loot.GatherCandidates(origin, range, { Deep = true })
         -- Also merge candidates near the player (origin may lag behind if we walked away).
@@ -7783,6 +7917,7 @@ end
             Systems.Breathing.TryProgress()
         end
         if not Resolver.IsPlayerAlive() then
+            Runtime.DrinkingPotion = false
             if Runtime.Humanoid and Runtime.Humanoid.Health <= 0 then
                 return "PLAYER_DEAD"
             end
@@ -7790,6 +7925,9 @@ end
                 return "ROOT_MISSING"
             end
             return "WAIT_CHARACTER"
+        end
+        if Runtime.DrinkingPotion then
+            return "POTION_DRINK"
         end
 
         if Runtime.LootUntil and Runtime.LootUntil > 0 and os.clock() < Runtime.LootUntil then
@@ -8222,6 +8360,10 @@ end
             local huntSwap = (from == "HUNT_TRAVEL" and (state == "QUEST_TRAVEL" or state == "QUEST_ACCEPT"))
                 or (from == "QUEST_TRAVEL" and state == "HUNT_TRAVEL")
                 or (from == "QUEST_ACCEPT" and state == "HUNT_TRAVEL")
+                or (from == "LOOT_CHEST" and (state == "HUNT_TRAVEL" or state == "FARM_COMBAT"))
+            if from == "LOOT_CHEST" and state ~= "LOOT_CHEST" and Systems.Movement.Cancel then
+                Systems.Movement.Cancel("leave-loot")
+            end
             if huntSwap and Systems.Movement.Cancel then
                 Systems.Movement.Cancel("hunt-quest-swap")
             end
@@ -8249,6 +8391,10 @@ end
     end
 
     function StateMachine.Execute(state)
+        if state == "POTION_DRINK" then
+            Systems.Watchdog.MarkProgress()
+            return
+        end
         if state == "LOOT_CHEST" then
             -- Drop combat lock so we can stand at Common/Rare Chest (prompt Key T / Open).
             Runtime.LockTarget = nil
@@ -8293,28 +8439,38 @@ end
                 local spawn = Systems.BossOpportunity.GetSpawn(patrol.Code)
                 local model = (spawn and spawn.Model)
                     or select(1, Systems.Enemy.FindNearestTarget(patrol.Code, nil, true))
-                if model and Systems.Enemy.IsAlive(model) then
-                    local mroot = Systems.Enemy.GetRoot(model)
-                    if mroot then
-                        patrol.Center = mroot.Position
-                    end
-                    patrol.Model = model
-                    Runtime.CurrentTarget = model
-                    Runtime.CurrentTask = { Code = patrol.Code, Intent = "COMBAT", WorldBoss = true }
-                    Runtime.BossFightEngaged = true
-                elseif not (spawn and spawn.Alive) then
+                if model and not Systems.Enemy.IsAlive(model) then
+                    model = nil
+                end
+                if not model and not (spawn and spawn.Alive) then
                     Logger.Info("Boss", tostring(patrol.Code) .. " world despawned — resume farm")
                     Systems.BossOpportunity.ClearPatrol()
                     return
-                elseif spawn.Center then
-                    patrol.Center = spawn.Center
+                end
+                local edef = EnemyDB[patrol.Code]
+                local travelDest = (edef and edef.Center) or (spawn and spawn.Center) or patrol.Center
+                if Runtime.HuntTravelCode ~= patrol.Code then
+                    Runtime.HuntTravelCode = patrol.Code
+                    Runtime.HuntTravelDest = travelDest
+                end
+                patrol.Center = Runtime.HuntTravelDest or travelDest
+                if model then
+                    patrol.Model = model
+                    Runtime.CurrentTarget = model
+                    Runtime.CurrentTask = { Code = patrol.Code, Intent = "COMBAT", WorldBoss = true }
                 end
                 local range = Config.Boss.HuntArriveRange or 42
-                if not Systems.Movement.HasArrived(patrol.Center, range) then
-                    Systems.Movement.MoveTo(patrol.Center, range)
+                local mroot = model and Systems.Enemy.GetRoot(model)
+                if mroot and Systems.Movement.HasArrived(mroot.Position, range) then
+                    Runtime.BossFightEngaged = true
                     Systems.Watchdog.MarkProgress()
                     return
                 end
+                if Systems.Movement.HasArrived(patrol.Center, range) then
+                    Systems.Watchdog.MarkProgress()
+                    return
+                end
+                Systems.Movement.MoveToHunt(patrol.Center, range)
                 Systems.Watchdog.MarkProgress()
                 return
             end
@@ -8961,13 +9117,13 @@ end
                 end
 
                 Resolver.Character()
+                Systems.Potion.Tick()
                 Systems.Movement.Update()
 
                 local state = DecisionEngine.Evaluate()
                 state = StateMachine.Transition(state) or state
                 StateMachine.Execute(state)
                 Systems.Skills.Spend()
-                Systems.Potion.Tick()
 
                 if os.clock() - lastWatchdogAt >= Config.Tick.Watchdog then
                     lastWatchdogAt = os.clock()
@@ -8983,6 +9139,8 @@ end
                 local waitTime = Config.Tick.Scheduler
                 if Runtime.State == "FARM_COMBAT" then
                     waitTime = Config.Tick.Combat
+                elseif Runtime.State == "POTION_DRINK" then
+                    waitTime = 0.15
                 elseif Runtime.State == "WAIT_RESPAWN" or Runtime.State == "WAITING_FOR_BOSS" or Runtime.State == "WAIT_COOLDOWN" then
                     waitTime = 0.45
                 elseif Runtime.State == "WAIT_DATA" or Runtime.State == "WAIT_CHARACTER" or Runtime.State == "PLAYER_DEAD" or Runtime.State == "ROOT_MISSING" then
