@@ -1,6 +1,6 @@
     --[[
         Ouwland Kaitun
-        VERSION: 2026-09-22-loot-center
+        VERSION: 2026-09-22-loot-probe
 
         Single-file copy → paste → execute script.
         Game logic is taken from Ouwland research + live Studio inspection.
@@ -125,7 +125,7 @@
             MaxVerifiedVertical = 4.125,
             AttackInterval = 0.12,
             FireInterval = 0.12,
-            ComboReset = 0.5,
+            ComboReset = 1.35, -- Combat_presets.combo_duration after 1-4 (not final 1.65)
             HitDelay = 0.02,
             RepositionThreshold = 1.0,
             FarmPositionTolerance = 1.1,
@@ -199,11 +199,10 @@
 
         Boss = {
             AvailabilityCheckInterval = 2,
-            PreemptFarm = true,
-            LootSeconds = 12,
+            LootSeconds = 50,
             LootRange = 80,
-            DropSeconds = 6,
-            LootEmptySeconds = 1.2,
+            DropSeconds = 3.5,
+            LootEmptySeconds = 1.6,
             HuntFromLevel = 70,
             WorldBossFromLevel = 110,
             HuntSweepInterval = 35,
@@ -536,6 +535,7 @@
         LastTargetHealth = nil,
         LootUntil = 0,
         LootOrigin = nil,
+        LootSession = nil,
         LastCombatPos = nil,
         BossFightEngaged = false,
         LootSpent = false,
@@ -544,7 +544,7 @@
         LootPhase = nil,
         LootNearCache = nil,
         LootDeepScanAt = 0,
-        LootDeepCache = nil, -- "chest" | "drops"
+        LootDeepCache = nil,
         LastRemoveQuestAt = 0,
         LastTargetHealthAt = os.clock(),
         WatchFingerprint = nil,
@@ -556,6 +556,10 @@
         RecoveryGivenUp = {},
         PendingBossQuest = nil,
         PendingOpportunity = nil,
+        PendingBoss = nil,
+        DeathResume = nil,
+        RespawnRecover = false,
+        CommittedBoss = nil,
         BossAliveCache = {},
         LastBossCheckAt = 0,
         HuntPatrol = nil,
@@ -609,6 +613,9 @@
         end
         if Systems and Systems.Movement and Systems.Movement.RestoreCollision then
             pcall(Systems.Movement.RestoreCollision)
+        end
+        if Systems and Systems.Loot and Systems.Loot.Shutdown then
+            pcall(Systems.Loot.Shutdown)
         end
     end
 
@@ -2269,19 +2276,13 @@
                 if not stillCurrent() then
                     return
                 end
-                Logger.Info("Lifecycle", "Character died — wait respawn, keep quest")
-                Runtime.DiedAt = os.clock()
-                if Systems.Loot and Systems.Loot.EndWindow then
-                    Systems.Loot.EndWindow("death")
-                end
-                if Systems.Movement then
-                    Systems.Movement.Cancel("death")
-                end
-                Runtime.CurrentTarget = nil
-                Runtime.LockTarget = nil
-                Runtime.BossFightEngaged = false
-                if Systems.Watchdog and Systems.Watchdog.MarkProgress then
-                    Systems.Watchdog.MarkProgress()
+                if Systems.Objective and Systems.Objective.OnDeath then
+                    Systems.Objective.OnDeath()
+                else
+                    Runtime.DiedAt = os.clock()
+                    if Systems.Movement then
+                        Systems.Movement.Cancel("death")
+                    end
                 end
             end))
         end
@@ -2357,7 +2358,7 @@
                 return Systems.Quest.TaskDone(tasks[i])
             end
         end
-        return true
+        return false
     end
 
     function Systems.Quest.ClassifyTask(questEntry, task)
@@ -3048,21 +3049,43 @@
     end
 
     function Systems.BossOpportunity.HolderBlocksHunt(holder)
-        if not holder then
+        if not holder or not holder.Entry then
             return false
         end
-        if holder.Intent == "COMPLETE" or holder.Intent == "PICKUP" or holder.Intent == "DELIVER" or holder.Intent == "TRAINING" then
-            return true
+        if Runtime.HuntPatrol and Runtime.HuntPatrol.Key == holder.Entry.Key then
+            return false
         end
-        local hdef = holder.Entry and QuestDB[holder.Entry.Key]
-        if hdef and hdef.Kind == "Breathing" then
-            return true
+        local taskCode = holder.Task and holder.Task.Code
+        if Runtime.CommittedBoss and taskCode and Runtime.CommittedBoss.Code == taskCode then
+            return false
         end
-        return false
+        return true
     end
 
     function Systems.BossOpportunity.PickLiveWorld()
         if not Systems.BossOpportunity.WorldEnabled() then
+            return nil
+        end
+        if Runtime.DeathResume or Runtime.RespawnRecover then
+            local only = (Runtime.DeathResume and Runtime.DeathResume.WasWorldBoss and Runtime.DeathResume.BossCode)
+                or (Runtime.CommittedBoss and Runtime.CommittedBoss.WorldBoss and Runtime.CommittedBoss.Code)
+            if only then
+                local tags = Systems.BossOpportunity.ScanTags()
+                local spawn = tags[only]
+                if spawn and spawn.Alive then
+                    local def = EnemyDB[only]
+                    return {
+                        Code = only,
+                        Center = spawn.Center or (def and def.Center),
+                        Alive = true,
+                        NoQuest = true,
+                        Level = Config.Boss.WorldBossFromLevel or 110,
+                        Model = spawn.Model,
+                        Dist = 0,
+                    }
+                end
+                return nil
+            end
             return nil
         end
         local tags = Systems.BossOpportunity.ScanTags()
@@ -3230,13 +3253,16 @@
     end
 
     function Systems.BossOpportunity.ShouldPatrol(holder)
+        if Runtime.DeathResume or Runtime.RespawnRecover then
+            return false
+        end
         if not Config.AutoBoss then
             return false
         end
         if Systems.Breathing and Systems.Breathing.BlocksHunt and Systems.Breathing.BlocksHunt() then
             return false
         end
-        if Runtime.LootUntil and Runtime.LootUntil > 0 and os.clock() < Runtime.LootUntil then
+        if Systems.Loot and Systems.Loot.Active and Systems.Loot.Active() then
             return false
         end
         if Systems.BossOpportunity.WorldEnabled() and Systems.BossOpportunity.PickLiveWorld() then
@@ -3300,49 +3326,205 @@
         return best.Key, best.Def, held
     end
 
-    function Systems.Quest.ShouldPreemptForBoss(holder)
-        if Config.Boss.PreemptFarm == false then
-            return false
+    Systems.Objective = {}
+
+    function Systems.Objective.Log(from, to, reason)
+        local stamp = tostring(to) .. ":" .. tostring(reason)
+        if Runtime.LastObjectiveLog == stamp then
+            return
         end
-        if not holder or not holder.Entry then
-            return false
+        Runtime.LastObjectiveLog = stamp
+        Logger.Info("Objective", "from=" .. tostring(from) .. " to=" .. tostring(to) .. " reason=" .. tostring(reason))
+    end
+
+    function Systems.Objective.Snapshot()
+        local holder = Systems.Quest.HeldEntry()
+        local action = Systems.Quest.SelectHolderAction()
+        local task = action and action.Task
+        local hunt = Runtime.HuntPatrol
+        local code = (task and task.Code)
+            or (Runtime.CurrentTask and Runtime.CurrentTask.Code)
+            or (hunt and hunt.Code)
+        return {
+            QuestKey = (holder and holder.Key) or (action and action.Entry and action.Entry.Key),
+            TaskName = task and task.Name,
+            TaskCode = task and task.Code,
+            BossCode = code,
+            WasWorldBoss = (hunt and hunt.NoQuest == true)
+                or (Runtime.CurrentTask and Runtime.CurrentTask.WorldBoss == true)
+                or false,
+            WasBossHunt = (hunt and hunt.Key and hunt.NoQuest ~= true) or false,
+            StageId = Runtime.CurrentStageId,
+            DiedAt = os.clock(),
+        }
+    end
+
+    function Systems.Objective.OnDeath()
+        Runtime.DeathResume = Systems.Objective.Snapshot()
+        Runtime.RespawnRecover = true
+        Runtime.DiedAt = os.clock()
+        local r = Runtime.DeathResume
+        Logger.Info("Death", string.format(
+            "quest=%s task=%s targetCode=%s boss=%s worldBoss=%s",
+            tostring(r.QuestKey),
+            tostring(r.TaskName),
+            tostring(r.TaskCode),
+            tostring(r.BossCode),
+            tostring(r.WasWorldBoss)
+        ))
+        Logger.Info("RuntimeProbe", string.format(
+            "[Death] BeforeDeathObjective=quest=%s task=%s code=%s lootActive=%s",
+            tostring(r.QuestKey),
+            tostring(r.TaskName),
+            tostring(r.BossCode),
+            tostring(Systems.Loot and Systems.Loot.Active and Systems.Loot.Active())
+        ))
+        if Systems.Loot and Systems.Loot.OnDeath then
+            Systems.Loot.OnDeath()
         end
-        local heldBreath = QuestDB[holder.Entry.Key]
-        if heldBreath and heldBreath.Kind == "Breathing" then
-            return false
+        if Systems.Movement then
+            Systems.Movement.Cancel("death")
         end
-        if holder.Intent == "COMPLETE" or holder.Intent ~= "COMBAT" then
-            return false
+        Runtime.CurrentTarget = nil
+        Runtime.LockTarget = nil
+        if not (Systems.Loot and Systems.Loot.Active and Systems.Loot.Active()) then
+            Runtime.BossFightEngaged = false
         end
-        local bossKey, bdef = Systems.Quest.StageBossLive()
-        if not bossKey then
-            return false
+        Runtime.DrinkingPotion = false
+        Runtime.PendingBossQuest = nil
+        Runtime.PendingOpportunity = nil
+        Runtime.HuntAccepting = false
+        Systems.BossOpportunity.ClearPatrol()
+        if Systems.Watchdog and Systems.Watchdog.MarkProgress then
+            Systems.Watchdog.MarkProgress()
         end
-        if holder.Entry.Key == bossKey then
-            return false
+    end
+
+    function Systems.Objective.Queue(code, key, world)
+        if not code then
+            return
         end
-        local heldDef = QuestDB[holder.Entry.Key]
-        if heldDef and heldDef.Boss then
-            local heldLv = heldDef.MinLevel or 0
-            local bossLv = (bdef and bdef.MinLevel) or 0
-            if bossLv <= heldLv then
-                return false
+        local holder = Systems.Quest.HeldEntry()
+        if holder and (holder.Key == key) then
+            return
+        end
+        local action = Systems.Quest.SelectHolderAction()
+        if action and action.Task and action.Task.Code == code then
+            return
+        end
+        local prev = Runtime.PendingBoss
+        if prev and prev.TargetCode == code then
+            return
+        end
+        Runtime.PendingBoss = {
+            QuestKey = key,
+            TargetCode = code,
+            SeenAt = os.clock(),
+            WorldBoss = world == true,
+        }
+        Logger.Info("Boss", "queued=" .. tostring(code)
+            .. " currentQuest=" .. tostring(holder and holder.Key)
+            .. " switchAfterBoundary=true")
+    end
+
+    function Systems.Objective.Notice(holder)
+        if not Config.AutoBoss then
+            return
+        end
+        local heldKey = holder and holder.Entry and holder.Entry.Key
+        local heldCode = holder and holder.Task and holder.Task.Code
+        local live = Systems.BossOpportunity.PickBestLive and Systems.BossOpportunity.PickBestLive()
+        if live and live.Code and live.Code ~= heldCode and live.Key ~= heldKey then
+            if Systems.BossOpportunity.IsAlive(live.Code) then
+                Systems.Objective.Queue(live.Code, live.Key, false)
             end
-            return true, bossKey
         end
-        local level = Game.PlayerData.GetLevel() or 0
-        if level >= (Config.Boss.HuntFromLevel or 70) then
-            return true, bossKey
+        if Systems.BossOpportunity.WorldEnabled and Systems.BossOpportunity.WorldEnabled() then
+            local world = Systems.BossOpportunity.PickLiveWorld()
+            if world and world.Code and world.Code ~= heldCode then
+                Systems.Objective.Queue(world.Code, world.Key, true)
+            end
         end
-        local stage = Systems.Quest.CurrentStage()
-        if not stage then
-            return false
+    end
+
+    function Systems.Objective.FinishRecover()
+        if not Runtime.RespawnRecover and not Runtime.DeathResume then
+            return nil
         end
-        local key = holder.Entry.Key
-        if key ~= stage.Repeatable and key ~= stage.FallbackQuest then
-            return false
+        if not Game.PlayerData.IsLoaded() then
+            return "WAIT_DATA"
         end
-        return true, bossKey
+        if not Resolver.IsPlayerAlive() then
+            return nil
+        end
+        local resume = Runtime.DeathResume
+        local waitFor = resume and resume.DiedAt or Runtime.DiedAt
+        if waitFor and (os.clock() - waitFor) < 0.7 then
+            return "RESPAWN_RECOVER"
+        end
+        Game.PlayerData.Refresh()
+        local holder = Systems.Quest.SelectHolderAction()
+        if resume and resume.QuestKey and Game.PlayerData.GetQuestByKey(resume.QuestKey) then
+            Systems.BossOpportunity.ClearPatrol()
+            Runtime.HuntAccepting = false
+            Runtime.CurrentQuest = resume.QuestKey
+            if holder and holder.Entry and holder.Entry.Key == resume.QuestKey then
+                Runtime.CurrentTask = holder.Task
+            end
+            Logger.Info("Respawn", "holder=" .. tostring(resume.QuestKey)
+                .. " resume=" .. tostring(resume.TaskCode or resume.BossCode)
+                .. " decision=same-quest")
+            Systems.Objective.Log("death", resume.QuestKey, "resume-holder")
+            if Systems.Loot and Systems.Loot.Active and Systems.Loot.Active() then
+                Logger.Info("RuntimeProbe", string.format(
+                    "[Death] HolderAfterRespawn=%s ResolvedObjective=LOOT_CHEST",
+                    tostring(resume.QuestKey)
+                ))
+                Runtime.DeathResume = nil
+                Runtime.RespawnRecover = false
+                return "LOOT_CHEST"
+            end
+            Runtime.DeathResume = nil
+            Runtime.RespawnRecover = false
+            return nil
+        end
+        if Systems.Loot and Systems.Loot.Active and Systems.Loot.Active() then
+            Logger.Info("RuntimeProbe", string.format(
+                "[Death] HolderAfterRespawn=%s ResolvedObjective=LOOT_CHEST",
+                tostring(holder and holder.Entry and holder.Entry.Key)
+            ))
+            Runtime.DeathResume = nil
+            Runtime.RespawnRecover = false
+            return "LOOT_CHEST"
+        end
+        if resume and resume.WasWorldBoss and resume.BossCode then
+            if Systems.BossOpportunity.IsAlive(resume.BossCode) then
+                local def = EnemyDB[resume.BossCode]
+                Runtime.HuntPatrol = {
+                    Code = resume.BossCode,
+                    Center = def and def.Center,
+                    Alive = true,
+                    NoQuest = true,
+                    Level = def and def.MinLevel,
+                }
+                Runtime.CurrentTask = { Code = resume.BossCode, Intent = "COMBAT", WorldBoss = true }
+                Runtime.CommittedBoss = { Code = resume.BossCode, WorldBoss = true }
+                Logger.Info("Respawn", "holder=- resume=" .. tostring(resume.BossCode) .. " decision=same-world-boss")
+                Systems.Objective.Log("death", resume.BossCode, "resume-world-boss")
+                Runtime.DeathResume = nil
+                Runtime.RespawnRecover = false
+                return "HUNT_TRAVEL"
+            end
+            Logger.Info("Respawn", "holder=- resume=" .. tostring(resume.BossCode) .. " decision=boss-gone")
+            Runtime.DeathResume = nil
+            Runtime.RespawnRecover = false
+            return nil
+        end
+        Logger.Info("Respawn", "holder=" .. tostring(holder and holder.Entry and holder.Entry.Key)
+            .. " resume=" .. tostring(resume and resume.QuestKey) .. " decision=boundary")
+        Runtime.DeathResume = nil
+        Runtime.RespawnRecover = false
+        return nil
     end
 
     function Systems.Quest.RemoveHeld(entry, reason)
@@ -5255,9 +5437,9 @@
         return false
     end
 
-    -- Tween to the exact chest/drop center, then snap. Never stand off to the side.
+    -- Tween into the prompt's real MaxActivationDistance. Do not CFrame-teleport.
     function Systems.Movement.MoveToLoot(destination, range)
-        range = range or 0.45
+        range = range or 4
         local _, _, root = Resolver.Character()
         if not root then
             return false
@@ -5271,12 +5453,10 @@
         end
         local flat = Vector3.new(root.Position.X - dest.Position.X, 0, root.Position.Z - dest.Position.Z).Magnitude
         local dy = math.abs(root.Position.Y - dest.Position.Y)
-        if flat <= range and dy <= 1.6 then
-            pcall(function()
-                root.CFrame = dest
-                root.AssemblyLinearVelocity = Vector3.zero
-                root.AssemblyAngularVelocity = Vector3.zero
-            end)
+        if flat <= range and dy <= math.max(6, range + 2) then
+            if Runtime.ActiveTween then
+                Systems.Movement.Cancel("loot-claim")
+            end
             Systems.Movement.ApplyNoclip()
             return true
         end
@@ -5711,21 +5891,35 @@
 
     -- Dedicated M1 loop (user-verified). Quest/tween stay on the scheduler.
     function Systems.Combat.M1Loop()
-        Logger.Info("Combat", "Dedicated M1 loop: Combat_Service while near a live farm target")
+        Logger.Info("Combat", "Dedicated M1 loop: Combat_Service 1-4 while target is in farm hitbox")
         local event = Systems.Combat.SignalEventRemote()
         while stillCurrent() do
             task.wait(0.05)
-            if Config.AutoCombat == false or Runtime.DrinkingPotion then
+            if Config.AutoCombat == false or Runtime.DrinkingPotion or Runtime.RespawnRecover or Runtime.DeathResume then
+                -- idle
+            elseif Runtime.State ~= "FARM_COMBAT" then
+                -- idle
+            elseif not Resolver.IsPlayerAlive() then
                 -- idle
             else
                 local character = LocalPlayer.Character
                 local target = Runtime.LockTarget or Runtime.CurrentTarget
+                local expect = Runtime.CurrentTask and Runtime.CurrentTask.Code
                 local farming = false
                 if character and target and Systems.Enemy.IsAlive(target) then
-                    local enemyRoot = Systems.Enemy.GetRoot(target)
-                    local _, _, root = Resolver.Character()
-                    local dist = (enemyRoot and root) and (root.Position - enemyRoot.Position).Magnitude or 999
-                    farming = dist <= 14
+                    if expect then
+                        local tcode = Systems.Enemy.GetNpcCode and Systems.Enemy.GetNpcCode(target)
+                        if tcode and tcode ~= expect then
+                            target = nil
+                        end
+                    end
+                    if target then
+                        local enemyRoot = Systems.Enemy.GetRoot(target)
+                        local _, _, root = Resolver.Character()
+                        local dist = (enemyRoot and root) and (root.Position - enemyRoot.Position).Magnitude or 999
+                        local maxR = Config.Combat.MaxVerifiedRange or 5.75
+                        farming = dist <= maxR
+                    end
                 end
                 if farming and character then
                     if not event or not event.Parent then
@@ -5733,14 +5927,12 @@
                     end
                     if event then
                         local last = tonumber(character:GetAttribute("last_combo")) or tonumber(Runtime.LastCombatCombo) or 0
-                        local combo = (last >= 6 or last == 7) and 1 or last + 1
-                        if combo < 1 then
-                            combo = 1
-                        elseif combo > 5 then
+                        local combo = last + 1
+                        if combo < 1 or combo > 4 then
                             combo = 1
                         end
                         local delay = Config.Combat.FireInterval or 0.12
-                        if last >= 5 then
+                        if last >= 4 then
                             delay = Config.Combat.ComboReset or 0.5
                         end
                         if os.clock() - (Runtime.LastSwingAt or 0) >= delay then
@@ -5760,7 +5952,6 @@
                             Runtime.LastSuccessfulAction = "Combat:Combat"
                         end
                     end
-                    -- Do not StripAnimTracks on LocalPlayer — breaks Animate.totalWeight / stops M1.
                 end
             end
         end
@@ -7172,7 +7363,7 @@
         if state == "FARM_COMBAT" then
             return Config.Watchdog.Combat
         end
-        if state == "PLAYER_DEAD" or state == "ROOT_MISSING" or state == "WAIT_CHARACTER" then
+        if state == "PLAYER_DEAD" or state == "ROOT_MISSING" or state == "WAIT_CHARACTER" or state == "RESPAWN_RECOVER" then
             return Config.Watchdog.Death or 90
         end
         if state == "WAIT_RESPAWN" or state == "WAITING_FOR_BOSS" then
@@ -7191,7 +7382,7 @@
             return (Config.Potion.DrinkTimeout or 2.2) + 4
         end
         if state == "LOOT_CHEST" then
-            return (Config.Boss.LootSeconds or 10) + 6
+            return (Config.Boss.LootSeconds or 50) + 8
         end
         if state == "BOSS_PREEMPT" then
             return 15
@@ -7315,9 +7506,592 @@ end
 
     Systems.Loot = {}
 
+    -- Studio-verified (edit + client modules):
+    -- Tags: gameSettings.Tags.Chest="Chest", LootDrop="LootDrop"
+    -- Runtime folder: workspace.Chests (empty in edit; server parents live Models here)
+    -- Templates: ReplicatedStorage.Assets.Chests — no prompt, no Chest tag
+    -- Shared controller: ChestController + LootDropController (all 9 chest models)
+    -- Open: native ProximityPrompt.Triggered (ProximityPromptHandler is Custom UI only)
+    -- Open remote: none on the client (no OpenChest / ClaimChest)
+    -- Open truth: Model:GetAttribute("IsOpen") == true (ChestGuid + ChestState "Opened")
+    -- Drops: BasePart + LootDrop; claim after flight; truth DropClaimedBy or instance gone
+    -- Ownership: DropOwnerUserId / DropPrivate / DropReservedFor (",userId,")
+    -- Snow Mound: tag ChestMound (Iceveil), not a boss chest
+    -- Effect: CommonOpen / CommonSpawn / SealVFX / Highlight — VFX only
+    -- Admin spawn: ChestService.Spawn(..., { despawnAfter = 60, snapToGround = true })
+    -- Do NOT mutate prompt Enabled / LOS / MaxActivationDistance
+    -- Do NOT classify unknown objects as chests
+
+    local LootKnown = {
+        ["Common Chest"] = true,
+        ["Rare Chest"] = true,
+        ["Demon Chest"] = true,
+        ["Ice Chest"] = true,
+        ["Lost Chest"] = true,
+        ["Ouwigahara Chest"] = true,
+        ["Sealed Chest"] = true,
+        ["Snow Chest"] = true,
+        ["World Events Chest"] = true,
+    }
+
+    local LootT = {
+        SpawnWait = 8,
+        OpenVerify = 2.4,
+        RewardSpawn = 3.5,
+        ClaimVerify = 2.2,
+        Quiet = 1.6,
+        Hard = 50,
+        Radius = 80,
+        Retry = 4,
+        ActGap = 0.7,
+    }
+
+    local Live = {
+        Ready = false,
+        Chests = {},
+        Drops = {},
+        Conns = {},
+        ChestTag = "Chest",
+        DropTag = "LootDrop",
+    }
+
+    local function lootNow()
+        return os.clock()
+    end
+
+    function Systems.Loot.Tags()
+        local ok, chestTag, dropTag = pcall(function()
+            local cam = ReplicatedStorage:FindFirstChild("CAM")
+            local global = cam and cam:FindFirstChild("Global")
+            local gs = global and global:FindFirstChild("gameSettings")
+            if gs and gs:IsA("ModuleScript") then
+                local mod = require(gs)
+                local tags = mod and mod.Tags
+                if type(tags) == "table" then
+                    return tags.Chest or "Chest", tags.LootDrop or "LootDrop"
+                end
+            end
+            return "Chest", "LootDrop"
+        end)
+        if ok and chestTag then
+            Live.ChestTag = chestTag
+            Live.DropTag = dropTag or "LootDrop"
+        end
+        return Live.ChestTag, Live.DropTag
+    end
+
+    function Systems.Loot.Pos(inst)
+        if typeof(inst) ~= "Instance" or inst.Parent == nil then
+            return nil
+        end
+        if inst:IsA("Model") then
+            local ok, pivot = pcall(function()
+                return inst:GetPivot().Position
+            end)
+            if ok then
+                return pivot
+            end
+        end
+        if inst:IsA("BasePart") then
+            return inst.Position
+        end
+        if inst:IsA("Attachment") then
+            return inst.WorldPosition
+        end
+        local part = inst:FindFirstChildWhichIsA("BasePart", true)
+        return part and part.Position or nil
+    end
+
+    function Systems.Loot.IsFallenVoid(pos)
+        if typeof(pos) ~= "Vector3" then
+            return true
+        end
+        local floor = Workspace.FallenPartsDestroyHeight
+        if typeof(floor) == "number" and pos.Y < (floor + 12) then
+            return true
+        end
+        return pos.Y < -80
+    end
+
+    function Systems.Loot.StandCFrame(destination)
+        local pos = typeof(destination) == "CFrame" and destination.Position
+            or typeof(destination) == "Vector3" and destination
+            or Systems.Loot.Pos(destination)
+        if not pos then
+            return nil
+        end
+        return CFrame.new(pos)
+    end
+
+    function Systems.Loot.Prompt(inst)
+        if typeof(inst) ~= "Instance" or inst.Parent == nil then
+            return nil
+        end
+        if inst:IsA("ProximityPrompt") then
+            return inst
+        end
+        return inst:FindFirstChildWhichIsA("ProximityPrompt", true)
+    end
+
+    function Systems.Loot.ArriveRange(prompt)
+        local maxd = (prompt and tonumber(prompt.MaxActivationDistance)) or 8
+        return math.clamp(maxd - 1.5, 2.5, 8)
+    end
+
+    function Systems.Loot.IsIgnored(inst)
+        if typeof(inst) ~= "Instance" then
+            return true
+        end
+        if inst.Name == "Snow Mound" or inst.Name == "Effect" then
+            return true
+        end
+        if CollectionService:HasTag(inst, "ChestMound") then
+            return true
+        end
+        return false
+    end
+
+    function Systems.Loot.IsChest(inst)
+        if typeof(inst) ~= "Instance" or inst.Parent == nil or Systems.Loot.IsIgnored(inst) then
+            return false
+        end
+        if inst:IsA("Model") and CollectionService:HasTag(inst, Live.ChestTag) then
+            return true
+        end
+        if inst:IsA("Model") and typeof(inst:GetAttribute("ChestGuid")) == "string" then
+            return true
+        end
+        if inst:IsA("Model") and inst:GetAttribute("IsOpen") ~= nil then
+            return true
+        end
+        if inst:IsA("Model") and LootKnown[inst.Name] then
+            return true
+        end
+        local prompt = Systems.Loot.Prompt(inst)
+        if prompt and LootKnown[prompt.ObjectText] then
+            return true
+        end
+        return false
+    end
+
+    function Systems.Loot.IsDrop(inst)
+        if typeof(inst) ~= "Instance" or inst.Parent == nil or Systems.Loot.IsIgnored(inst) then
+            return false
+        end
+        if inst:IsA("BasePart") and CollectionService:HasTag(inst, Live.DropTag) then
+            return true
+        end
+        if inst:GetAttribute("DropItemId") ~= nil then
+            return true
+        end
+        return false
+    end
+
+    function Systems.Loot.ChestRoot(inst)
+        local cur = inst
+        while cur and cur ~= Workspace do
+            if Systems.Loot.IsChest(cur) then
+                return cur
+            end
+            cur = cur.Parent
+        end
+        return nil
+    end
+
+    function Systems.Loot.DropRoot(inst)
+        local cur = inst
+        while cur and cur ~= Workspace do
+            if Systems.Loot.IsDrop(cur) then
+                return cur
+            end
+            cur = cur.Parent
+        end
+        return nil
+    end
+
+    function Systems.Loot.ChestId(chest)
+        if typeof(chest) ~= "Instance" then
+            return nil
+        end
+        local guid = chest:GetAttribute("ChestGuid")
+        if typeof(guid) == "string" and guid ~= "" then
+            return guid
+        end
+        return chest
+    end
+
+    function Systems.Loot.IsChestOpened(chest)
+        if typeof(chest) ~= "Instance" or chest.Parent == nil then
+            return true
+        end
+        return chest:GetAttribute("IsOpen") == true
+    end
+
+    function Systems.Loot.IsDropClaimed(drop)
+        if typeof(drop) ~= "Instance" or drop.Parent == nil then
+            return true
+        end
+        return drop:GetAttribute("DropClaimedBy") ~= nil
+    end
+
+    function Systems.Loot.Ours(drop)
+        if typeof(drop) ~= "Instance" or drop.Parent == nil then
+            return false
+        end
+        local uid = LocalPlayer.UserId
+        local owner = drop:GetAttribute("DropOwnerUserId")
+        if typeof(owner) == "number" and owner ~= uid then
+            return false
+        end
+        if drop:GetAttribute("DropPrivate") == true and typeof(owner) == "number" and owner ~= uid then
+            return false
+        end
+        local reserved = drop:GetAttribute("DropReservedFor")
+        if typeof(reserved) == "string" and not string.find(reserved, "," .. tostring(uid) .. ",", 1, true) then
+            return false
+        end
+        if drop:GetAttribute("DropClaimedBy") ~= nil then
+            return false
+        end
+        return true
+    end
+
+    local ProbeSeen = {}
+
+    local function attrDump(inst)
+        local bits = {}
+        local ok, attrs = pcall(function()
+            return inst:GetAttributes()
+        end)
+        if ok and attrs then
+            for k, v in pairs(attrs) do
+                bits[#bits + 1] = tostring(k) .. "=" .. tostring(v)
+            end
+            table.sort(bits)
+        end
+        return table.concat(bits, ",")
+    end
+
+    local function tagDump(inst)
+        local ok, tags = pcall(function()
+            return CollectionService:GetTags(inst)
+        end)
+        if not ok or not tags then
+            return ""
+        end
+        table.sort(tags)
+        return table.concat(tags, ",")
+    end
+
+    function Systems.Loot.Probe(kind, inst, extra)
+        if typeof(inst) ~= "Instance" then
+            return
+        end
+        local key = kind .. ":" .. tostring(inst)
+        if ProbeSeen[key] then
+            return
+        end
+        ProbeSeen[key] = true
+        local prompt = Systems.Loot.Prompt(inst)
+        local lines = {
+            "[RuntimeProbe][" .. tostring(kind) .. "]",
+            "Type=" .. tostring(inst.Name),
+            "Path=" .. inst:GetFullName(),
+            "Class=" .. inst.ClassName,
+            "Parent=" .. tostring(inst.Parent and inst.Parent:GetFullName()),
+            "Tags=" .. tagDump(inst),
+            "Attributes=" .. attrDump(inst),
+        }
+        if prompt then
+            lines[#lines + 1] = "Prompt=" .. prompt:GetFullName()
+            lines[#lines + 1] = "ActionText=" .. tostring(prompt.ActionText)
+            lines[#lines + 1] = "ObjectText=" .. tostring(prompt.ObjectText)
+            lines[#lines + 1] = "HoldDuration=" .. tostring(prompt.HoldDuration)
+            lines[#lines + 1] = "MaxActivationDistance=" .. tostring(prompt.MaxActivationDistance)
+            lines[#lines + 1] = "RequiresLineOfSight=" .. tostring(prompt.RequiresLineOfSight)
+            lines[#lines + 1] = "KeyboardKeyCode=" .. tostring(prompt.KeyboardKeyCode)
+            lines[#lines + 1] = "Enabled=" .. tostring(prompt.Enabled)
+        else
+            lines[#lines + 1] = "Prompt=nil"
+        end
+        if extra then
+            lines[#lines + 1] = extra
+        end
+        Logger.Info("RuntimeProbe", table.concat(lines, " "))
+    end
+
+    function Systems.Loot.DropReady(drop)
+        if not Systems.Loot.Ours(drop) then
+            return false
+        end
+        local prompt = Systems.Loot.Prompt(drop)
+        if prompt and prompt.Enabled == false then
+            local flight = tonumber(drop:GetAttribute("DropFlightTime")) or 1
+            local rec = Live.Drops[drop]
+            local age = rec and (lootNow() - rec.AddedAt) or 0
+            if age < flight + 0.15 then
+                return false
+            end
+        end
+        return true
+    end
+
+    local function rememberChest(inst)
+        if typeof(inst) ~= "Instance" then
+            return
+        end
+        local root = inst:IsA("Model") and inst or Systems.Loot.ChestRoot(inst)
+        if not root or Live.Chests[root] or not Systems.Loot.IsChest(root) then
+            return
+        end
+        Live.Chests[root] = {
+            Inst = root,
+            Guid = root:GetAttribute("ChestGuid"),
+            Name = root.Name,
+            AddedAt = lootNow(),
+            ParentName = root.Parent and root.Parent.Name,
+        }
+        local session = Runtime.LootSession
+        if session and session.Active then
+            session.SawLoot = true
+            session.LastAt = lootNow()
+            if not session.ChestAt then
+                session.ChestAt = lootNow()
+                Logger.Info("RuntimeProbe", string.format(
+                    "[Timing] BossDeath→Chest=%.2fs type=%s",
+                    session.ChestAt - session.DeathAt,
+                    tostring(root.Name)
+                ))
+            end
+            Logger.Info("Loot", "Chest spawned type=" .. tostring(root.Name))
+        end
+        Systems.Loot.Probe("Chest", root)
+    end
+
+    local function forgetChest(inst)
+        local rec = Live.Chests[inst]
+        Live.Chests[inst] = nil
+        local session = Runtime.LootSession
+        if session and session.Active and rec then
+            session.LastAt = lootNow()
+            local id = rec.Guid or inst
+            if session.Current == inst then
+                if session.Phase == "verify" then
+                    session.Opened[id] = true
+                    session.WaitRewardUntil = lootNow() + LootT.RewardSpawn
+                    Logger.Info("Loot", "Open verified (chest removed)")
+                end
+                session.Current = nil
+                session.Phase = nil
+            end
+        end
+    end
+
+    local function rememberDrop(inst)
+        if typeof(inst) ~= "Instance" then
+            return
+        end
+        local root = inst:IsA("BasePart") and inst or Systems.Loot.DropRoot(inst)
+        if not root or Live.Drops[root] or not Systems.Loot.IsDrop(root) then
+            return
+        end
+        Live.Drops[root] = {
+            Inst = root,
+            ItemId = root:GetAttribute("DropItemId"),
+            AddedAt = lootNow(),
+        }
+        local session = Runtime.LootSession
+        if session and session.Active then
+            session.SawLoot = true
+            session.LastAt = lootNow()
+            session.WaitRewardUntil = nil
+            if not session.DropAt then
+                session.DropAt = lootNow()
+                local fromOpen = session.OpenedAt and (session.DropAt - session.OpenedAt) or nil
+                Logger.Info("RuntimeProbe", string.format(
+                    "[Timing] Chest→FirstDrop=%s item=%s",
+                    fromOpen and string.format("%.2fs", fromOpen) or "n/a",
+                    tostring(root:GetAttribute("DropItemId"))
+                ))
+            end
+            session.DropCount = (session.DropCount or 0) + 1
+            if session.DropCount == 1 or session.Kind == "chest" then
+                local n = 0
+                for d in pairs(Live.Drops) do
+                    if Systems.Loot.SessionOk(d, "drop") then
+                        n = n + 1
+                    end
+                end
+                if n > 0 then
+                    Logger.Info("Loot", tostring(n) .. " rewards spawned")
+                end
+            end
+        end
+        Systems.Loot.Probe("Drop", root)
+    end
+
+    local function forgetDrop(inst)
+        Live.Drops[inst] = nil
+        local session = Runtime.LootSession
+        if session and session.Active then
+            session.LastAt = lootNow()
+            if session.Current == inst then
+                session.Current = nil
+                session.Phase = nil
+            end
+        end
+    end
+
+    function Systems.Loot.Boot()
+        if Live.Ready then
+            return
+        end
+        Live.Ready = true
+        local chestTag, dropTag = Systems.Loot.Tags()
+        for _, inst in ipairs(CollectionService:GetTagged(chestTag)) do
+            rememberChest(inst)
+        end
+        for _, inst in ipairs(CollectionService:GetTagged(dropTag)) do
+            rememberDrop(inst)
+        end
+        local folder = Workspace:FindFirstChild("Chests")
+        if folder then
+            for _, child in ipairs(folder:GetChildren()) do
+                rememberChest(child)
+            end
+            Live.Conns.FolderAdded = folder.ChildAdded:Connect(rememberChest)
+            Live.Conns.FolderRemoved = folder.ChildRemoved:Connect(forgetChest)
+        end
+        Live.Conns.ChestAdded = CollectionService:GetInstanceAddedSignal(chestTag):Connect(rememberChest)
+        Live.Conns.ChestRemoved = CollectionService:GetInstanceRemovedSignal(chestTag):Connect(forgetChest)
+        Live.Conns.DropAdded = CollectionService:GetInstanceAddedSignal(dropTag):Connect(rememberDrop)
+        Live.Conns.DropRemoved = CollectionService:GetInstanceRemovedSignal(dropTag):Connect(forgetDrop)
+    end
+
+    function Systems.Loot.Shutdown()
+        for _, conn in pairs(Live.Conns) do
+            pcall(function()
+                conn:Disconnect()
+            end)
+        end
+        Live.Conns = {}
+        Live.Chests = {}
+        Live.Drops = {}
+        Live.Ready = false
+    end
+
+    function Systems.Loot.Interact(prompt)
+        if typeof(prompt) ~= "Instance" or not prompt:IsA("ProximityPrompt") or prompt.Parent == nil then
+            return false, "no-prompt"
+        end
+        -- ONE verified path: native ProximityPrompt.Triggered.
+        -- Executor fireproximityprompt if present; otherwise official hold API.
+        local ok, err = pcall(function()
+            if typeof(fireproximityprompt) == "function" then
+                fireproximityprompt(prompt)
+                return
+            end
+            prompt:InputHoldBegin()
+            local hold = tonumber(prompt.HoldDuration) or 0
+            if hold > 0 then
+                task.wait(hold + 0.05)
+            end
+            prompt:InputHoldEnd()
+        end)
+        if not ok then
+            return false, tostring(err)
+        end
+        return true, typeof(fireproximityprompt) == "function" and "fireproximityprompt" or "hold"
+    end
+
+    function Systems.Loot.FirePrompt(inst)
+        local prompt = Systems.Loot.Prompt(inst)
+        if not prompt then
+            return false, "no-prompt"
+        end
+        return Systems.Loot.Interact(prompt)
+    end
+
+    function Systems.Loot.PressInteractKey(keyCode)
+        keyCode = keyCode or Enum.KeyCode.T
+        pcall(function()
+            VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+            task.wait(0.05)
+            VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+        end)
+    end
+
+    function Systems.Loot.SnapInv()
+        local snap = { Wen = Game.PlayerData.GetWen() or 0, Items = {} }
+        local folder = Game.PlayerData.GetInventoryFolder()
+        if folder then
+            for _, child in ipairs(folder:GetChildren()) do
+                local amt = child:FindFirstChild("Amount")
+                snap.Items[child.Name] = (amt and amt:IsA("ValueBase") and tonumber(amt.Value)) or 1
+            end
+        end
+        return snap
+    end
+
+    function Systems.Loot.DiffInv(before, hint)
+        if not before then
+            return
+        end
+        local after = Systems.Loot.SnapInv()
+        local any = false
+        for name, amt in pairs(after.Items) do
+            local delta = amt - (before.Items[name] or 0)
+            if delta > 0 then
+                any = true
+                Logger.Info("Loot", "Claimed " .. name .. " x" .. tostring(delta))
+            end
+        end
+        local wen = (after.Wen or 0) - (before.Wen or 0)
+        if wen > 0 then
+            any = true
+            Logger.Info("Loot", "Claimed Wen +" .. tostring(wen))
+        end
+        if not any and hint then
+            Logger.Info("Loot", "Claimed " .. tostring(hint))
+        end
+        return any
+    end
+
+    function Systems.Loot.InRadius(inst, origin, radius)
+        local pos = Systems.Loot.Pos(inst)
+        if not pos or not origin then
+            return false, pos
+        end
+        if Systems.Loot.IsFallenVoid(pos) then
+            return false, pos
+        end
+        return (pos - origin).Magnitude <= (radius or LootT.Radius), pos
+    end
+
+    function Systems.Loot.SessionOk(inst, kind)
+        local session = Runtime.LootSession
+        if not session or not session.Active then
+            return false
+        end
+        local rec = kind == "drop" and Live.Drops[inst] or Live.Chests[inst]
+        if session.Reason ~= "safe-world-chest" and session.DeathAt and rec and rec.AddedAt
+            and rec.AddedAt < (session.DeathAt - 0.35)
+        then
+            return false
+        end
+        local near, pos = Systems.Loot.InRadius(inst, session.Origin, session.Radius or LootT.Radius)
+        return near, pos
+    end
+
+    function Systems.Loot.Active()
+        local session = Runtime.LootSession
+        return session ~= nil and session.Active == true
+    end
+
     function Systems.Loot.TargetStillAlive()
         local code = (Runtime.CurrentTask and Runtime.CurrentTask.Code)
             or (Runtime.HuntPatrol and Runtime.HuntPatrol.Code)
+            or (Runtime.LootSession and Runtime.LootSession.BossCode)
         if not code then
             return false
         end
@@ -7336,715 +8110,332 @@ end
         return found ~= nil
     end
 
-    function Systems.Loot.Abort(reason)
-        Runtime.LootEmptySince = nil
-        Runtime.LastLootLog = nil
+    function Systems.Loot.EndSession(reason)
+        local session = Runtime.LootSession
+        if not session then
+            Runtime.LootUntil = nil
+            Runtime.LootSpent = true
+            Runtime.BossFightEngaged = false
+            return
+        end
+        if session.Active then
+            if reason == "complete" then
+                Logger.Info("Loot", string.format("Quiet %.1fs — session complete", LootT.Quiet))
+            else
+                Logger.Info("Loot", "Session end reason=" .. tostring(reason))
+            end
+        end
+        session.Active = false
+        Runtime.LootSession = nil
         Runtime.LootUntil = nil
+        Runtime.LootOrigin = nil
+        Runtime.LootSpent = true
+        Runtime.BossFightEngaged = false
+        Runtime.LootEmptySince = nil
         Runtime.LootPhase = nil
         Runtime.LootHardUntil = 0
-        Runtime.LootFloorY = nil
-        Runtime.MovePurpose = nil
-        if Systems.Movement.Cancel then
-            Systems.Movement.Cancel("loot-abort")
+        if Systems.Combat and Systems.Combat.EquipBest then
+            Systems.Combat.EquipBest()
         end
-        Logger.Info("Loot", "Loot aborted (" .. tostring(reason or "cancel") .. ") — fight")
     end
 
-    function Systems.Loot.PeekNearby(range)
-        range = range or 52
+    function Systems.Loot.BeginBossSession(origin, reason, bossCode)
+        Systems.Loot.Boot()
+        if not origin then
+            local _, _, root = Resolver.Character()
+            origin = root and root.Position
+        end
+        if not origin then
+            return false
+        end
+        if reason ~= "safe-world-chest" and Systems.Loot.TargetStillAlive() then
+            return false
+        end
+        if Systems.Loot.Active() then
+            local session = Runtime.LootSession
+            if not session.Origin then
+                session.Origin = origin
+            end
+            return true
+        end
+        local code = bossCode
+            or (Runtime.CurrentTask and Runtime.CurrentTask.Code)
+            or (Runtime.HuntPatrol and Runtime.HuntPatrol.Code)
+        Runtime.LootSpent = false
+        Runtime.LootOrigin = origin
+        Runtime.LootSession = {
+            Active = true,
+            Origin = origin,
+            BossCode = code,
+            Reason = reason,
+            StartedAt = lootNow(),
+            DeathAt = lootNow(),
+            LastAt = lootNow(),
+            SawLoot = false,
+            Opened = {},
+            Failed = {},
+            Current = nil,
+            Kind = nil,
+            Phase = nil,
+            AttemptAt = 0,
+            Attempts = 0,
+            Inv = nil,
+            Radius = Config.Boss.LootRange or LootT.Radius,
+        }
+        Runtime.LootUntil = lootNow() + LootT.Hard
+        Runtime.LootHardUntil = Runtime.LootUntil
+        local p = origin
+        Logger.Info("Loot", string.format(
+            "Boss=%s died at (%.1f, %.1f, %.1f)",
+            tostring(code or "?"),
+            p.X, p.Y, p.Z
+        ))
+        return true
+    end
+
+    function Systems.Loot.BeginWindow(origin, reason)
+        return Systems.Loot.BeginBossSession(origin, reason)
+    end
+
+    function Systems.Loot.EndWindow(reason)
+        Systems.Loot.EndSession(reason)
+    end
+
+    function Systems.Loot.OnDeath()
+        local session = Runtime.LootSession
+        if not session or not session.Active then
+            return
+        end
+        session.Current = nil
+        session.Kind = nil
+        session.Phase = nil
+        session.Attempts = 0
+        session.Inv = nil
+        Logger.Info("Loot", "Death during loot — keep session origin=" .. tostring(session.BossCode))
+    end
+
+    function Systems.Loot.PeekSafeWorld(range)
+        Systems.Loot.Boot()
         local _, _, root = Resolver.Character()
         if not root then
             return nil
         end
-        local now = os.clock()
-        local cache = Runtime.LootPeekCache
-        if cache and cache.pos and (now - cache.at) < 0.5 and (cache.pos - root.Position).Magnitude < 8 then
-            return cache.best
-        end
-        local chests, drops = Systems.Loot.GatherCandidates(root.Position, range, { Deep = false })
-        local skip = Runtime.LootSkipUntil
-        local function allowed(entry)
-            if not entry then
-                return false
-            end
-            local untilAt = skip and skip[tostring(entry.Inst)]
-            return not (untilAt and now < untilAt)
-        end
-        local best
-        for i = 1, #(chests or {}) do
-            if allowed(chests[i]) then
-                best = chests[i]
-                break
-            end
-        end
-        if not best then
-            for i = 1, #(drops or {}) do
-                if allowed(drops[i]) then
-                    best = drops[i]
-                    break
+        range = range or 18
+        local best, bestDist = nil, range
+        for inst in pairs(Live.Chests) do
+            if Systems.Loot.IsChest(inst) and not Systems.Loot.IsChestOpened(inst)
+                and inst:GetAttribute("ChestState") ~= "Locked"
+            then
+                local pos = Systems.Loot.Pos(inst)
+                if pos then
+                    local dist = (pos - root.Position).Magnitude
+                    if dist < bestDist then
+                        best = { Inst = inst, Pos = pos }
+                        bestDist = dist
+                    end
                 end
             end
         end
-        Runtime.LootPeekCache = { at = now, pos = root.Position, best = best }
         return best
     end
 
-    function Systems.Loot.BeginWindow(origin, reason)
-        local nearby = reason == "nearby-chest"
-        if nearby then
-            Runtime.LootSpent = false
-        end
-        if Runtime.LootSpent and not nearby
-            and reason ~= "boss-dead" and reason ~= "boss-hp0" and reason ~= "boss-despawn"
-        then
-            return
-        end
-        local _, _, root = Resolver.Character()
-        Runtime.LootOrigin = origin or Runtime.LastCombatPos or (root and root.Position)
-        Runtime.LootFloorY = (root and root.Position.Y)
-            or (Runtime.LootOrigin and Runtime.LootOrigin.Y)
-            or Runtime.LootFloorY
-        local seconds = Config.Boss.LootSeconds or 12
-        local now = os.clock()
-        if not Runtime.LootHardUntil or Runtime.LootHardUntil < now then
-            Runtime.LootHardUntil = now + seconds
-        end
-        local untilAt = math.min(now + seconds, Runtime.LootHardUntil)
-        if Runtime.LootUntil and Runtime.LootUntil > now then
-            untilAt = math.min(math.max(Runtime.LootUntil, now + 4), Runtime.LootHardUntil)
-        end
-        Runtime.LootEmptySince = nil
-        Runtime.LastLootLog = nil
-        Runtime.LootUntil = untilAt
-        Runtime.LootPhase = Runtime.LootPhase or "chest"
-        Runtime.LockTarget = nil
-        if Systems.Movement.ReleasePin then
-            Systems.Movement.ReleasePin()
-        end
-        if Systems.Movement.SetCombatLock then
-            Systems.Movement.SetCombatLock(false)
-        end
-        Logger.Info("Loot", "Loot window " .. tostring(seconds) .. "s (" .. tostring(reason or "boss") .. ")")
-    end
-
-    function Systems.Loot.ExtendWindow(seconds)
-        if Runtime.LootSpent then
-            return
-        end
-        local untilAt = os.clock() + (seconds or 6)
-        if Runtime.LootHardUntil and Runtime.LootHardUntil > 0 then
-            untilAt = math.min(untilAt, Runtime.LootHardUntil)
-        end
-        if not Runtime.LootUntil or Runtime.LootUntil < untilAt then
-            Runtime.LootUntil = untilAt
-        end
-    end
-
-    function Systems.Loot.EndWindow(reason)
-        local code = Runtime.CurrentTask and Runtime.CurrentTask.Code
-        Runtime.LootEmptySince = nil
-        Runtime.LastLootLog = nil
-        Runtime.LootUntil = nil
-        Runtime.LootPhase = nil
-        Runtime.LootHardUntil = 0
-        Runtime.LootFloorY = nil
-        Runtime.LootSpent = true
-        Runtime.BossFightEngaged = false
-        Runtime.MovePurpose = nil
-        if Systems.Movement.Cancel then
-            Systems.Movement.Cancel("loot-end")
-        end
-        if code then
-            Systems.BossOpportunity.MarkMiss(code)
-        end
-        Logger.Info("Loot", "Loot window ended" .. (reason and (" (" .. tostring(reason) .. ")") or "") .. " — hunt next bosses")
-    end
-
-    function Systems.Loot.TagNames()
-        local chest, drop = "Chest", "LootDrop"
-        pcall(function()
-            local cam = ReplicatedStorage:FindFirstChild("CAM") or ReplicatedStorage:FindFirstChild("CAM")
-            local global = cam and cam:FindFirstChild("Global")
-            local gs = global and global:FindFirstChild("gameSettings")
-            if gs then
-                local mod = require(gs)
-                if type(mod) == "table" and type(mod.Tags) == "table" then
-                    chest = mod.Tags.Chest or chest
-                    drop = mod.Tags.LootDrop or drop
+    local function pickChest(session)
+        local best, bestDist = nil, session.Radius or LootT.Radius
+        for inst in pairs(Live.Chests) do
+            local id = Systems.Loot.ChestId(inst)
+            if session.Opened[id] or session.Failed[inst] then
+                -- skip
+            elseif Systems.Loot.IsChest(inst) and not Systems.Loot.IsChestOpened(inst) then
+                local ok, pos = Systems.Loot.SessionOk(inst, "chest")
+                if ok and pos then
+                    local dist = (pos - session.Origin).Magnitude
+                    if dist < bestDist then
+                        best = inst
+                        bestDist = dist
+                    end
                 end
             end
-        end)
-        return chest, drop
+        end
+        return best
     end
 
-    function Systems.Loot.WorldPos(inst)
-        if not inst then
-            return nil
-        end
-        if inst:IsA("ProximityPrompt") then
-            local parent = inst.Parent
-            if parent and parent:IsA("Attachment") then
-                return parent.WorldPosition
-            end
-            if parent and parent:IsA("BasePart") then
-                return parent.Position
-            end
-            if parent and parent:IsA("Model") then
-                local ok, pivot = pcall(function()
-                    return parent:GetPivot().Position
-                end)
-                if ok then
-                    return pivot
+    local function pickDrop(session)
+        local best, bestDist = nil, session.Radius or LootT.Radius
+        for inst in pairs(Live.Drops) do
+            if not session.Failed[inst] and Systems.Loot.IsDrop(inst) and not Systems.Loot.IsDropClaimed(inst)
+                and Systems.Loot.Ours(inst)
+            then
+                local ok, pos = Systems.Loot.SessionOk(inst, "drop")
+                if ok and pos then
+                    local dist = (pos - session.Origin).Magnitude
+                    if dist < bestDist then
+                        best = inst
+                        bestDist = dist
+                    end
                 end
             end
-            return Systems.Loot.WorldPos(parent)
         end
+        return best
+    end
+
+    local function goTo(inst, prompt)
+        local dest = inst
         if inst:IsA("BasePart") then
-            return inst.Position
-        end
-        if inst:IsA("Model") then
-            local ok, pos = pcall(function()
-                return inst:GetPivot().Position
-            end)
-            if ok and typeof(pos) == "Vector3" then
-                return pos
-            end
-            local part = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart", true)
-            return part and part.Position
-        end
-        if inst:IsA("Attachment") then
-            return inst.WorldPosition
-        end
-        return nil
-    end
-
-    function Systems.Loot.StandCFrame(destination)
-        local cf = Util.ToCFrame(destination)
-        if not cf then
-            return nil
-        end
-        local pos = cf.Position
-        local y = pos.Y + 2.8
-        local hit
-        pcall(function()
-            hit = Workspace:Raycast(
-                Vector3.new(pos.X, pos.Y + 8, pos.Z),
-                Vector3.new(0, -40, 0),
-                Systems.Movement.RayParams()
-            )
-        end)
-        if hit and math.abs(hit.Position.Y - pos.Y) <= 12 then
-            y = hit.Position.Y + 3
-        end
-        return CFrame.new(pos.X, y, pos.Z)
-    end
-
-    function Systems.Loot.IsFallenVoid(pos)
-        if not pos then
-            return true
-        end
-        if pos.Y < -20 then
-            return true
-        end
-        local hit
-        pcall(function()
-            hit = Workspace:Raycast(
-                pos + Vector3.new(0, 8, 0),
-                Vector3.new(0, -70, 0),
-                Systems.Movement.RayParams()
-            )
-        end)
-        if not hit then
-            return pos.Y < 15
-        end
-        return (pos.Y - hit.Position.Y) > 90
-    end
-
-    -- Verified from ReplicatedStorage.Assets.Chests (Studio):
-    -- Boss loot commonly: Common Chest, Rare Chest.
-    -- Also exist: Demon Chest, Sealed Chest, Ice Chest, Snow Chest,
-    -- Lost Chest, Ouwigahara Chest, World Events Chest.
-    Systems.Loot.KnownTypes = {
-        "Common Chest",
-        "Rare Chest",
-        "Demon Chest",
-        "Sealed Chest",
-        "Ice Chest",
-        "Snow Chest",
-        "Lost Chest",
-        "Ouwigahara Chest",
-        "World Events Chest",
-    }
-
-    function Systems.Loot.NormalizeName(text)
-        return string.lower((tostring(text or ""):gsub("%s+", " ")))
-    end
-
-    function Systems.Loot.MatchKnownType(text)
-        local n = Systems.Loot.NormalizeName(text)
-        if n == "" then
-            return nil
-        end
-        for i = 1, #Systems.Loot.KnownTypes do
-            local known = Systems.Loot.NormalizeName(Systems.Loot.KnownTypes[i])
-            if n == known or string.find(n, known, 1, true) then
-                return Systems.Loot.KnownTypes[i]
+            local target = inst:GetAttribute("DropTarget")
+            if typeof(target) == "Vector3" then
+                dest = target
             end
         end
-        if string.find(n, "chest", 1, true) then
-            return text
-        end
-        return nil
+        local range = Systems.Loot.ArriveRange(prompt)
+        return Systems.Movement.MoveToLoot(dest, range), range
     end
 
-    function Systems.Loot.IsOpen(inst)
-        if not inst or not inst.Parent then
-            return true
+    local function workTarget(session, inst, kind)
+        if typeof(inst) ~= "Instance" or inst.Parent == nil then
+            session.Current = nil
+            session.Phase = nil
+            return
         end
-        if inst:GetAttribute("IsOpen") == true or inst:GetAttribute("Opened") == true then
-            return true
+        if kind == "chest" and Systems.Loot.IsChestOpened(inst) then
+            session.Opened[Systems.Loot.ChestId(inst)] = true
+            local elapsed = session.ActAt and (lootNow() - session.ActAt) or 0
+            session.Current = nil
+            session.Phase = nil
+            session.LastAt = lootNow()
+            session.WaitRewardUntil = lootNow() + LootT.RewardSpawn
+            session.OpenedAt = lootNow()
+            Logger.Info("Loot", string.format("Open verified in %.2fs", elapsed))
+            Systems.Loot.DiffInv(session.Inv, nil)
+            session.Inv = nil
+            return
         end
-        if inst:GetAttribute("DropClaimedBy") ~= nil then
-            return true
+        if kind == "drop" and Systems.Loot.IsDropClaimed(inst) then
+            session.Current = nil
+            session.Phase = nil
+            session.LastAt = lootNow()
+            Systems.Loot.DiffInv(session.Inv, inst:GetAttribute("DropItemId"))
+            session.Inv = nil
+            return
         end
-        local state = inst:GetAttribute("ChestState") or inst:GetAttribute("State")
-        if state == "Opened" or state == "Despawned" or state == "Open" then
-            return true
+        if kind == "chest" and inst:GetAttribute("ChestState") == "Locked" then
+            return
         end
-        local prompt = inst:IsA("ProximityPrompt") and inst or inst:FindFirstChildWhichIsA("ProximityPrompt", true)
-        if prompt and prompt.Enabled == false and (inst:GetAttribute("Opened") == true or inst:GetAttribute("IsOpen") == true) then
-            return true
+        if kind == "drop" and not Systems.Loot.DropReady(inst) then
+            return
         end
-        return false
-    end
-
-    function Systems.Loot.IsChestLike(inst)
-        if not inst then
-            return false
-        end
-        if inst:IsA("ProximityPrompt") then
-            local objectText = tostring(inst.ObjectText or "")
-            local actionText = string.lower(tostring(inst.ActionText or ""))
-            if Systems.Loot.MatchKnownType(objectText) then
-                return true
-            end
-            -- Boss drops show ObjectText "Rare Chest" / "Common Chest" + ActionText "Open".
-            if actionText == "open" and string.find(string.lower(objectText), "chest", 1, true) then
-                return true
-            end
-            return false
-        end
-        if Systems.Loot.MatchKnownType(inst.Name) then
-            return true
-        end
-        local prompt = inst:FindFirstChildWhichIsA("ProximityPrompt", true)
-        return prompt ~= nil and Systems.Loot.IsChestLike(prompt)
-    end
-
-    function Systems.Loot.IsDropLike(inst)
-        if not inst or not inst.Parent then
-            return false
-        end
-        if Systems.Loot.IsOpen(inst) then
-            return false
-        end
-        if inst:GetAttribute("DropItemId") ~= nil or inst:GetAttribute("DropTarget") ~= nil then
-            return true
-        end
-        if inst:IsA("ProximityPrompt") then
-            local actionText = string.lower(tostring(inst.ActionText or ""))
-            local objectText = string.lower(tostring(inst.ObjectText or ""))
-            if actionText == "pick up" or actionText == "collect" or actionText == "claim" then
-                return true
-            end
-            if string.find(objectText, "chest", 1, true) then
-                return false
-            end
-            return false
-        end
-        local prompt = inst:FindFirstChildWhichIsA("ProximityPrompt", true)
-        if prompt then
-            return Systems.Loot.IsDropLike(prompt)
-        end
-        return false
-    end
-
-    function Systems.Loot.PressInteractKey(keyCode)
-        local key = keyCode or Enum.KeyCode.T
-        -- VirtualInputManager
-        pcall(function()
-            local vim = game:GetService("VirtualInputManager")
-            vim:SendKeyEvent(true, key, false, game)
-            task.wait(0.12)
-            vim:SendKeyEvent(false, key, false, game)
-        end)
-        -- Synapse-style keypress fallbacks
-        pcall(function()
-            if keypress and keyrelease then
-                local code = (typeof(key) == "EnumItem" and key.Value) or 0x54
-                keypress(code)
-                task.wait(0.05)
-                keyrelease(code)
-            end
-        end)
-    end
-
-    function Systems.Loot.FirePrompt(inst)
-        if not inst then
-            return false
-        end
-        local prompt = inst:IsA("ProximityPrompt") and inst or inst:FindFirstChildWhichIsA("ProximityPrompt", true)
+        local prompt = Systems.Loot.Prompt(inst)
         if not prompt then
-            return false
+            return
         end
-        pcall(function()
-            prompt.Enabled = true
-            prompt.RequiresLineOfSight = false
-            prompt.MaxActivationDistance = math.max(prompt.MaxActivationDistance or 0, 15)
-            if prompt.HoldDuration and prompt.HoldDuration > 0 then
-                -- keep hold; many loot prompts are 0
+        if prompt.Enabled == false and kind == "chest" then
+            return
+        end
+        local arrived = goTo(inst, prompt)
+        if not arrived then
+            Systems.Watchdog.MarkProgress()
+            return
+        end
+        local now = lootNow()
+        if session.Phase == "verify" then
+            local timeout = kind == "chest" and LootT.OpenVerify or LootT.ClaimVerify
+            if now - session.AttemptAt < timeout then
+                return
             end
-        end)
-        local hold = tonumber(prompt.HoldDuration) or 0
-        local key = prompt.KeyboardKeyCode or Enum.KeyCode.T
-
-        -- 1) Executor fireproximityprompt (most reliable when available)
-        pcall(function()
-            if fireproximityprompt then
-                fireproximityprompt(prompt)
-                fireproximityprompt(prompt, hold > 0 and hold or 1)
+            session.Attempts = (session.Attempts or 0) + 1
+            if session.Attempts >= LootT.Retry then
+                Logger.Warn("Loot", string.format(
+                    "failed %s type=%s path=%s state=%s",
+                    kind,
+                    tostring(inst.Name),
+                    inst:GetFullName(),
+                    tostring(inst:GetAttribute(kind == "chest" and "IsOpen" or "DropClaimedBy"))
+                ))
+                session.Failed[inst] = true
+                session.Current = nil
+                session.Phase = nil
+                return
             end
-        end)
-
-        -- 2) Fire Triggered / hold signals via getconnections (custom Style prompts)
-        pcall(function()
-            if getconnections then
-                for _, sigName in ipairs({ "Triggered", "PromptButtonHoldBegan", "PromptButtonHoldEnded" }) do
-                    local ok, signal = pcall(function()
-                        return prompt[sigName]
-                    end)
-                    if ok and signal then
-                        for _, conn in ipairs(getconnections(signal)) do
-                            pcall(function()
-                                if conn.Fire then
-                                    conn:Fire(LocalPlayer)
-                                elseif conn.Function then
-                                    conn.Function(LocalPlayer)
-                                end
-                            end)
-                        end
-                    end
-                end
-            end
-        end)
-
-        -- 3) Native InputHold
-        pcall(function()
-            prompt:InputHoldBegin()
-            task.wait(math.max(hold, 0.12))
-            prompt:InputHoldEnd()
-        end)
-
-        -- 4) Keyboard T (what you press by hand)
-        Systems.Loot.PressInteractKey(key)
-        return true
+            session.Phase = nil
+        end
+        if session.AttemptAt and now - session.AttemptAt < LootT.ActGap then
+            return
+        end
+        if kind == "chest" then
+            Logger.Info("Loot", "Opening " .. tostring(inst.Name))
+        end
+        session.Inv = Systems.Loot.SnapInv()
+        local ok, method = Systems.Loot.Interact(prompt)
+        Systems.Loot.Probe(kind == "chest" and "ChestOpen" or "DropClaim", inst, "Method=" .. tostring(method))
+        session.AttemptAt = now
+        session.ActAt = now
+        session.Phase = "verify"
+        if ok then
+            Systems.Watchdog.MarkProgress()
+        else
+            Logger.Debug("Loot", "Interact failed " .. tostring(method))
+        end
     end
 
-
-    function Systems.Loot.GatherCandidates(origin, range, opts)
-        opts = opts or {}
-        local deep = opts.Deep == true
-        local chestTag, dropTag = Systems.Loot.TagNames()
-        local seen = {}
-        local chests = {}
-        local drops = {}
-        local function push(list, entry)
-            list[#list + 1] = entry
+    function Systems.Loot.Tick()
+        Systems.Loot.Boot()
+        local session = Runtime.LootSession
+        if not session or not session.Active then
+            return
         end
-        local function consider(inst, kind)
-            if not inst or not inst.Parent or seen[inst] then
-                return
-            end
-            seen[inst] = true
-            if Systems.Loot.IsOpen(inst) then
-                return
-            end
-            local model = inst
-            if inst:IsA("ProximityPrompt") then
-                model = inst:FindFirstAncestorOfClass("Model") or inst.Parent
-            end
-            local pos = Systems.Loot.WorldPos(inst) or Systems.Loot.WorldPos(model)
-            if not pos then
-                return
-            end
-            if (pos - origin).Magnitude > range then
-                return
-            end
-            if Systems.Loot.IsFallenVoid(pos) then
-                return
-            end
-            local prompt = inst:IsA("ProximityPrompt") and inst or (model and model:FindFirstChildWhichIsA("ProximityPrompt", true))
-                or (inst:IsA("BasePart") and inst:FindFirstChildWhichIsA("ProximityPrompt", true))
-            local resolvedKind = kind
-            if not resolvedKind then
-                if Systems.Loot.IsChestLike(inst) or (prompt and Systems.Loot.IsChestLike(prompt)) then
-                    resolvedKind = "chest"
-                elseif Systems.Loot.IsDropLike(inst) or (prompt and Systems.Loot.IsDropLike(prompt)) then
-                    resolvedKind = "drop"
-                else
-                    resolvedKind = "chest"
-                end
-            end
-            push(resolvedKind == "drop" and drops or chests, {
-                Inst = model or inst,
-                Prompt = prompt,
-                Pos = pos,
-                Dist = (pos - origin).Magnitude,
-                Kind = resolvedKind,
-            })
+        local now = lootNow()
+        if now - session.StartedAt >= LootT.Hard then
+            Systems.Loot.EndSession("hard-timeout")
+            return
         end
-        -- Fast path: CollectionService tags only (no full Workspace scan).
-        pcall(function()
-            for _, inst in ipairs(CollectionService:GetTagged(chestTag)) do
-                consider(inst, "chest")
-            end
-            for _, inst in ipairs(CollectionService:GetTagged(dropTag)) do
-                consider(inst, "drop")
-            end
-        end)
-        local folder = Workspace:FindFirstChild("Chests")
-        if folder then
-            for _, child in ipairs(folder:GetChildren()) do
-                if Systems.Loot.IsChestLike(child) then
-                    consider(child, "chest")
-                end
-            end
-        end
-        -- Deep scan only while actively looting (throttled). Never every Evaluate tick.
-        if deep then
-            local now = os.clock()
-            if not Runtime.LootDeepScanAt or (now - Runtime.LootDeepScanAt) >= 0.85 then
-                Runtime.LootDeepScanAt = now
-                -- Spatial query near origin — NEVER full Workspace:GetDescendants (that lagged the game).
-                pcall(function()
-                    local params = OverlapParams.new()
-                    params.FilterType = Enum.RaycastFilterType.Exclude
-                    local parts = Workspace:GetPartBoundsInRadius(origin, range, params)
-                    for i = 1, math.min(#parts, 120) do
-                        local part = parts[i]
-                        local prompt = part:FindFirstChildWhichIsA("ProximityPrompt")
-                            or (part.Parent and part.Parent:FindFirstChildWhichIsA("ProximityPrompt"))
-                        if prompt then
-                            local objectText = string.lower(tostring(prompt.ObjectText or ""))
-                            local actionText = string.lower(tostring(prompt.ActionText or ""))
-                            if string.find(objectText, "chest", 1, true) or actionText == "open" then
-                                consider(prompt, "chest")
-                            elseif actionText == "claim" or actionText == "pick up" or actionText == "collect" or actionText == "take" then
-                                consider(prompt, "drop")
-                            end
-                        end
-                        if #chests + #drops >= 20 then
-                            break
-                        end
-                    end
-                end)
-                Runtime.LootDeepCache = { chests = chests, drops = drops, at = now }
-            elseif Runtime.LootDeepCache then
-                -- Reuse last deep result; still return fresh tag/folder results merged below via chests/drops already filled.
-                for i = 1, #(Runtime.LootDeepCache.chests or {}) do
-                    consider(Runtime.LootDeepCache.chests[i].Prompt or Runtime.LootDeepCache.chests[i].Inst, "chest")
-                end
-                for i = 1, #(Runtime.LootDeepCache.drops or {}) do
-                    consider(Runtime.LootDeepCache.drops[i].Prompt or Runtime.LootDeepCache.drops[i].Inst, "drop")
-                end
-            end
-        end
-        table.sort(chests, function(a, b) return a.Dist < b.Dist end)
-        table.sort(drops, function(a, b) return a.Dist < b.Dist end)
-        return chests, drops
-    end
-
-    function Systems.Loot.HasNearbyChestAt(origin, range)
-        if not origin then
-            return false
-        end
-        range = range or (Config.Boss.LootRange or 80)
-        local now = os.clock()
-        local cache = Runtime.LootNearCache
-        if cache and cache.origin and (now - cache.at) < 0.6
-            and (cache.origin - origin).Magnitude < 8
-            and cache.range >= range
-        then
-            return cache.hit
-        end
-        -- Tags-only (cheap). Deep scan is only for Collect while LOOT_CHEST.
-        local chests = select(1, Systems.Loot.GatherCandidates(origin, range, { Deep = false }))
-        local hit = chests ~= nil and #chests > 0
-        Runtime.LootNearCache = { origin = origin, range = range, at = now, hit = hit }
-        return hit
-    end
-
-    function Systems.Loot.HasNearbyChest(range)
-        local _, _, root = Resolver.Character()
-        local origin = Runtime.LootOrigin or Runtime.LastCombatPos or (root and root.Position)
-        return Systems.Loot.HasNearbyChestAt(origin, range)
-    end
-
-    function Systems.Loot.ApproachAndFire(best, label)
-        if not best then
-            return false
-        end
-        local prompt = best.Prompt
-        local _, _, root = Resolver.Character()
-        if Systems.Loot.IsFallenVoid(best.Pos) then
-            return false
-        end
-        local playerDist = root and (root.Position - best.Pos).Magnitude or best.Dist
-        if playerDist > 120 then
-            return false
-        end
-        local stand = Systems.Loot.StandCFrame(best.Pos)
-        if not stand then
-            return false
-        end
-        local flat = root and Vector3.new(root.Position.X - stand.Position.X, 0, root.Position.Z - stand.Position.Z).Magnitude or 99
-        local dy = root and math.abs(root.Position.Y - stand.Position.Y) or 99
-        if flat > 0.55 or dy > 1.8 then
-            Systems.Movement.MoveToLoot(best.Pos, 0.45)
-            Systems.Loot.ExtendWindow(8)
-            return true
-        end
-
-        if Runtime.ActiveTween then
-            Systems.Movement.Cancel("loot-claim")
-        end
-        if root then
-            pcall(function()
-                root.CFrame = stand
-                root.AssemblyLinearVelocity = Vector3.zero
-                root.AssemblyAngularVelocity = Vector3.zero
-            end)
+        if not Resolver.IsPlayerAlive() then
+            return
         end
         Systems.Movement.ApplyNoclip()
-        Runtime.MovePurpose = "pickup"
-        Runtime.SkipHop = true
 
-        if prompt then
-            pcall(function()
-                prompt.Enabled = true
-                prompt.RequiresLineOfSight = false
-                prompt.MaxActivationDistance = math.max(prompt.MaxActivationDistance or 0, 15)
-            end)
+        local current = session.Current
+        if current and current.Parent then
+            workTarget(session, current, session.Kind)
+            return
         end
 
-        local now = os.clock()
-        local throttleKey = tostring(best.Inst)
-        Runtime.LootFireAt = Runtime.LootFireAt or {}
-        if (Runtime.LootFireAt[throttleKey] or 0) + 0.35 > now then
-            return true
-        end
-        Runtime.LootFireAt[throttleKey] = now
-        Runtime.LootFireCount = Runtime.LootFireCount or {}
-        Runtime.LootFireCount[throttleKey] = (Runtime.LootFireCount[throttleKey] or 0) + 1
-        if Runtime.LootFireCount[throttleKey] >= 10 then
-            Runtime.LootSkipUntil = Runtime.LootSkipUntil or {}
-            Runtime.LootSkipUntil[throttleKey] = now + 25
-            Logger.Warn("Loot", "Skip stubborn " .. tostring(label or "chest"))
-            return false
-        end
-
-        local target = prompt or best.Inst
-        local action = prompt and string.lower(tostring(prompt.ActionText or "")) or ""
-        local kind = Systems.Loot.MatchKnownType(prompt and prompt.ObjectText)
-            or Systems.Loot.MatchKnownType(best.Inst and best.Inst.Name)
-            or (prompt and prompt.ObjectText)
-            or (best.Inst and best.Inst.Name)
-            or label
-            or "loot"
-
-        Systems.Loot.FirePrompt(target)
-        if Runtime.LastLootLog ~= best.Inst then
-            Runtime.LastLootLog = best.Inst
-            Logger.Info("Loot", (label or action or "Claim") .. " " .. tostring(kind) .. " dist=" .. string.format("%.1f", best.Dist))
-        end
-
-        if label == "Open" or best.Kind == "chest" or action == "open" then
-            task.delay(0.8, function()
-                if not stillCurrent() then
-                    return
-                end
-                if Runtime.LootPhase == "chest" then
-                    Runtime.LootPhase = "drops"
-                    Runtime.LootEmptySince = nil
-                    Logger.Info("Loot", "Chest opened — claim drops (T)")
-                end
-            end)
-        end
-        return true
-    end
-
-    function Systems.Loot.Collect(range)
-        range = range or (Config.Boss.LootRange or 80)
-        local _, _, root = Resolver.Character()
-        local origin = Runtime.LootOrigin or Runtime.LastCombatPos or (root and root.Position)
-        if not origin then
-            return false
-        end
-        if root then
-            local flatOrigin = Vector3.new(root.Position.X - origin.X, 0, root.Position.Z - origin.Z).Magnitude
-            if flatOrigin > 70 then
-                local near = select(1, Systems.Loot.GatherCandidates(root.Position, 40, { Deep = false }))
-                if near and #near > 0 then
-                    return Systems.Loot.ApproachAndFire(near[1], "Open")
-                end
-                return false
+        local drop = pickDrop(session)
+        if drop then
+            if Systems.Loot.DropReady(drop) then
+                session.Current = drop
+                session.Kind = "drop"
+                session.Phase = nil
+                session.Attempts = 0
+                session.LastAt = now
+                workTarget(session, drop, "drop")
             end
-        end
-        local chests, drops = Systems.Loot.GatherCandidates(origin, range, { Deep = true })
-        -- Also merge candidates near the player (origin may lag behind if we walked away).
-        if root then
-            local c2, d2 = Systems.Loot.GatherCandidates(root.Position, math.min(range, 55), { Deep = false })
-            local seen = {}
-            for i = 1, #chests do seen[chests[i].Inst] = true end
-            for i = 1, #c2 do
-                if not seen[c2[i].Inst] then
-                    chests[#chests + 1] = c2[i]
-                end
-            end
-            seen = {}
-            for i = 1, #drops do seen[drops[i].Inst] = true end
-            for i = 1, #d2 do
-                if not seen[d2[i].Inst] then
-                    drops[#drops + 1] = d2[i]
-                end
-            end
-            table.sort(chests, function(a, b) return a.Dist < b.Dist end)
-            table.sort(drops, function(a, b) return a.Dist < b.Dist end)
-        end
-        local phase = Runtime.LootPhase or "chest"
-
-        if phase == "chest" then
-            if #chests > 0 then
-                Runtime.LootEmptySince = nil
-                return Systems.Loot.ApproachAndFire(chests[1], "Open")
-            end
-            if #drops > 0 then
-                Runtime.LootPhase = "drops"
-                Runtime.LootEmptySince = nil
-                Logger.Info("Loot", "No chest — pick up drops")
-                return Systems.Loot.ApproachAndFire(drops[1], "Claim")
-            end
-            return false
+            return
         end
 
-        if phase == "drops" then
-            if #drops > 0 then
-                Runtime.LootEmptySince = nil
-                return Systems.Loot.ApproachAndFire(drops[1], "Claim")
-            end
-            return false
+        local chest = pickChest(session)
+        if chest then
+            session.Current = chest
+            session.Kind = "chest"
+            session.Phase = nil
+            session.Attempts = 0
+            session.LastAt = now
+            session.SawLoot = true
+            workTarget(session, chest, "chest")
+            return
         end
-        return false
+
+        if not session.SawLoot and (now - session.StartedAt) < LootT.SpawnWait then
+            Systems.Watchdog.MarkProgress()
+            return
+        end
+        if session.WaitRewardUntil and now < session.WaitRewardUntil then
+            Systems.Watchdog.MarkProgress()
+            return
+        end
+        if (now - session.LastAt) >= LootT.Quiet then
+            Systems.Loot.EndSession("complete")
+            return
+        end
+        Systems.Watchdog.MarkProgress()
     end
 
     local DecisionEngine = {}
@@ -8089,37 +8480,31 @@ end
             end
             return "WAIT_CHARACTER"
         end
+        if Runtime.RespawnRecover or Runtime.DeathResume then
+            local recovered = Systems.Objective.FinishRecover()
+            if recovered then
+                return recovered
+            end
+        end
         if Runtime.DrinkingPotion then
             return "POTION_DRINK"
         end
 
-        local st = Runtime.State
-        local allowPeek = st == nil or st == "FARM_COMBAT" or st == "HUNT_TRAVEL" or st == "FARM_TRAVEL"
-            or st == "LOOT_CHEST" or st == "IDLE" or st == "WAIT_RESPAWN" or st == "WAITING_FOR_BOSS"
-            or st == "WAIT_COOLDOWN"
-        if allowPeek then
-            local peek = Systems.Loot.PeekNearby(52)
-            if peek then
-                local lootOn = Runtime.LootUntil and Runtime.LootUntil > os.clock()
-                if not lootOn then
-                    Systems.Loot.BeginWindow(peek.Pos, "nearby-chest")
-                end
-                if Runtime.LootUntil and Runtime.LootUntil > os.clock() then
-                    return "LOOT_CHEST"
-                end
-            end
-        end
-        if Runtime.LootUntil and Runtime.LootUntil > 0 and os.clock() < Runtime.LootUntil then
+        if Systems.Loot.Active() then
             return "LOOT_CHEST"
         end
-        -- Do not reopen loot after this kill was already looted — resume hunt.
-        if Runtime.LootUntil and Runtime.LootUntil > 0 and os.clock() >= Runtime.LootUntil then
-            Systems.Loot.EndWindow("expired")
+        if Runtime.BossFightEngaged and Runtime.LastCombatPos and not Systems.Loot.TargetStillAlive() then
+            Systems.Loot.BeginBossSession(Runtime.LastCombatPos, "boss-engaged-gone")
+            if Systems.Loot.Active() then
+                return "LOOT_CHEST"
+            end
         end
-        if Runtime.BossFightEngaged and not Runtime.LootSpent and Runtime.LastCombatPos then
-            if not Systems.Loot.TargetStillAlive() then
-                Systems.Loot.BeginWindow(Runtime.LastCombatPos, "boss-engaged-gone")
-                if Runtime.LootUntil and Runtime.LootUntil > os.clock() then
+        local st = Runtime.State
+        if (st == "IDLE" or st == "WAIT_COOLDOWN") and not Runtime.BossFightEngaged then
+            local world = Systems.Loot.PeekSafeWorld(18)
+            if world then
+                Systems.Loot.BeginBossSession(world.Pos, "safe-world-chest")
+                if Systems.Loot.Active() then
                     return "LOOT_CHEST"
                 end
             end
@@ -8137,7 +8522,17 @@ end
             Systems.BossOpportunity.Check()
         end
         local function tryHuntPatrol()
-            if Runtime.LootUntil and Runtime.LootUntil > 0 and os.clock() < Runtime.LootUntil then
+            if Runtime.DeathResume or Runtime.RespawnRecover then
+                return nil
+            end
+            if holder and holder.Entry then
+                local sameHunt = Runtime.HuntPatrol and Runtime.HuntPatrol.Key == holder.Entry.Key
+                local sameCode = holder.Task and Runtime.HuntPatrol and Runtime.HuntPatrol.Code == holder.Task.Code
+                if not sameHunt and not sameCode then
+                    return nil
+                end
+            end
+            if Systems.Loot and Systems.Loot.Active and Systems.Loot.Active() then
                 return nil
             end
 
@@ -8297,8 +8692,10 @@ end
                         Systems.BossOpportunity.ClearPatrol()
                         return nil
                     end
-                    Systems.Quest.RemoveHeld(held, "hunt " .. tostring(patrol.Code))
-                    return "IDLE"
+                    Runtime.HuntAccepting = false
+                    Runtime.PendingBossQuest = nil
+                    Systems.BossOpportunity.ClearPatrol()
+                    return nil
                 end
                 local dest, _, model = Systems.Quest.GiverDest(patrol.Def)
                 if dest and not Systems.Movement.IsBesideNpc(dest, model) then
@@ -8385,19 +8782,8 @@ end
                 return "TRAINING"
             end
             local hdef = entry and QuestDB[entry.Key]
-            local keepBreathing = hdef and hdef.Kind == "Breathing"
-            if not keepBreathing then
-                local huntState = tryHuntPatrol()
-                if huntState then
-                    return huntState
-                end
-                local preempt, bossKey = Systems.Quest.ShouldPreemptForBoss(holder)
-                if preempt then
-                    Runtime.PendingBossQuest = bossKey
-                    Runtime.SelectedReason = "preempt-boss"
-                    Runtime.CurrentIntent = { Key = bossKey, Def = QuestDB[bossKey], Source = "preempt-boss" }
-                    return "BOSS_PREEMPT"
-                end
+            if hdef and hdef.Kind ~= "Breathing" then
+                Systems.Objective.Notice(holder)
             end
             if task and task.Intent == "PICKUP" then
                 return "QUEST_PICKUP"
@@ -8528,23 +8914,15 @@ end
     end
 
     function StateMachine.Transition(state)
-        -- Cheap loot gate: no Workspace scans here (that lagged Execute).
-        local lootActive = Runtime.LootUntil and Runtime.LootUntil > 0 and os.clock() < Runtime.LootUntil
-        local leavingCombat = Runtime.State == "FARM_COMBAT" and state ~= "FARM_COMBAT" and state ~= "LOOT_CHEST"
-        local stillHunting = state == "HUNT_TRAVEL" or state == "FARM_TRAVEL" or state == "FARM_COMBAT"
-        local forceLoot = leavingCombat
-            and Runtime.BossFightEngaged == true
-            and not Runtime.LootSpent
-            and not stillHunting
-            and not Systems.Loot.TargetStillAlive()
-        local shouldLoot = lootActive or forceLoot
-        if shouldLoot and state ~= "PLAYER_DEAD" and state ~= "ROOT_MISSING" and state ~= "WAIT_CHARACTER" then
-            if not lootActive then
-                local _, _, root = Resolver.Character()
-                Systems.Loot.BeginWindow(Runtime.LastCombatPos or (root and root.Position), "force-loot")
-            end
+        local holdLoot = Systems.Loot.Active()
+            and state ~= "PLAYER_DEAD"
+            and state ~= "ROOT_MISSING"
+            and state ~= "WAIT_CHARACTER"
+            and state ~= "RESPAWN_RECOVER"
+            and state ~= "WAIT_DATA"
+        if holdLoot then
             if state ~= "LOOT_CHEST" then
-                Logger.Info("Loot", "Override " .. tostring(state) .. " → LOOT_CHEST")
+                Logger.Info("Loot", "Hold " .. tostring(state) .. " → LOOT_CHEST")
             end
             state = "LOOT_CHEST"
         end
@@ -8592,7 +8970,6 @@ end
             return
         end
         if state == "LOOT_CHEST" then
-            -- Keep noclip so the character does not shove drops off cliffs.
             Systems.Movement.ApplyNoclip()
             Runtime.LockTarget = nil
             if Systems.Movement.ReleasePin then
@@ -8602,27 +8979,7 @@ end
                 Systems.Movement.SetCombatLock(false)
             end
             Runtime.MovePurpose = "pickup"
-            local now = os.clock()
-            local timedOut = (not Runtime.LootUntil) or Runtime.LootUntil <= 0 or now >= Runtime.LootUntil
-                or (Runtime.LootHardUntil and Runtime.LootHardUntil > 0 and now >= Runtime.LootHardUntil)
-            if timedOut or Runtime.LootSpent then
-                Systems.Loot.EndWindow(Runtime.LootSpent and "spent" or "timeout")
-                Systems.Combat.EquipBest()
-            elseif Systems.Loot.Collect() then
-                Runtime.LootEmptySince = nil
-                Systems.Watchdog.MarkProgress()
-            else
-                -- No chest/drop right now. After a short empty grace, leave — don't sit out the full window.
-                Runtime.LootEmptySince = Runtime.LootEmptySince or now
-                local opened = Runtime.LootPhase == "drops" or Runtime.LastLootLog ~= nil
-                local grace = opened and 2.8 or 2
-                if (now - Runtime.LootEmptySince) >= grace then
-                    Systems.Loot.EndWindow("empty")
-                    Systems.Combat.EquipBest()
-                else
-                    Systems.Watchdog.MarkProgress()
-                end
-            end
+            Systems.Loot.Tick()
             return
         end
         if state == "HUNT_TRAVEL" then
@@ -8695,7 +9052,8 @@ end
                 Logger.Info("Boss", tostring(patrol.Code) .. " spawned — take quest and farm")
                 local held = Systems.Quest.HeldEntry()
                 if held and held.Key ~= patrol.Key then
-                    Systems.Quest.RemoveHeld(held, "hunt " .. tostring(patrol.Code))
+                    Logger.Info("Boss", "Holder " .. tostring(held.Key) .. " blocks hunt " .. tostring(patrol.Code))
+                    return
                 end
                 Systems.Watchdog.MarkProgress()
                 return
@@ -8710,12 +9068,9 @@ end
             Systems.Watchdog.MarkProgress()
             return
         end
-        if state == "BOSS_PREEMPT" then
-            local holder = Systems.Quest.HeldEntry()
-            local bossKey = Runtime.PendingBossQuest or (Systems.Quest.StageBossLive())
-            if holder and bossKey and holder.Key ~= bossKey then
-                Systems.Quest.RemoveHeld(holder, "boss " .. tostring(bossKey))
-            end
+        if state == "RESPAWN_RECOVER" then
+            Resolver.Character()
+            pcall(Systems.Lifecycle.TryRespawnUi)
             Systems.Watchdog.MarkProgress()
             return
         end
@@ -9227,7 +9582,7 @@ end
                 return
             end
             Logger.Info("Lifecycle", "CharacterAdded — rebinding")
-            Runtime.DiedAt = nil
+            Runtime.RespawnRecover = true
             Runtime.LastAnimPrune = nil
             Systems.Movement.Stop()
             Systems.Enemy.InvalidateTarget()
@@ -9244,7 +9599,7 @@ end
                 Resolver.BindCharacter(character)
                 Systems.Watchdog.MarkProgress()
                 Systems.Combat.EquipBest()
-                Logger.Info("Lifecycle", "Respawn ready")
+                Logger.Info("Lifecycle", "Respawn ready — recover objective")
             end)
         end))
         if LocalPlayer.Character then
@@ -9309,6 +9664,12 @@ end
                 end
 
                 Resolver.Character()
+                if not Resolver.IsPlayerAlive() or Runtime.RespawnRecover then
+                    local state = DecisionEngine.Evaluate()
+                    state = StateMachine.Transition(state) or state
+                    StateMachine.Execute(state)
+                    return
+                end
                 Systems.Potion.Tick()
                 Systems.Movement.Update()
 
@@ -9332,6 +9693,10 @@ end
                 if Runtime.State == "FARM_COMBAT" then
                     waitTime = Config.Tick.Combat
                 elseif Runtime.State == "POTION_DRINK" then
+                    waitTime = 0.15
+                elseif Runtime.State == "RESPAWN_RECOVER" then
+                    waitTime = 0.2
+                elseif Runtime.State == "LOOT_CHEST" then
                     waitTime = 0.15
                 elseif Runtime.State == "WAIT_RESPAWN" or Runtime.State == "WAITING_FOR_BOSS" or Runtime.State == "WAIT_COOLDOWN" then
                     waitTime = 0.45
@@ -9384,6 +9749,7 @@ end
         Resolver.SignalEvent()
         Resolver.SignalFunction()
         Game.PlayerData.Refresh()
+        Systems.Loot.Boot()
         Logger.Info("Boot", string.format(
             "PlaceId=%s Race=%s Level=%s FarmMode=%s HuntBossFrom=%s WorldBossFrom=%s AutoWorldBoss=%s AutoThunder=%s FromLv=%s Slot=%s SignalEvent=%s",
             tostring(game.PlaceId),
