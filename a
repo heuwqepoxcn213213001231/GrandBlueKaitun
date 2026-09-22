@@ -1,6 +1,6 @@
     --[[
         Ouwland Kaitun
-        VERSION: 2026-09-21-addquest-remote
+        VERSION: 2026-09-21-world-boss-claim
 
         Single-file copy → paste → execute script.
         Game logic is taken from Ouwland research + live Studio inspection.
@@ -84,6 +84,9 @@
         ThunderFromLevel = 100,
         AutoDemonArt = true,
         AutoBoss = true,
+        -- Lv110+: Hashira / Upper Moon đã spawn → nhận BossHunt nếu đủ điều kiện, không nhận được thì vẫn đánh lấy loot.
+        -- Runtime: getgenv().OuwlandAutoWorldBoss = false
+        AutoWorldBoss = true,
         -- "Auto" = theo Race slot. "Slayer" = quest shared + Slayer, bỏ Demon/Muzan.
         -- "Demon" = quest shared + Demon, bỏ Slayer-only và Breathing.
         -- Runtime: getgenv().OuwlandFarmMode = "Slayer"
@@ -209,6 +212,7 @@
             DropSeconds = 6,
             LootEmptySeconds = 1.2,
             HuntFromLevel = 70,
+            WorldBossFromLevel = 110,
             HuntSweepInterval = 35,
             HuntWaitAtSpawn = 6,
             HuntArriveRange = 42,
@@ -806,6 +810,41 @@
         InsectTrainee = { Code = "InsectTrainee", Display = { "InsectTrainee" }, Region = "Misc", SpawnTime = 120, Boss = true },
         SoundTrainee = { Code = "SoundTrainee", Display = { "SoundTrainee" }, Region = "Misc", SpawnTime = 120, Boss = true },
     }
+
+    -- World Hashira / Upper Moon: SpawnTime 300. Claim board hunt if eligible, else farm without quest.
+    local WorldBossList = {
+        { Code = "Saneri", Display = { "Saneri" }, Side = "Muzan", Center = V3(-379.108, 1093.531, -422.421) },
+        { Code = "Shinora", Display = { "Shinora" }, Side = "Muzan", Center = V3(-452.647, 964.498, 2.124) },
+        { Code = "Rengu", Display = { "Rengu" }, Side = "Muzan", Center = V3(-712.898, 965, 883.799) },
+        { Code = "Giyen", Display = { "Giyen" }, Side = "Muzan", Center = V3(388.866, 1018, -85.056) },
+        { Code = "Gyorei", Display = { "Gyorei" }, Side = "Muzan", Center = V3(2574.568, 1089, -742.43) },
+        { Code = "Zentaro", Display = { "Zentaro" }, Side = "Muzan", Center = V3(1332.091, 821.5, -1017.637) },
+        { Code = "Obari", Display = { "Obari" }, Side = "Muzan", Center = V3(770.518, 1121, -1047.036) },
+        { Code = "Tengai", Display = { "Tengai" }, Side = "Muzan", Center = V3(-133.509, 1349, -2631.336) },
+        { Code = "Akazo", Display = { "Akazo" }, Side = "Crow", Center = V3(-1131.975, 1380.916, -1746.561) },
+        { Code = "Gyutai", Display = { "Gyutai" }, Side = "Crow", Center = V3(-266.118, 1043.237, -1139.734) },
+        { Code = "Reaper", Display = { "Reaper" }, Side = "Crow", Center = V3(98.468, 1043, -573.911) },
+        { Code = "Enru", Display = { "Enru" }, Side = "Crow", Center = V3(821.783, 800, 543.896) },
+        { Code = "Nezura", Display = { "Nezura" }, Side = "Crow", Center = V3(-1459.526, 275.951, 935.536) },
+        { Code = "Sumari", Display = { "Sumari" }, Side = "Crow", Center = V3(396.444, 1018, -620.403) },
+        { Code = "Yahari", Display = { "Yahari" }, Side = "Crow", Center = V3(825.678, 1019.2, -641.335) },
+        { Code = "Datai", Display = { "Datai" }, Side = "Crow", Center = V3(-165.5, 1043, -1137.5) },
+        { Code = "Domae", Display = { "Domae" }, Side = "Crow", Center = V3(-296.472, 1350.5, -3451.273) },
+    }
+    for i = 1, #WorldBossList do
+        local w = WorldBossList[i]
+        EnemyDB[w.Code] = {
+            Code = w.Code,
+            Display = w.Display,
+            Region = "Misc",
+            Quantity = 1,
+            SpawnTime = 300,
+            Boss = true,
+            WorldBoss = true,
+            Center = w.Center,
+            Spawns = { w.Center },
+        }
+    end
 
     local DisplayToCode = {}
     local CompactToCode = {}
@@ -1476,6 +1515,39 @@
         }
     end
 
+    local BossHuntByCode = {}
+    do
+        local muzanRace = { "Demon", "Hybrid" }
+        local crowRace = { "Slayer", "Hybrid" }
+        for i = 1, #WorldBossList do
+            local w = WorldBossList[i]
+            local npc = w.Npc or w.Code
+            local key = "Eliminate " .. npc
+            local def = {
+                Key = key,
+                Instance = key,
+                Category = "BossHunt",
+                Kind = "Combat",
+                OfferNpc = false,
+                ClaimHunt = true,
+                Boss = true,
+                WorldBoss = true,
+                TargetCode = w.Code,
+                TargetAmount = 1,
+                MinLevel = w.MinLevel or 125,
+                MaxLevel = w.MaxLevel,
+                Race = w.Side == "Crow" and crowRace or muzanRace,
+                Side = w.Side,
+                HuntNpc = npc,
+                AutoExecute = true,
+                NoCancel = true,
+                Priority = 180,
+            }
+            QuestDB[key] = def
+            BossHuntByCode[w.Code] = def
+        end
+    end
+
     -- Stage MaxLevel is the next stage MinLevel - 1 (LEVEL_ROUTE derived, not EXP/hour).
     local function finishStages(list)
         for i = 1, #list do
@@ -1636,6 +1708,13 @@
             Logger.Debug("Net", "AddQuest FireServer failed: " .. tostring(err))
         end
         return Net.ToServer("AddQuest", key)
+    end
+
+    function Net.ClaimBossHunt(id)
+        if id == nil or id == "" then
+            return false, "empty id"
+        end
+        return Net.ToServer("BossHuntsRequest", { action = "Claim", id = id })
     end
 
     function Net.ToServer(action, ...)
@@ -2295,6 +2374,12 @@
         if task.Code and task.Code ~= "" and EnemyDB[task.Code] then
             return "COMBAT", live
         end
+        if def and (def.Kind == "Combat" or def.ClaimHunt) and def.TargetCode then
+            if not task.Code or task.Code == "" then
+                task.Code = def.TargetCode
+            end
+            return "COMBAT", live
+        end
         if def and (def.Kind == "Deliver" or def.Kind == "Chain") then
             return "DELIVER", live
         end
@@ -2428,7 +2513,9 @@
         for i = 1, #list do
             local entry = list[i]
             if Systems.Quest.IsQuestComplete(entry) then
-                table.insert(ranked, { Entry = entry, Rank = 20, Why = "complete", Intent = "COMPLETE" })
+                local cdef = QuestDB[entry.Key]
+                local crank = (cdef and cdef.ClaimHunt) and 92 or 20
+                table.insert(ranked, { Entry = entry, Rank = crank, Why = "complete", Intent = "COMPLETE" })
             else
                 local task = Systems.Quest.GetActionableTask(entry)
                 if task then
@@ -2699,7 +2786,7 @@
         local rows = {}
         if huntAll then
             for key, def in pairs(QuestDB) do
-                if def.Boss and def.TargetCode then
+                if def.Boss and def.TargetCode and not def.ClaimHunt and not def.WorldBoss then
                     rows[#rows + 1] = { Key = key, Def = def }
                 end
             end
@@ -2745,7 +2832,9 @@
         local tags = Systems.BossOpportunity.ScanTags()
         local rows = {}
         for key, def in pairs(QuestDB) do
-            if def.Boss and def.TargetCode and Systems.Quest.RaceAllowed(def, Game.PlayerData.GetRace()) then
+            if def.ClaimHunt or def.WorldBoss then
+                -- Board hunts / Hashira: only when already spawned (PickLiveWorld), never wait at empty spawn.
+            elseif def.Boss and def.TargetCode and Systems.Quest.RaceAllowed(def, Game.PlayerData.GetRace()) then
                 if (def.MinLevel or 1) <= level then
                     local enemy = EnemyDB[def.TargetCode]
                     local spawn = tags[def.TargetCode]
@@ -2879,6 +2968,178 @@
         return spawn.Remain <= lead
     end
 
+    function Systems.BossOpportunity.WorldEnabled()
+        if not Config.AutoBoss then
+            return false
+        end
+        local flag = ENV.OuwlandAutoWorldBoss
+        if flag == nil then
+            flag = Config.AutoWorldBoss
+        end
+        if flag == false then
+            return false
+        end
+        local level = Game.PlayerData.GetLevel() or 0
+        return level >= (Config.Boss.WorldBossFromLevel or 110)
+    end
+
+    function Systems.BossOpportunity.IsWorldCode(code)
+        local def = code and EnemyDB[code]
+        return def and def.WorldBoss == true
+    end
+
+    function Systems.BossOpportunity.HuntDefForCode(code)
+        return code and BossHuntByCode[code]
+    end
+
+    function Systems.BossOpportunity.FindOpenHunt(code)
+        local hdef = BossHuntByCode[code]
+        if not hdef then
+            return nil
+        end
+        local folder = ReplicatedStorage:FindFirstChild("BossHunts")
+        if not folder then
+            return nil
+        end
+        local npc = hdef.HuntNpc or hdef.TargetCode or code
+        local now = 0
+        pcall(function()
+            now = Workspace:GetServerTimeNow()
+        end)
+        for _, child in ipairs(folder:GetChildren()) do
+            local boss = child:GetAttribute("Boss")
+            if boss == npc or boss == code then
+                local expires = tonumber(child:GetAttribute("ExpiresAt"))
+                if not (expires and now > 0 and expires + 1 < now) then
+                    local id = tonumber(child.Name)
+                    if id == nil then
+                        id = child.Name
+                    end
+                    return {
+                        Id = id,
+                        Quest = child:GetAttribute("Quest") or hdef.Key,
+                        Boss = boss,
+                        Side = child:GetAttribute("Side"),
+                    }
+                end
+            end
+        end
+        return nil
+    end
+
+    function Systems.BossOpportunity.CanClaimHunt(code)
+        local hdef = BossHuntByCode[code]
+        if not hdef then
+            return false, "no hunt def"
+        end
+        if Game.PlayerData.GetQuestByKey(hdef.Key) then
+            return false, "already held"
+        end
+        if Runtime.PendingAccept == hdef.Key then
+            return false, "pending"
+        end
+        local ok, why = Systems.Quest.CanTakeQuest(hdef.Key, { IgnoreBossAlive = true })
+        if not ok then
+            return false, why or "cannot take"
+        end
+        local card = Systems.BossOpportunity.FindOpenHunt(code)
+        if not card then
+            return false, "no card"
+        end
+        return true, "ok", card, hdef
+    end
+
+    function Systems.BossOpportunity.HolderBlocksHunt(holder)
+        if not holder then
+            return false
+        end
+        if holder.Intent == "COMPLETE" or holder.Intent == "PICKUP" or holder.Intent == "DELIVER" or holder.Intent == "TRAINING" then
+            return true
+        end
+        local hdef = holder.Entry and QuestDB[holder.Entry.Key]
+        if hdef and hdef.Kind == "Breathing" then
+            return true
+        end
+        return false
+    end
+
+    function Systems.BossOpportunity.PickLiveWorld()
+        if not Systems.BossOpportunity.WorldEnabled() then
+            return nil
+        end
+        local tags = Systems.BossOpportunity.ScanTags()
+        local _, _, root = Resolver.Character()
+        local origin = root and root.Position
+        local function pack(code, spawn, model)
+            local def = EnemyDB[code]
+            local center = (spawn and spawn.Center) or (def and def.Center)
+            local useModel = model or (spawn and spawn.Model)
+            local mroot = useModel and Systems.Enemy.GetRoot(useModel)
+            if mroot then
+                center = mroot.Position
+            end
+            if not center then
+                return nil
+            end
+            local dist = origin and (origin - center).Magnitude or 0
+            local hdef = BossHuntByCode[code]
+            return {
+                Code = code,
+                Center = center,
+                Alive = true,
+                NoQuest = true,
+                Level = Config.Boss.WorldBossFromLevel or 110,
+                Model = useModel,
+                Dist = dist,
+                Key = hdef and hdef.Key or nil,
+                Def = hdef,
+            }
+        end
+        local heldList = Game.PlayerData.GetCurrentQuests()
+        for i = 1, #heldList do
+            local qdef = QuestDB[heldList[i].Key]
+            if qdef and qdef.ClaimHunt and qdef.TargetCode then
+                local spawn = tags[qdef.TargetCode]
+                if spawn and spawn.Alive then
+                    local packed = pack(qdef.TargetCode, spawn, spawn.Model)
+                    if packed then
+                        packed.NoQuest = false
+                        packed.Key = qdef.Key
+                        packed.Def = qdef
+                        return packed
+                    end
+                end
+            end
+        end
+        local committed = Runtime.HuntPatrol
+        if committed and Systems.BossOpportunity.IsWorldCode(committed.Code) then
+            local spawn = tags[committed.Code]
+            if spawn and spawn.Alive then
+                local packed = pack(committed.Code, spawn, spawn.Model)
+                if packed then
+                    packed.NoQuest = committed.NoQuest
+                    packed.Key = committed.Key
+                    packed.Def = committed.Def
+                    packed.HuntId = committed.HuntId
+                    return packed
+                end
+            end
+        end
+        local best
+        for code, def in pairs(EnemyDB) do
+            if def.WorldBoss then
+                local spawn = tags[code]
+                if spawn and spawn.Alive then
+                    local row = pack(code, spawn, spawn.Model)
+                    if row and (not best or row.Dist < best.Dist) then
+                        best = row
+                    end
+                end
+            end
+        end
+        return best
+    end
+
     function Systems.BossOpportunity.PickPatrol()
         local rows = Systems.BossOpportunity.HuntRows()
         local tags = Systems.BossOpportunity.ScanTags()
@@ -2932,6 +3193,20 @@
             end
             parts[#parts + 1] = tostring(row.Code) .. "=" .. label
         end
+        if Systems.BossOpportunity.WorldEnabled() then
+            local live = {}
+            for code, def in pairs(EnemyDB) do
+                if def.WorldBoss then
+                    local spawn = tags[code]
+                    if spawn and spawn.Alive then
+                        live[#live + 1] = code
+                    end
+                end
+            end
+            if #live > 0 then
+                parts[#parts + 1] = "world={" .. table.concat(live, ",") .. "}"
+            end
+        end
         if #parts > 0 then
             Logger.Info("Boss", "Timers " .. table.concat(parts, " "))
         end
@@ -2960,22 +3235,25 @@
         if Systems.Breathing and Systems.Breathing.BlocksHunt and Systems.Breathing.BlocksHunt() then
             return false
         end
+        if Runtime.LootUntil and Runtime.LootUntil > 0 and os.clock() < Runtime.LootUntil then
+            return false
+        end
+        if Systems.BossOpportunity.WorldEnabled() and Systems.BossOpportunity.PickLiveWorld() then
+            if Systems.BossOpportunity.HolderBlocksHunt(holder) then
+                return false
+            end
+            return true
+        end
         local level = Game.PlayerData.GetLevel() or 0
         if level < (Config.Boss.HuntFromLevel or 70) then
             return false
         end
-        if Runtime.LootUntil and Runtime.LootUntil > 0 and os.clock() < Runtime.LootUntil then
-            return false
-        end
         if holder then
             -- Turn in / pickup / thunder training first. Dead held boss must NOT block hunting other maps.
-            if holder.Intent == "COMPLETE" or holder.Intent == "PICKUP" or holder.Intent == "DELIVER" or holder.Intent == "TRAINING" then
+            if Systems.BossOpportunity.HolderBlocksHunt(holder) then
                 return false
             end
             local hdef = holder.Entry and QuestDB[holder.Entry.Key]
-            if hdef and hdef.Kind == "Breathing" then
-                return false
-            end
             if hdef and hdef.Boss and hdef.TargetCode then
                 if Systems.BossOpportunity.IsAlive(hdef.TargetCode) then
                     if holder.Entry and Runtime.HuntPatrol and Runtime.HuntPatrol.Key == holder.Entry.Key then
@@ -3420,6 +3698,48 @@
             return true
         end
         local def = Systems.Quest.GetDefinition(key) or QuestDB[key]
+        if def and def.ClaimHunt then
+            if Runtime.PendingAccept == key then
+                if os.clock() - (Runtime.PendingAcceptAt or 0) <= Config.Quest.AcceptTimeout then
+                    return false, "pending"
+                end
+                if not Runtime.PendingAcceptRetried and Config.Quest.AcceptRetries > 0 then
+                    local card = Systems.BossOpportunity.FindOpenHunt(def.TargetCode)
+                    if card then
+                        Logger.Warn("Quest", "Claim retry hunt id=" .. tostring(card.Id) .. " " .. key)
+                        Net.ClaimBossHunt(card.Id)
+                    end
+                    Runtime.PendingAcceptRetried = true
+                    Runtime.PendingAcceptAt = os.clock()
+                    return false, "retrying"
+                end
+                Runtime.PendingAccept = nil
+                return false, "not in Holder"
+            end
+            local ok, reason = Systems.Quest.CanTakeQuest(key, { IgnoreBossAlive = true })
+            if not ok then
+                local stamp = tostring(key) .. ":" .. tostring(reason)
+                if Runtime.LastAcceptSkip ~= stamp or (os.clock() - (Runtime.LastAcceptSkipAt or 0)) > 6 then
+                    Runtime.LastAcceptSkip = stamp
+                    Runtime.LastAcceptSkipAt = os.clock()
+                    Logger.Info("Quest", "Cannot claim " .. tostring(key) .. " (" .. tostring(reason) .. ")")
+                end
+                return false, reason
+            end
+            local card = Systems.BossOpportunity.FindOpenHunt(def.TargetCode)
+            if not card then
+                return false, "no card"
+            end
+            Logger.Info("Quest", "Claim hunt id=" .. tostring(card.Id) .. " " .. key)
+            local fired, err = Net.ClaimBossHunt(card.Id)
+            if not fired then
+                return false, err or "remote"
+            end
+            Runtime.PendingAccept = key
+            Runtime.PendingAcceptAt = os.clock()
+            Runtime.PendingAcceptRetried = false
+            return false, "pending"
+        end
         local atGiver, destOrErr, giverName = Systems.Quest.IsAtGiver(def)
         if not atGiver then
             return false, destOrErr or "too far"
@@ -7505,12 +7825,104 @@ end
             if Runtime.LootUntil and Runtime.LootUntil > 0 and os.clock() < Runtime.LootUntil then
                 return nil
             end
+
+            local function bindWorldCombat(patrol)
+                Runtime.HuntPatrol = patrol
+                Runtime.HuntAccepting = false
+                Runtime.PendingBossQuest = nil
+                Runtime.SelectedReason = (patrol.NoQuest == false and patrol.Key) and "world-claim" or "world-boss"
+                Runtime.CurrentIntent = {
+                    Key = patrol.Key,
+                    Def = patrol.Def,
+                    Source = Runtime.SelectedReason,
+                    Code = patrol.Code,
+                }
+                Runtime.CurrentTask = { Code = patrol.Code, Intent = "COMBAT", WorldBoss = true }
+                if patrol.Model and Systems.Enemy.IsAlive(patrol.Model) then
+                    Runtime.CurrentTarget = patrol.Model
+                    Runtime.BossFightEngaged = true
+                    Runtime.LootSpent = false
+                end
+            end
+
+            local function worldTravelOrFight(world)
+                bindWorldCombat(world)
+                local dest = world.Center
+                local range = Config.Boss.HuntArriveRange or 42
+                if dest and Systems.Movement.HasArrived(dest, range) then
+                    return "FARM_COMBAT"
+                end
+                return "HUNT_TRAVEL"
+            end
+
+            local world = Systems.BossOpportunity.PickLiveWorld()
+            if world then
+                if Systems.BossOpportunity.HolderBlocksHunt(holder) then
+                    return nil
+                end
+                local hdef = world.Def or Systems.BossOpportunity.HuntDefForCode(world.Code)
+                local huntKey = world.Key or (hdef and hdef.Key)
+                if huntKey and Runtime.PendingAccept == huntKey then
+                    Runtime.HuntPatrol = world
+                    Runtime.HuntAccepting = true
+                    Runtime.SelectedReason = "world-claim"
+                    Runtime.CurrentIntent = { Key = huntKey, Def = hdef, Source = "world-claim" }
+                    return "QUEST_ACCEPT"
+                end
+                if huntKey and Game.PlayerData.GetQuestByKey(huntKey) then
+                    world.NoQuest = false
+                    world.Key = huntKey
+                    world.Def = hdef
+                    local logKey = "WC:" .. tostring(world.Code)
+                    if Runtime.HuntPatrolLogged ~= logKey then
+                        Runtime.HuntPatrolLogged = logKey
+                        Logger.Info("Boss", tostring(world.Code) .. " world live — hunt claimed, fight")
+                    end
+                    return worldTravelOrFight(world)
+                end
+                local can, why, card = Systems.BossOpportunity.CanClaimHunt(world.Code)
+                if can and hdef and card then
+                    world.NoQuest = false
+                    world.Key = hdef.Key
+                    world.Def = hdef
+                    world.HuntId = card.Id
+                    Runtime.HuntPatrol = world
+                    Runtime.HuntAccepting = true
+                    Runtime.SelectedReason = "world-claim"
+                    Runtime.CurrentIntent = { Key = hdef.Key, Def = hdef, Source = "world-claim" }
+                    local logKey = "WQ:" .. tostring(world.Code)
+                    if Runtime.HuntPatrolLogged ~= logKey then
+                        Runtime.HuntPatrolLogged = logKey
+                        Logger.Info("Boss", tostring(world.Code) .. " world live — claim " .. tostring(hdef.Key))
+                    end
+                    return "QUEST_ACCEPT"
+                end
+                world.NoQuest = true
+                local logKey = "W:" .. tostring(world.Code)
+                if Runtime.HuntPatrolLogged ~= logKey then
+                    Runtime.HuntPatrolLogged = logKey
+                    Logger.Info("Boss", tostring(world.Code) .. " world live — no hunt (" .. tostring(why) .. "), farm")
+                end
+                return worldTravelOrFight(world)
+            end
+            if Runtime.HuntPatrol and Runtime.HuntPatrol.NoQuest
+                and Systems.BossOpportunity.IsWorldCode(Runtime.HuntPatrol.Code)
+            then
+                Systems.BossOpportunity.ClearPatrol()
+            end
+
             if not Systems.BossOpportunity.ShouldPatrol(holder) then
                 return nil
             end
 
             local function huntAcceptState(patrol)
-                if not patrol or not patrol.Key then
+                if not patrol then
+                    return nil
+                end
+                if patrol.NoQuest then
+                    return worldTravelOrFight(patrol)
+                end
+                if not patrol.Key then
                     return nil
                 end
                 Runtime.HuntAccepting = true
@@ -7525,6 +7937,24 @@ end
                     end
                     -- Quest is on the character; wait one tick for Holder instead of QUEST_TRAVEL again.
                     return "IDLE"
+                end
+                local okTake, whyTake = Systems.Quest.CanTakeQuest(patrol.Key, { IgnoreBossAlive = true })
+                if not okTake then
+                    local spawn = Systems.BossOpportunity.GetSpawn(patrol.Code)
+                    if spawn and spawn.Alive then
+                        patrol.NoQuest = true
+                        Runtime.HuntAccepting = false
+                        Runtime.PendingBossQuest = nil
+                        local logKey = "NQ:" .. tostring(patrol.Code)
+                        if Runtime.HuntPatrolLogged ~= logKey then
+                            Runtime.HuntPatrolLogged = logKey
+                            Logger.Info("Boss", tostring(patrol.Code) .. " live, cannot take quest (" .. tostring(whyTake) .. ") — farm")
+                        end
+                        return worldTravelOrFight(patrol)
+                    end
+                    Runtime.HuntAccepting = false
+                    Runtime.PendingBossQuest = nil
+                    return nil
                 end
                 local held = Systems.Quest.HeldEntry()
                 if held and held.Key and held.Key ~= patrol.Key then
@@ -7629,16 +8059,16 @@ end
             local hdef = entry and QuestDB[entry.Key]
             local keepBreathing = hdef and hdef.Kind == "Breathing"
             if not keepBreathing then
+                local huntState = tryHuntPatrol()
+                if huntState then
+                    return huntState
+                end
                 local preempt, bossKey = Systems.Quest.ShouldPreemptForBoss(holder)
                 if preempt then
                     Runtime.PendingBossQuest = bossKey
                     Runtime.SelectedReason = "preempt-boss"
                     Runtime.CurrentIntent = { Key = bossKey, Def = QuestDB[bossKey], Source = "preempt-boss" }
                     return "BOSS_PREEMPT"
-                end
-                local huntState = tryHuntPatrol()
-                if huntState then
-                    return huntState
                 end
             end
             if task and task.Intent == "PICKUP" then
@@ -7858,6 +8288,36 @@ end
                 Systems.BossOpportunity.ClearPatrol()
                 return
             end
+            if patrol.NoQuest or (patrol.Def and patrol.Def.ClaimHunt) or Systems.BossOpportunity.IsWorldCode(patrol.Code) then
+                Runtime.HuntAccepting = false
+                local spawn = Systems.BossOpportunity.GetSpawn(patrol.Code)
+                local model = (spawn and spawn.Model)
+                    or select(1, Systems.Enemy.FindNearestTarget(patrol.Code, nil, true))
+                if model and Systems.Enemy.IsAlive(model) then
+                    local mroot = Systems.Enemy.GetRoot(model)
+                    if mroot then
+                        patrol.Center = mroot.Position
+                    end
+                    patrol.Model = model
+                    Runtime.CurrentTarget = model
+                    Runtime.CurrentTask = { Code = patrol.Code, Intent = "COMBAT", WorldBoss = true }
+                    Runtime.BossFightEngaged = true
+                elseif not (spawn and spawn.Alive) then
+                    Logger.Info("Boss", tostring(patrol.Code) .. " world despawned — resume farm")
+                    Systems.BossOpportunity.ClearPatrol()
+                    return
+                elseif spawn.Center then
+                    patrol.Center = spawn.Center
+                end
+                local range = Config.Boss.HuntArriveRange or 42
+                if not Systems.Movement.HasArrived(patrol.Center, range) then
+                    Systems.Movement.MoveTo(patrol.Center, range)
+                    Systems.Watchdog.MarkProgress()
+                    return
+                end
+                Systems.Watchdog.MarkProgress()
+                return
+            end
             if Runtime.HuntAccepting then
                 return
             end
@@ -7940,6 +8400,36 @@ end
             local key = intent and intent.Key
             local def = intent and intent.Def
             if not key then
+                return
+            end
+            if def and def.ClaimHunt then
+                local ok, err = Systems.Quest.AcceptQuest(key)
+                if ok then
+                    Systems.Watchdog.MarkProgress()
+                    Systems.Recovery.Clear("QUEST_ACCEPT_FAILED")
+                    Logger.Info("Quest", "Claimed verified: " .. key)
+                    Runtime.HuntAccepting = false
+                elseif err == "pending" or err == "retrying" then
+                    Systems.Watchdog.MarkProgress()
+                elseif err == "no card" or err == "race" or err == "level" or err == "maxlevel" or err == "category"
+                    or (err and string.sub(tostring(err), 1, 9) == "cooldown:") then
+                    Logger.Info("Quest", "Claim skipped (" .. tostring(err) .. ") — farm without hunt")
+                    if Runtime.HuntPatrol then
+                        Runtime.HuntPatrol.NoQuest = true
+                    end
+                    Runtime.HuntAccepting = false
+                    Runtime.PendingAccept = nil
+                    Systems.Watchdog.MarkProgress()
+                else
+                    local action = Systems.Recovery.Handle("QUEST_ACCEPT_FAILED", tostring(err))
+                    if action == "GIVE_UP" then
+                        Runtime.PendingAccept = nil
+                        Runtime.HuntAccepting = false
+                        if Runtime.HuntPatrol then
+                            Runtime.HuntPatrol.NoQuest = true
+                        end
+                    end
+                end
                 return
             end
             if def then
@@ -8227,13 +8717,22 @@ end
                 Systems.Watchdog.MarkProgress()
                 return
             end
+            local def = QuestDB[entry.Key]
+            if def and def.ClaimHunt then
+                if Runtime.CompleteObserveKey ~= entry.Key then
+                    Runtime.CompleteObserveAt = os.clock()
+                    Runtime.CompleteObserveKey = entry.Key
+                    Logger.Info("Quest", "Hunt complete (no giver): " .. tostring(entry.Key))
+                end
+                Systems.Watchdog.MarkProgress()
+                return
+            end
             local observed = Runtime.CompleteObserveAt
             if not observed or Runtime.CompleteObserveKey ~= entry.Key then
                 Runtime.CompleteObserveAt = os.clock()
                 Runtime.CompleteObserveKey = entry.Key
                 Logger.Info("Quest", "Tasks complete — returning to giver: " .. tostring(entry.Key))
             end
-            local def = QuestDB[entry.Key]
             local npcName = Systems.Quest.GiverName(def)
             local dest = Resolver.FindWorldNpc(npcName) or (def and def.NpcCFrame) or (npcName and NpcDB[npcName] and NpcDB[npcName].CFrame)
             if dest then
@@ -8536,12 +9035,14 @@ end
         Resolver.SignalFunction()
         Game.PlayerData.Refresh()
         Logger.Info("Boot", string.format(
-            "PlaceId=%s Race=%s Level=%s FarmMode=%s HuntBossFrom=%s AutoThunder=%s FromLv=%s Slot=%s SignalEvent=%s",
+            "PlaceId=%s Race=%s Level=%s FarmMode=%s HuntBossFrom=%s WorldBossFrom=%s AutoWorldBoss=%s AutoThunder=%s FromLv=%s Slot=%s SignalEvent=%s",
             tostring(game.PlaceId),
             tostring(Runtime.Race),
             tostring(Runtime.Level),
             Systems.Quest.FarmMode(),
             tostring(Config.Boss.HuntFromLevel),
+            tostring(Config.Boss.WorldBossFromLevel),
+            tostring(Config.AutoWorldBoss),
             tostring(Systems.Breathing.Enabled()),
             tostring(Config.ThunderFromLevel),
             Runtime.Slot and Runtime.Slot:GetFullName() or "nil",
