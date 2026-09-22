@@ -120,9 +120,9 @@
             -- last_magasd=0 (no run-hit) does not extend reach. Enemy HRP must sit in that box.
             -- FarmBelowFeet = studs below enemy HRP. 6 below feet is outside the 6.25 height.
             FarmBelowFeet = 6.2,
-            FarmLateral = 2.0,
-            MaxVerifiedRange = 5.75,
-            MaxVerifiedVertical = 4.125,
+            FarmLateral = 0.6,
+            MaxVerifiedRange = 8.5,
+            MaxVerifiedVertical = 7.5,
             AttackInterval = 0.12,
             FireInterval = 0.12,
             ComboReset = 1.35, -- Combat_presets.combo_duration after 1-4 (not final 1.65)
@@ -4881,7 +4881,7 @@
             return false
         end
         local code = Systems.Enemy.GetNpcCode(model)
-        if code and EnemyDB[code] and EnemyDB[code].Boss then
+        if code and EnemyDB[code] and (EnemyDB[code].Boss or EnemyDB[code].WorldBoss) then
             return true
         end
         local name = string.lower(tostring(model.Name))
@@ -5889,14 +5889,42 @@
         return se and se:FindFirstChild("Event")
     end
 
+    -- Standing box from Combat_presets.Get_Players_For_Combat:
+    -- size (6, 6.25, 9) at HRP * (0,-1,0). Farm spot is 6.2 below + slight lateral
+    -- (3D dist ≈ 6.2–6.5). Never gate M1 on Magnitude <= 5.75 — that misses the farm spot.
+    function Systems.Combat.InFarmHitbox(target)
+        local enemyRoot = Systems.Enemy.GetRoot(target)
+        local _, _, root = Resolver.Character()
+        if not enemyRoot or not root then
+            return false, 999, 999
+        end
+        local dist = (root.Position - enemyRoot.Position).Magnitude
+        local offset = Systems.Movement.CombatOffset(target)
+        local toSpot = offset and (root.Position - offset.Position).Magnitude or 999
+        local spotTol = (Config.Combat.FarmPositionTolerance or 1.1) + 1.8
+        if toSpot <= spotTol then
+            return true, dist, toSpot
+        end
+        local maxR = Config.Combat.MaxVerifiedRange or 8.5
+        local maxY = Config.Combat.MaxVerifiedVertical or 7.5
+        local delta = enemyRoot.Position - root.Position
+        local horiz = Vector3.new(delta.X, 0, delta.Z).Magnitude
+        local dy = math.abs(delta.Y)
+        if dist <= maxR and dy <= maxY and horiz <= 5.5 then
+            return true, dist, toSpot
+        end
+        return false, dist, toSpot
+    end
+
     -- Dedicated M1 loop (user-verified). Quest/tween stay on the scheduler.
     function Systems.Combat.M1Loop()
         Logger.Info("Combat", "Dedicated M1 loop: Combat_Service 1-4 while target is in farm hitbox")
         local event = Systems.Combat.SignalEventRemote()
+        local lastBlockLog = 0
         while stillCurrent() do
             task.wait(0.05)
-            if Config.AutoCombat == false or Runtime.DrinkingPotion or Runtime.RespawnRecover or Runtime.DeathResume then
-                -- idle
+            if Config.AutoCombat == false or Runtime.DrinkingPotion or Runtime.RespawnRecover then
+                -- idle — DeathResume must not freeze M1 after we are already in FARM_COMBAT
             elseif Runtime.State ~= "FARM_COMBAT" then
                 -- idle
             elseif not Resolver.IsPlayerAlive() then
@@ -5906,6 +5934,7 @@
                 local target = Runtime.LockTarget or Runtime.CurrentTarget
                 local expect = Runtime.CurrentTask and Runtime.CurrentTask.Code
                 local farming = false
+                local dist, toSpot = 999, 999
                 if character and target and Systems.Enemy.IsAlive(target) then
                     if expect then
                         local tcode = Systems.Enemy.GetNpcCode and Systems.Enemy.GetNpcCode(target)
@@ -5914,12 +5943,16 @@
                         end
                     end
                     if target then
-                        local enemyRoot = Systems.Enemy.GetRoot(target)
-                        local _, _, root = Resolver.Character()
-                        local dist = (enemyRoot and root) and (root.Position - enemyRoot.Position).Magnitude or 999
-                        local maxR = Config.Combat.MaxVerifiedRange or 5.75
-                        farming = dist <= maxR
+                        farming, dist, toSpot = Systems.Combat.InFarmHitbox(target)
                     end
+                end
+                if not farming and target and os.clock() - lastBlockLog > 2.5 then
+                    lastBlockLog = os.clock()
+                    Logger.Info("Combat", string.format(
+                        "M1 wait — dist=%.1f spot=%.1f (need farm box, not <=5.75)",
+                        dist,
+                        toSpot
+                    ))
                 end
                 if farming and character then
                     if not event or not event.Parent then
@@ -5950,6 +5983,16 @@
                             Runtime.LastCombatCombo = combo
                             Runtime.M1Combo = combo
                             Runtime.LastSuccessfulAction = "Combat:Combat"
+                            if not Runtime.LastM1Log or os.clock() - Runtime.LastM1Log > 2 then
+                                Runtime.LastM1Log = os.clock()
+                                Logger.Info("Combat", string.format(
+                                    "M1 fire combo=%s weapon=%s dist=%.1f spot=%.1f",
+                                    tostring(combo),
+                                    tostring(weapon),
+                                    dist,
+                                    toSpot
+                                ))
+                            end
                         end
                     end
                 end
@@ -9598,6 +9641,9 @@ end
                 end
                 Resolver.BindCharacter(character)
                 Systems.Watchdog.MarkProgress()
+                Runtime.LastCombatCombo = nil
+                Runtime.LastSwingAt = 0
+                Runtime.DrinkingPotion = false
                 Systems.Combat.EquipBest()
                 Logger.Info("Lifecycle", "Respawn ready — recover objective")
             end)
