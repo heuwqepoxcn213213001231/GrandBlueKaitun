@@ -1,6 +1,6 @@
     --[[
         Ouwland Kaitun
-        VERSION: 2026-09-22-potion-remote
+        VERSION: 2026-09-22-loot-first
 
         Single-file copy → paste → execute script.
         Game logic is taken from Ouwland research + live Studio inspection.
@@ -4962,8 +4962,11 @@
         local goal = cf
         if purpose == "combat" then
             goal = cf
-        elseif purpose == "npc" or purpose == "pickup" then
-            -- pickup/loot: destination already grounded — hop only if far, land on exact CF.
+        elseif purpose == "pickup" then
+            -- Chest/drop: walk the ground to the item. Never hop/fly.
+            goal = cf
+            skipHop = true
+        elseif purpose == "npc" then
             local flat = Vector3.new(root.Position.X - cf.Position.X, 0, root.Position.Z - cf.Position.Z).Magnitude
             local hopDist = Config.Movement.HopDistance or 22
             local lift = Config.Movement.FlyClearance or 42
@@ -5243,36 +5246,31 @@
         return false
     end
 
-    -- Loot/claim: stand ON the item (low ground). Never float high above it.
+    -- Loot/claim: tween to the chest on the ground, then stand on it. Never hop.
     function Systems.Movement.MoveToLoot(destination, range)
         range = range or 3.5
         local _, _, root = Resolver.Character()
         if not root then
             return false
         end
-        local grounded = Systems.Movement.GroundedCFrame(destination, 3)
-        if not grounded then
-            local cf = Util.ToCFrame(destination)
-            if not cf then
-                return false
-            end
-            grounded = CFrame.new(cf.Position + Vector3.new(0, 3, 0))
+        local cf = Util.ToCFrame(destination)
+        if not cf then
+            return false
         end
-        local dy = math.abs(root.Position.Y - grounded.Position.Y)
-        local flat = Vector3.new(root.Position.X - grounded.Position.X, 0, root.Position.Z - grounded.Position.Z).Magnitude
-        if flat <= range and dy <= 5 then
-            if dy > 2.5 then
+        local dest = CFrame.new(cf.Position.X, cf.Position.Y + 2.5, cf.Position.Z)
+        local dy = math.abs(root.Position.Y - dest.Position.Y)
+        local flat = Vector3.new(root.Position.X - dest.Position.X, 0, root.Position.Z - dest.Position.Z).Magnitude
+        if flat <= range and dy <= 6 then
+            if dy > 2 then
                 pcall(function()
-                    root.CFrame = grounded
+                    root.CFrame = dest
                     root.AssemblyLinearVelocity = Vector3.zero
                 end)
             end
             return true
         end
-        if flat <= 35 then
-            Runtime.SkipHop = true
-        end
-        Systems.Movement.StartTween(grounded, range, "pickup")
+        Runtime.SkipHop = true
+        Systems.Movement.StartTween(dest, range, "pickup")
         return false
     end
 
@@ -5820,8 +5818,13 @@
                 Runtime.LastTargetHealth = hum and hum.Health
                 Runtime.LastTargetHealthAt = os.clock()
                 if isBoss or (hum and hum.MaxHealth >= 800) then
-                    Runtime.BossFightEngaged = true
-                    Runtime.LootSpent = false
+                    local _, _, here = Resolver.Character()
+                    local eroot = Systems.Enemy.GetRoot(target)
+                    local near = here and eroot and (here.Position - eroot.Position).Magnitude <= 22
+                    if near then
+                        Runtime.BossFightEngaged = true
+                        Runtime.LootSpent = false
+                    end
                 end
                 Logger.Info("Combat", "Target=" .. tostring(expectedCode) .. " FarmBelowFeet=" .. tostring(Config.Combat.FarmBelowFeet) .. " BossEngaged=" .. tostring(Runtime.BossFightEngaged))
             end
@@ -7301,8 +7304,87 @@ end
 
     Systems.Loot = {}
 
+    function Systems.Loot.TargetStillAlive()
+        local code = (Runtime.CurrentTask and Runtime.CurrentTask.Code)
+            or (Runtime.HuntPatrol and Runtime.HuntPatrol.Code)
+        if not code then
+            return false
+        end
+        local target = Runtime.CurrentTarget
+        if target and Systems.Enemy.IsAlive(target) then
+            local tcode = Systems.Enemy.GetNpcCode and Systems.Enemy.GetNpcCode(target)
+            if tcode == nil or tcode == code then
+                return true
+            end
+        end
+        local patrol = Runtime.HuntPatrol
+        if patrol and patrol.Model and Systems.Enemy.IsAlive(patrol.Model) then
+            return true
+        end
+        local found = select(1, Systems.Enemy.FindNearestTarget(code, nil, true))
+        return found ~= nil
+    end
+
+    function Systems.Loot.Abort(reason)
+        Runtime.LootEmptySince = nil
+        Runtime.LastLootLog = nil
+        Runtime.LootUntil = nil
+        Runtime.LootPhase = nil
+        Runtime.LootHardUntil = 0
+        Runtime.MovePurpose = nil
+        if Systems.Movement.Cancel then
+            Systems.Movement.Cancel("loot-abort")
+        end
+        Logger.Info("Loot", "Loot aborted (" .. tostring(reason or "cancel") .. ") — fight")
+    end
+
+    function Systems.Loot.PeekNearby(range)
+        range = range or 52
+        local _, _, root = Resolver.Character()
+        if not root then
+            return nil
+        end
+        local now = os.clock()
+        local cache = Runtime.LootPeekCache
+        if cache and cache.pos and (now - cache.at) < 0.5 and (cache.pos - root.Position).Magnitude < 8 then
+            return cache.best
+        end
+        local chests, drops = Systems.Loot.GatherCandidates(root.Position, range, { Deep = false })
+        local skip = Runtime.LootSkipUntil
+        local function allowed(entry)
+            if not entry then
+                return false
+            end
+            local untilAt = skip and skip[tostring(entry.Inst)]
+            return not (untilAt and now < untilAt)
+        end
+        local best
+        for i = 1, #(chests or {}) do
+            if allowed(chests[i]) then
+                best = chests[i]
+                break
+            end
+        end
+        if not best then
+            for i = 1, #(drops or {}) do
+                if allowed(drops[i]) then
+                    best = drops[i]
+                    break
+                end
+            end
+        end
+        Runtime.LootPeekCache = { at = now, pos = root.Position, best = best }
+        return best
+    end
+
     function Systems.Loot.BeginWindow(origin, reason)
-        if Runtime.LootSpent then
+        local nearby = reason == "nearby-chest"
+        if nearby then
+            Runtime.LootSpent = false
+        end
+        if Runtime.LootSpent and not nearby
+            and reason ~= "boss-dead" and reason ~= "boss-hp0" and reason ~= "boss-despawn"
+        then
             return
         end
         local _, _, root = Resolver.Character()
@@ -7795,6 +7877,14 @@ end
             return true
         end
         Runtime.LootFireAt[throttleKey] = now
+        Runtime.LootFireCount = Runtime.LootFireCount or {}
+        Runtime.LootFireCount[throttleKey] = (Runtime.LootFireCount[throttleKey] or 0) + 1
+        if Runtime.LootFireCount[throttleKey] >= 10 then
+            Runtime.LootSkipUntil = Runtime.LootSkipUntil or {}
+            Runtime.LootSkipUntil[throttleKey] = now + 25
+            Logger.Warn("Loot", "Skip stubborn " .. tostring(label or "chest"))
+            return false
+        end
 
         local target = prompt or best.Inst
         local action = prompt and string.lower(tostring(prompt.ActionText or "")) or ""
@@ -7833,9 +7923,15 @@ end
         if not origin then
             return false
         end
-        if root and (root.Position - origin).Magnitude > 55 then
-            Systems.Movement.MoveToLoot(origin, 8)
-            return true
+        if root then
+            local flatOrigin = Vector3.new(root.Position.X - origin.X, 0, root.Position.Z - origin.Z).Magnitude
+            if flatOrigin > 70 then
+                local near = select(1, Systems.Loot.GatherCandidates(root.Position, 40, { Deep = false }))
+                if near and #near > 0 then
+                    return Systems.Loot.ApproachAndFire(near[1], "Open")
+                end
+                return false
+            end
         end
         local chests, drops = Systems.Loot.GatherCandidates(origin, range, { Deep = true })
         -- Also merge candidates near the player (origin may lag behind if we walked away).
@@ -7930,6 +8026,22 @@ end
             return "POTION_DRINK"
         end
 
+        local st = Runtime.State
+        local allowPeek = st == nil or st == "FARM_COMBAT" or st == "HUNT_TRAVEL" or st == "FARM_TRAVEL"
+            or st == "LOOT_CHEST" or st == "IDLE" or st == "WAIT_RESPAWN" or st == "WAITING_FOR_BOSS"
+            or st == "WAIT_COOLDOWN"
+        if allowPeek then
+            local peek = Systems.Loot.PeekNearby(52)
+            if peek then
+                local lootOn = Runtime.LootUntil and Runtime.LootUntil > os.clock()
+                if not lootOn then
+                    Systems.Loot.BeginWindow(peek.Pos, "nearby-chest")
+                end
+                if Runtime.LootUntil and Runtime.LootUntil > os.clock() then
+                    return "LOOT_CHEST"
+                end
+            end
+        end
         if Runtime.LootUntil and Runtime.LootUntil > 0 and os.clock() < Runtime.LootUntil then
             return "LOOT_CHEST"
         end
@@ -7938,9 +8050,7 @@ end
             Systems.Loot.EndWindow("expired")
         end
         if Runtime.BossFightEngaged and not Runtime.LootSpent and Runtime.LastCombatPos then
-            local code = Runtime.CurrentTask and Runtime.CurrentTask.Code
-            local alive = code and select(1, Systems.Enemy.FindNearestTarget(code))
-            if not alive then
+            if not Systems.Loot.TargetStillAlive() then
                 Systems.Loot.BeginWindow(Runtime.LastCombatPos, "boss-engaged-gone")
                 if Runtime.LootUntil and Runtime.LootUntil > os.clock() then
                     return "LOOT_CHEST"
@@ -7978,8 +8088,6 @@ end
                 Runtime.CurrentTask = { Code = patrol.Code, Intent = "COMBAT", WorldBoss = true }
                 if patrol.Model and Systems.Enemy.IsAlive(patrol.Model) then
                     Runtime.CurrentTarget = patrol.Model
-                    Runtime.BossFightEngaged = true
-                    Runtime.LootSpent = false
                 end
             end
 
@@ -7987,6 +8095,21 @@ end
                 bindWorldCombat(world)
                 local dest = world.Center
                 local range = Config.Boss.HuntArriveRange or 42
+                local model = (world.Model and Systems.Enemy.IsAlive(world.Model) and world.Model)
+                    or (Runtime.CurrentTarget and Systems.Enemy.IsAlive(Runtime.CurrentTarget) and Runtime.CurrentTarget)
+                if model then
+                    Runtime.CurrentTarget = model
+                    local mroot = Systems.Enemy.GetRoot(model)
+                    local _, _, root = Resolver.Character()
+                    if mroot and root then
+                        local flat = Vector3.new(root.Position.X - mroot.Position.X, 0, root.Position.Z - mroot.Position.Z).Magnitude
+                        if flat <= 140 or Runtime.State == "FARM_COMBAT" then
+                            return "FARM_COMBAT"
+                        end
+                    elseif Runtime.State == "FARM_COMBAT" then
+                        return "FARM_COMBAT"
+                    end
+                end
                 if dest and Systems.Movement.HasArrived(dest, range) then
                     return "FARM_COMBAT"
                 end
@@ -8341,7 +8464,13 @@ end
         -- Cheap loot gate: no Workspace scans here (that lagged Execute).
         local lootActive = Runtime.LootUntil and Runtime.LootUntil > 0 and os.clock() < Runtime.LootUntil
         local leavingCombat = Runtime.State == "FARM_COMBAT" and state ~= "FARM_COMBAT" and state ~= "LOOT_CHEST"
-        local shouldLoot = lootActive or (leavingCombat and Runtime.BossFightEngaged == true and not Runtime.LootSpent)
+        local stillHunting = state == "HUNT_TRAVEL" or state == "FARM_TRAVEL" or state == "FARM_COMBAT"
+        local forceLoot = leavingCombat
+            and Runtime.BossFightEngaged == true
+            and not Runtime.LootSpent
+            and not stillHunting
+            and not Systems.Loot.TargetStillAlive()
+        local shouldLoot = lootActive or forceLoot
         if shouldLoot and state ~= "PLAYER_DEAD" and state ~= "ROOT_MISSING" and state ~= "WAIT_CHARACTER" then
             if not lootActive then
                 local _, _, root = Resolver.Character()
@@ -8418,7 +8547,7 @@ end
                 -- No chest/drop right now. After a short empty grace, leave — don't sit out the full window.
                 Runtime.LootEmptySince = Runtime.LootEmptySince or now
                 local opened = Runtime.LootPhase == "drops" or Runtime.LastLootLog ~= nil
-                local grace = opened and (Config.Boss.LootEmptySeconds or 1.2) or 5
+                local grace = opened and 2.8 or 2
                 if (now - Runtime.LootEmptySince) >= grace then
                     Systems.Loot.EndWindow("empty")
                     Systems.Combat.EquipBest()
@@ -8462,7 +8591,6 @@ end
                 local range = Config.Boss.HuntArriveRange or 42
                 local mroot = model and Systems.Enemy.GetRoot(model)
                 if mroot and Systems.Movement.HasArrived(mroot.Position, range) then
-                    Runtime.BossFightEngaged = true
                     Systems.Watchdog.MarkProgress()
                     return
                 end
@@ -8656,15 +8784,11 @@ end
             if not code then
                 return
             end
-            local edef = EnemyDB[code]
-            if edef and edef.Boss then
-                Runtime.BossFightEngaged = true
-            end
             local result = Systems.Combat.Cycle(code)
             if result == "NO_ENEMY" then
                 local enemy = EnemyDB[code]
-                local recent = Runtime.LastTargetHealthAt and (os.clock() - Runtime.LastTargetHealthAt) < 15
-                if recent and ((enemy and enemy.Boss) or Runtime.BossFightEngaged) then
+                local recent = Runtime.LastTargetHealthAt and (os.clock() - Runtime.LastTargetHealthAt) < 8
+                if recent and Runtime.BossFightEngaged and not Systems.Loot.TargetStillAlive() then
                     Systems.Loot.BeginWindow(Runtime.LastCombatPos, "farm-no-enemy")
                     return
                 end
